@@ -1,28 +1,39 @@
 # Nadav Maps
 
-מפה פתוחה לציבור הרחב, בנויה על [MapLibre GL JS](https://maplibre.org/) ונתוני [OpenStreetMap](https://www.openstreetmap.org/) דרך [OpenFreeMap](https://openfreemap.org/). אין צורך במפתחות API.
+מפה ציבורית בסגנון Google Maps, בעברית, בנויה על נתוני [OpenStreetMap](https://www.openstreetmap.org/).
+עולמית בתכנון, ישראל ראשונה. בלי מפתחות API.
+
+**כתובת:** https://nadav-beno.github.io/nadav-maps/
+
+## מה יש כבר
+
+- מפה עולמית עם שמות בעברית, מצב כהה, התקנה כאפליקציה (PWA) באייפון ובאנדרואיד
+- חיפוש מקומות וכתובות (מבין קיצורים כמו ת"א, רח', פ"ת), קטגוריות קרובות (קפה, דלק, בתי מרקחת…)
+- כרטיס מקום: כתובת, שעות פתיחה (פתוח/סגור עכשיו), טלפון, אתר, נגישות, תמונה, שיתוף
+- מסלולים ברכב, ברגל ובאופניים, עם חלופות, הימנעות מכבישי אגרה ומהירים
+- ניווט קולי בעברית, מסך מלא, חישוב מסלול מחדש כשסוטים
+- מועדפים, רשימות, בית ועבודה, היסטוריה, שיתוף רשימה בקישור, ייבוא וייצוא GeoJSON
+- התמונות שלי על המפה (נשאר רק במכשיר), חלוקה אוטומטית לטיולים
+- שרת MCP: Claude ועוזרים אחרים יכולים לחפש מקומות ולתכנן מסלולים
 
 ## הרצה מקומית
 
 ```bash
-npm install
-npm run dev
+corepack enable
+pnpm install
+pnpm dev        # האתר
+pnpm server     # שרת REST + MCP בפורט 8787
+pnpm check      # כל הבדיקות והבנייה
 ```
 
-## בנייה
+## חיבור Claude לשרת ה-MCP
 
-```bash
-npm run build   # בדיקת טיפוסים ובנייה לתיקיית dist
-```
-
-## פרסום
-
-כל push ל-`main` נבנה ומתפרסם אוטומטית ל-GitHub Pages דרך `.github/workflows/deploy.yml`.
-בפעם הראשונה צריך להפעיל ב-GitHub: Settings → Pages → Source: **GitHub Actions**.
+אחרי שהשרת רץ בכתובת ציבורית, מוסיפים ב-Claude מחבר מותאם אישית עם הכתובת `https://<השרת>/mcp`.
 
 ## מבנה
 
-- `index.html` דף הכניסה
-- `src/main.ts` יצירת המפה
-- `src/style.css` עיצוב
-- `public/` קבצים סטטיים
+ראו [CLAUDE.md](CLAUDE.md) לארכיטקטורה ולכללים, ו-[docs/decisions](docs/decisions) להחלטות.
+
+## נתונים ורישיונות
+
+נתוני מפה © תורמי OpenStreetMap (ODbL). אריחים: OpenFreeMap. חיפוש: Photon. מסלולים: Valhalla (FOSSGIS).

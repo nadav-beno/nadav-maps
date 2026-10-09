@@ -1,0 +1,11 @@
+{
+  "name": "@nm/tools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@nm/core": "workspace:*",
+    "zod": "^4.6.5"
+  }
+}

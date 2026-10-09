@@ -1,0 +1,14 @@
+{
+  "name": "@nm/feature-navigation",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.tsx" },
+  "dependencies": {
+    "@nm/core": "workspace:*",
+    "@nm/tools": "workspace:*",
+    "@preact/signals": "^2.11.3",
+    "maplibre-gl": "^6.13.0",
+    "preact": "^11.0.1"
+  }
+}
