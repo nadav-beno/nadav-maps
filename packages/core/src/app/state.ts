@@ -35,6 +35,18 @@ export const isDark = computed(() => (theme.value === 'system' ? systemDark.valu
 export const unitsPref = signal<Units | 'auto'>(load<Units | 'auto'>('units', 'auto'));
 unitsPref.subscribe((v) => save('units', v));
 
+/** Base map look, chosen in the layers sheet. */
+export type MapTypePref = 'default' | 'satellite' | 'terrain';
+export const mapType = signal<MapTypePref>(load<MapTypePref>('mapType', 'default'));
+mapType.subscribe((v) => save('mapType', v));
+export interface MapLayers {
+  transit: boolean;
+  bike: boolean;
+  buildings3d: boolean;
+}
+export const mapLayers = signal<MapLayers>({ transit: false, bike: false, buildings3d: true, ...load<Partial<MapLayers>>('mapLayers', {}) });
+mapLayers.subscribe((v) => save('mapLayers', v));
+
 /** Region under the map center, updated by the shell. */
 export const region = signal<Region>(DEFAULT_REGION);
 export const units = computed<Units>(() => (unitsPref.value === 'auto' ? region.value.units : unitsPref.value));

@@ -17,9 +17,11 @@
     "new-feature": "node scripts/new-feature.mjs"
   },
   "devDependencies": {
+    "@material-symbols/svg-400": "0.48.0",
     "@playwright/test": "1.56.1",
     "@types/node": "^22.0.0",
     "geojson-vt": "5.0.4",
+    "pmtiles": "4.5.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
     "vitest": "^5.0.3",

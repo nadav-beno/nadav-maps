@@ -6,7 +6,10 @@ import {
   back,
   currentView,
   defineFeature,
+  directionsTo,
   ensureLayer,
+  Icon,
+  PlaceBadge,
   EMPTY,
   load,
   open,
@@ -18,7 +21,7 @@ import {
   viewStack,
   type ViewProps,
 } from '@nm/core/app';
-import { CATEGORIES, categoryById, categoryLabel, placeIcon, searchNearby, searchPlaces, tools } from '@nm/tools';
+import { CATEGORIES, categoryById, categoryLabel, searchNearby, searchPlaces, tools } from '@nm/tools';
 
 let map: MapLibreMap;
 
@@ -218,10 +221,12 @@ function SearchBar() {
   };
 
   const showDropdown = focused.value && (suggestions.value.length > 0 || (q.value.trim().length < 2 && recent.value.length > 0) || !!error.value);
+
   const isHome = currentView.value.kind === 'home';
+  const showBack = focused.value || !isHome;
 
   return (
-    <div class="search">
+    <div class={`search ${focused.value ? 'focused' : ''}`}>
       <form
         class="search-box"
         role="search"
@@ -230,9 +235,29 @@ function SearchBar() {
           void submit();
         }}
       >
-        <button type="button" class="icon-btn" aria-label="תפריט" onClick={() => open({ kind: 'menu' })}>
-          ☰
-        </button>
+        {showBack ? (
+          <button
+            type="button"
+            class="icon-btn"
+            aria-label="חזרה"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              if (focused.value) {
+                focused.value = false;
+                inputRef.current?.blur();
+              } else {
+                setGeoJSON(map, 'search-results', EMPTY);
+                back();
+              }
+            }}
+          >
+            <Icon name="arrow_back" />
+          </button>
+        ) : (
+          <span class="search-logo" aria-hidden="true">
+            <Icon name="location_on" size={26} />
+          </span>
+        )}
         <input
           ref={inputRef}
           class="search-input"
@@ -241,7 +266,7 @@ function SearchBar() {
           autoComplete="off"
           autoCorrect="off"
           spellcheck={false}
-          placeholder="חיפוש מקום או כתובת"
+          placeholder="חיפוש כאן"
           aria-label="חיפוש מקום או כתובת"
           aria-expanded={showDropdown}
           aria-controls="search-suggestions"
@@ -270,9 +295,15 @@ function SearchBar() {
           }}
         />
         {loading.value && <span class="search-spinner" aria-hidden="true" />}
-        {q.value && (
-          <button type="button" class="icon-btn" aria-label="ניקוי" onClick={clear}>
-            ✕
+        {q.value ? (
+          <button type="button" class="icon-btn" aria-label="ניקוי" onMouseDown={(e) => e.preventDefault()} onClick={clear}>
+            <Icon name="close" />
+          </button>
+        ) : (
+          <button type="button" class="icon-btn" aria-label="תפריט" onClick={() => open({ kind: 'menu' })}>
+            <span class="avatar" aria-hidden="true">
+              <Icon name="person" size={20} />
+            </span>
           </button>
         )}
       </form>
@@ -290,7 +321,9 @@ function SearchBar() {
                       void submit();
                     }}
                   >
-                    <span class="li-icon" aria-hidden="true">🕘</span>
+                    <span class="li-icon" aria-hidden="true">
+                      <Icon name="history" size={20} />
+                    </span>
                     <span class="li-title">{r}</span>
                   </button>
                 </li>
@@ -302,7 +335,7 @@ function SearchBar() {
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => pick(p)}
                   >
-                    <span class="li-icon" aria-hidden="true">{placeIcon(p)}</span>
+                    <PlaceBadge place={p} size={32} />
                     <span class="li-body">
                       <span class="li-title">{p.name}</span>
                       <span class="li-sub">{[categoryLabel(p.category), p.address].filter(Boolean).join(' · ')}</span>
@@ -314,9 +347,9 @@ function SearchBar() {
       )}
       {isHome && !focused.value && (
         <div class="chips" role="toolbar" aria-label="חיפוש לפי קטגוריה">
-          {CATEGORIES.slice(0, 8).map((c) => (
+          {CATEGORIES.slice(0, 9).map((c) => (
             <button key={c.id} class="chip" onClick={() => void runCategory(c.id)}>
-              <span aria-hidden="true">{c.icon}</span>
+              <Icon name={c.icon} size={18} />
               {c.label}
             </button>
           ))}
@@ -348,7 +381,7 @@ function ResultsView({ view }: ViewProps<ResultsProps>) {
             back();
           }}
         >
-          →
+          <Icon name="arrow_back" />
         </button>
         <h2>{p.title}</h2>
         {p.category && (
@@ -368,14 +401,28 @@ function ResultsView({ view }: ViewProps<ResultsProps>) {
       <ul class="list">
         {p.places?.map((pl) => (
           <li key={pl.id}>
-            <button class="list-item" onClick={() => choose(pl)}>
-              <span class="li-icon" aria-hidden="true">{placeIcon(pl)}</span>
-              <span class="li-body">
-                <div class="li-title">{pl.name}</div>
-                <div class="li-sub">{[categoryLabel(pl.category), pl.address].filter(Boolean).join(' · ')}</div>
-              </span>
-              <span class="li-end">{formatDistance(distance(o, [pl.lng, pl.lat]), units.value)}</span>
-            </button>
+            <div class="result" role="button" tabIndex={0} onClick={() => choose(pl)} onKeyDown={(e) => e.key === 'Enter' && choose(pl)}>
+              <div class="result-body">
+                <div class="result-title">{pl.name}</div>
+                <div class="result-sub">
+                  {[categoryLabel(pl.category), formatDistance(distance(o, [pl.lng, pl.lat]), units.value)].filter(Boolean).join(' · ')}
+                </div>
+                {pl.address && <div class="result-sub">{pl.address}</div>}
+                <div class="result-actions">
+                  <button
+                    class="action"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      directionsTo(pl);
+                    }}
+                  >
+                    <Icon name="directions" size={18} />
+                    מסלול
+                  </button>
+                </div>
+              </div>
+              <PlaceBadge place={pl} size={40} />
+            </div>
           </li>
         ))}
       </ul>

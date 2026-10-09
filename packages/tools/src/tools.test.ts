@@ -6,7 +6,8 @@ import { elementToDetails, commonsThumb } from './providers/overpass.ts';
 import { hebrewInstruction, spokenInstruction } from './instructions-he.ts';
 import { CATEGORIES, categoryById, categoryLabel, placeIcon } from './categories.ts';
 import { createToolClient } from './client.ts';
-import { getDirections, searchNearby, searchPlaces, placeDetails } from './tools/index.ts';
+import { getDirections, searchNearby, searchPlaces, placeDetails, placeSummary } from './tools/index.ts';
+import { parseWikipediaTag } from './providers/wikipedia.ts';
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -122,5 +123,32 @@ describe('tools via client', () => {
     const res = await client.call(getDirections, { waypoints: pts });
     expect(res).toEqual([]);
     expect(calls).toBe(1);
+  });
+});
+
+describe('wikipedia summaries', () => {
+  it('reads the OSM wikipedia tag', () => {
+    expect(parseWikipediaTag('he:תל אביב-יפו')).toEqual(['he', 'תל אביב-יפו']);
+    expect(parseWikipediaTag('Tel Aviv')).toEqual(['en', 'Tel Aviv']);
+    expect(parseWikipediaTag('  ')).toBeNull();
+  });
+
+  it('prefers the article in the UI language through Wikidata', async () => {
+    const urls: string[] = [];
+    const client = createToolClient(DEFAULT_PROVIDERS, 'he', (async (u: string | URL | Request) => {
+      const url = String(u);
+      urls.push(url);
+      if (url.includes('wikidata.org')) return json({ entities: { Q33935: { sitelinks: { hewiki: { title: 'תל אביב-יפו' }, enwiki: { title: 'Tel Aviv' } } } } });
+      return json({ type: 'standard', title: 'תל אביב-יפו', extract: 'עיר במחוז תל אביב.', content_urls: { desktop: { page: 'https://he.wikipedia.org/wiki/x' } } });
+    }) as typeof fetch);
+    const res = await client.call(placeSummary, { wikipedia: 'en:Tel Aviv', wikidata: 'Q33935' });
+    expect(res).toMatchObject({ title: 'תל אביב-יפו', lang: 'he', extract: 'עיר במחוז תל אביב.' });
+    expect(urls[1]).toContain('he.wikipedia.org');
+  });
+
+  it('skips disambiguation pages and requires some reference', async () => {
+    const client = createToolClient(DEFAULT_PROVIDERS, 'he', (async () => json({ type: 'disambiguation', title: 'x', extract: 'y' })) as typeof fetch);
+    expect(await client.call(placeSummary, { wikipedia: 'he:x' })).toBeNull();
+    await expect(client.call(placeSummary, {})).rejects.toThrow();
   });
 });

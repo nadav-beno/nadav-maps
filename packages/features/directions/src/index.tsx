@@ -1,14 +1,16 @@
 import { batch, computed, signal, useSignal } from '@preact/signals';
 import { useRef } from 'preact/hooks';
 import type { Map as MapLibreMap } from 'maplibre-gl';
-import { bboxOf, droppedPin, formatArrival, formatDistance, formatDuration, type LngLat, type Place, type Route, type TravelMode } from '@nm/core';
+import { bboxOf, droppedPin, formatArrival, formatDistance, formatDuration, maneuverIcon, type LngLat, type Place, type Route, type TravelMode } from '@nm/core';
 import {
   back,
   currentView,
   defineFeature,
   ensureLayer,
   EMPTY,
+  Icon,
   load,
+  PlaceBadge,
   open,
   region,
   requestLocation,
@@ -18,7 +20,7 @@ import {
   userLocation,
   type ViewProps,
 } from '@nm/core/app';
-import { categoryLabel, getDirections, placeIcon, reverseGeocode, searchPlaces, tools } from '@nm/tools';
+import { categoryLabel, getDirections, reverseGeocode, searchPlaces, tools } from '@nm/tools';
 
 type Endpoint = { kind: 'me' } | { kind: 'place'; place: Place } | null;
 
@@ -36,6 +38,8 @@ const active = signal(0);
 const loading = signal(false);
 const error = signal<string | null>(null);
 const haveLocation = computed(() => userLocation.value !== null);
+/** Travel time per mode for the tabs, like Google ("רכב 12 דק׳ · הליכה 45 דק׳"). */
+const modeTimes = signal<Partial<Record<TravelMode, number>>>({});
 
 let map: MapLibreMap;
 
@@ -88,9 +92,19 @@ async function compute() {
       routes.value = rs;
       active.value = 0;
       if (!rs.length) error.value = 'לא מצאנו מסלול בין הנקודות האלה.';
+      modeTimes.value = rs[0] ? { [mode.value]: rs[0].durationS } : {};
     });
     drawRoutes();
     fitRoutes();
+    // The other modes' times, without geometry, for the mode tabs.
+    for (const m of MODES.map((x) => x.id).filter((x) => x !== mode.value)) {
+      tools()
+        .call(getDirections, { waypoints: [a, b], mode: m, alternatives: 0, includeGeometry: false })
+        .then((r) => {
+          if (seq === requestSeq && r[0]) modeTimes.value = { ...modeTimes.value, [m]: r[0].durationS };
+        })
+        .catch(() => {});
+    }
   } catch {
     if (seq !== requestSeq) return;
     batch(() => {
@@ -206,7 +220,9 @@ function PointInput({ label, value, onChange, autoFocus }: { label: string; valu
           {value?.kind !== 'me' && (
             <li>
               <button class="suggestion" onMouseDown={(e) => e.preventDefault()} onClick={() => choose({ kind: 'me' })}>
-                <span class="li-icon" aria-hidden="true">◉</span>
+                <span class="li-icon" aria-hidden="true">
+                  <Icon name="my_location" size={20} style={{ color: 'var(--accent)' }} />
+                </span>
                 <span class="li-title">המיקום שלי</span>
               </button>
             </li>
@@ -214,7 +230,7 @@ function PointInput({ label, value, onChange, autoFocus }: { label: string; valu
           {sugg.value.map((p) => (
             <li key={p.id}>
               <button class="suggestion" onMouseDown={(e) => e.preventDefault()} onClick={() => choose({ kind: 'place', place: p })}>
-                <span class="li-icon" aria-hidden="true">{placeIcon(p)}</span>
+                <PlaceBadge place={p} size={32} />
                 <span class="li-body">
                   <span class="li-title">{p.name}</span>
                   <span class="li-sub">{[categoryLabel(p.category), p.address].filter(Boolean).join(' · ')}</span>
@@ -229,9 +245,9 @@ function PointInput({ label, value, onChange, autoFocus }: { label: string; valu
 }
 
 const MODES: { id: TravelMode; label: string; icon: string }[] = [
-  { id: 'car', label: 'רכב', icon: '🚗' },
-  { id: 'walk', label: 'הליכה', icon: '🚶' },
-  { id: 'bike', label: 'אופניים', icon: '🚲' },
+  { id: 'car', label: 'רכב', icon: 'directions_car' },
+  { id: 'walk', label: 'הליכה', icon: 'directions_walk' },
+  { id: 'bike', label: 'אופניים', icon: 'directions_bike' },
 ];
 
 function Steps({ route }: { route: Route }) {
@@ -239,7 +255,9 @@ function Steps({ route }: { route: Route }) {
     <ol class="steps">
       {route.steps.map((s, i) => (
         <li key={i} class="step">
-          <span class="step-icon" aria-hidden="true">{arrowFor(s.type)}</span>
+          <span class="step-icon">
+            <Icon name={maneuverIcon(s.type)} />
+          </span>
           <span class="step-body">
             <span>{s.instruction}</span>
             {s.distanceM > 0 && <span class="muted small"> · {formatDistance(s.distanceM, units.value)}</span>}
@@ -248,20 +266,6 @@ function Steps({ route }: { route: Route }) {
       ))}
     </ol>
   );
-}
-
-export function arrowFor(type: number): string {
-  if ([9, 18, 20, 23, 37].includes(type)) return '↗';
-  if ([10, 2].includes(type)) return '→';
-  if ([11].includes(type)) return '↘';
-  if ([16, 19, 21, 24, 38].includes(type)) return '↖';
-  if ([15, 3].includes(type)) return '←';
-  if ([14].includes(type)) return '↙';
-  if ([12, 13].includes(type)) return '↶';
-  if ([26, 27].includes(type)) return '⟳';
-  if ([4, 5, 6].includes(type)) return '🏁';
-  if ([28, 29].includes(type)) return '⛴';
-  return '↑';
 }
 
 function DirectionsView(_: ViewProps) {
@@ -281,46 +285,50 @@ function DirectionsView(_: ViewProps) {
 
   return (
     <div class="view directions">
-      <header class="view-header">
-        <button
-          class="icon-btn"
-          aria-label="חזרה"
-          onClick={() => {
-            back();
-          }}
-        >
-          →
-        </button>
-        <h2>מסלול</h2>
-      </header>
       <div class="endpoints">
+        <button class="icon-btn" aria-label="חזרה" onClick={back}>
+          <Icon name="arrow_back" />
+        </button>
+        <div class="endpoint-dots" aria-hidden="true">
+          <span class="from-dot" />
+          <span class="dot-line" />
+          <span class="dot-line" />
+          <span class="dot-line" />
+          <Icon name="location_on" size={18} class="to-dot" />
+        </div>
         <div class="endpoint-fields">
-          <PointInput label="מאיפה?" value={from.value} onChange={(e) => set('from', e)} />
+          <PointInput label="נקודת מוצא" value={from.value} onChange={(e) => set('from', e)} />
           <PointInput label="לאן?" value={to.value} onChange={(e) => set('to', e)} autoFocus={!to.value} />
         </div>
         <button class="icon-btn" aria-label="החלפת מוצא ויעד" onClick={swap}>
-          ⇅
+          <Icon name="swap_vert" />
         </button>
       </div>
-      <div class="segmented" role="group" aria-label="אמצעי תחבורה">
-        {MODES.map((m) => (
-          <button
-            key={m.id}
-            aria-pressed={mode.value === m.id}
-            onClick={() => {
-              mode.value = m.id;
-              open({ kind: 'directions', props: { url: urlFor() } }, { replace: true });
-              void compute();
-            }}
-          >
-            <span aria-hidden="true">{m.icon}</span> {m.label}
-          </button>
-        ))}
+      <div class="mode-tabs" role="group" aria-label="אמצעי תחבורה">
+        {MODES.map((m) => {
+          const t = modeTimes.value[m.id];
+          return (
+            <button
+              key={m.id}
+              class="mode-tab"
+              aria-pressed={mode.value === m.id}
+              aria-label={m.label}
+              onClick={() => {
+                mode.value = m.id;
+                open({ kind: 'directions', props: { url: urlFor() } }, { replace: true });
+                void compute();
+              }}
+            >
+              <Icon name={m.icon} size={20} />
+              {t !== undefined ? formatDuration(t) : m.label}
+            </button>
+          );
+        })}
       </div>
       {mode.value === 'car' && (
         <div class="options">
           <button class="link-like small" aria-expanded={showOptions.value} onClick={() => (showOptions.value = !showOptions.value)}>
-            אפשרויות {showOptions.value ? '▴' : '▾'}
+            אפשרויות מסלול
           </button>
           {showOptions.value && (
             <div class="option-list">
@@ -382,15 +390,18 @@ function DirectionsView(_: ViewProps) {
       {r && (
         <div class="route-actions">
           {startable ? (
-            <button class="btn primary" onClick={() => open({ kind: 'navigate', props: { route: r, destination: to.value?.kind === 'place' ? to.value.place : null } })}>
-              ▶ יציאה לדרך
+            <button class="btn primary big" onClick={() => open({ kind: 'navigate', props: { route: r, destination: to.value?.kind === 'place' ? to.value.place : null } })}>
+              <Icon name="navigation" size={20} />
+              יציאה לדרך
             </button>
           ) : (
-            <button class="btn primary" onClick={() => set('from', { kind: 'me' })}>
-              ▶ ניווט מהמיקום שלי
+            <button class="btn primary big" onClick={() => set('from', { kind: 'me' })}>
+              <Icon name="navigation" size={20} />
+              ניווט מהמיקום שלי
             </button>
           )}
-          <button class="btn" aria-expanded={showSteps.value} onClick={() => (showSteps.value = !showSteps.value)}>
+          <button class="btn big" aria-expanded={showSteps.value} onClick={() => (showSteps.value = !showSteps.value)}>
+            <Icon name="route" size={20} />
             {showSteps.value ? 'הסתרת השלבים' : 'שלבים'}
           </button>
         </div>
@@ -401,13 +412,38 @@ function DirectionsView(_: ViewProps) {
   );
 }
 
+/** Google's blue "directions" button over the map: open the planner with an empty destination. */
+function DirectionsFab() {
+  if (currentView.value.kind !== 'home') return null;
+  return (
+    <button
+      class="fab primary"
+      aria-label="מסלול"
+      title="מסלול"
+      onClick={() => {
+        batch(() => {
+          from.value = { kind: 'me' };
+          to.value = null;
+          routes.value = [];
+          modeTimes.value = {};
+        });
+        if (!userLocation.peek()) requestLocation();
+        open({ kind: 'directions', props: { url: urlFor() } });
+      }}
+    >
+      <Icon name="directions" size={26} />
+    </button>
+  );
+}
+
 export default defineFeature({
   id: 'directions',
   title: 'מסלולים',
   enabledByDefault: true,
   setup(ctx) {
     map = ctx.map;
-    ctx.registerView('directions', DirectionsView);
+    ctx.registerView('directions', DirectionsView, { hideTop: true });
+    ctx.registerFab({ id: 'directions', order: 1, Component: DirectionsFab });
 
     ctx.onStyle((m) => {
       setGeoJSON(m, 'routes', EMPTY);

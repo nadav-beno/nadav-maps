@@ -1,4 +1,5 @@
 import type { ExpressionSpecification } from 'maplibre-gl';
+import { OVERTURE_CATEGORIES, type PoiGroupId } from '@nm/core';
 
 /**
  * Place-of-interest categories, coloured the way people already read Google Maps:
@@ -52,7 +53,8 @@ export const POI_GROUPS = {
     },
   },
   worship: { color: ['#5f6f7a', '#a8b6bf'], classes: { place_of_worship: 'place-of-worship', cemetery: 'cemetery' } },
-} satisfies Record<string, PoiGroup>;
+  service: { color: ['#5b6e8c', '#9fb0c9'], classes: {} },
+} satisfies Record<PoiGroupId, PoiGroup>;
 
 type GroupId = keyof typeof POI_GROUPS;
 const GROUP_IDS = Object.keys(POI_GROUPS) as GroupId[];
@@ -75,7 +77,7 @@ export function poiIconExpression(): ExpressionSpecification {
 export function poiColorExpression(theme: 'light' | 'dark'): ExpressionSpecification {
   const i = theme === 'dark' ? 1 : 0;
   const pairs: unknown[] = [];
-  for (const g of GROUP_IDS) pairs.push(Object.keys(POI_GROUPS[g].classes), POI_GROUPS[g].color[i]);
+  for (const g of GROUP_IDS) if (Object.keys(POI_GROUPS[g].classes).length) pairs.push(Object.keys(POI_GROUPS[g].classes), POI_GROUPS[g].color[i]);
   return ['match', ['get', 'class'], ...pairs, theme === 'dark' ? '#a0a7b0' : '#6b7178'] as unknown as ExpressionSpecification;
 }
 
@@ -88,6 +90,42 @@ export function poiImageList(theme: 'light' | 'dark'): { id: string; icon: strin
     for (const [cls, icon] of Object.entries(grp.classes)) out.push({ id: `nm-poi-${cls}`, icon, color: grp.color[i] });
   }
   for (const [rel, icon] of Object.entries(RELIGION)) out.push({ id: `nm-poi-worship-${rel}`, icon, color: POI_GROUPS.worship.color[i] });
+  for (const id of new Set(Object.values(OVERTURE_CATEGORIES).map(([g, icon]) => `${g}|${icon}`))) {
+    const [g, icon] = id.split('|') as [GroupId, string];
+    out.push({ id: ovtImage(g, icon), icon, color: POI_GROUPS[g].color[i] });
+  }
   out.push({ id: 'nm-poi-other', icon: null, color: theme === 'dark' ? '#8a929b' : '#7d848c' });
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Overture places: same discs and colours, keyed by Overture's `basic_category`.
+
+const ovtImage = (group: string, icon: string) => `nm-ovt-${group}-${icon}`;
+
+function byCategory<T>(value: (group: GroupId, icon: string) => T): unknown[] {
+  const out = new Map<T, string[]>();
+  for (const [cat, [g, icon]] of Object.entries(OVERTURE_CATEGORIES)) {
+    const v = value(g, icon);
+    out.set(v, [...(out.get(v) ?? []), cat]);
+  }
+  return [...out].flatMap(([v, cats]) => [cats, v]);
+}
+
+export function overtureIconExpression(): ExpressionSpecification {
+  return ['match', ['coalesce', ['get', 'basic_category'], ''], ...byCategory(ovtImage), 'nm-poi-other'] as unknown as ExpressionSpecification;
+}
+
+export function overtureColorExpression(theme: 'light' | 'dark'): ExpressionSpecification {
+  const i = theme === 'dark' ? 1 : 0;
+  return [
+    'match', ['coalesce', ['get', 'basic_category'], ''],
+    ...byCategory((g) => POI_GROUPS[g].color[i]),
+    POI_GROUPS.service.color[i],
+  ] as unknown as ExpressionSpecification;
+}
+
+/** Overture categories in the given groups (for filters). */
+export function overtureCategoriesIn(groups: PoiGroupId[]): string[] {
+  return Object.entries(OVERTURE_CATEGORIES).filter(([, [g]]) => groups.includes(g)).map(([c]) => c);
 }

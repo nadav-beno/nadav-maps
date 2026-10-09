@@ -3,6 +3,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl';
 import {
   back,
   defineFeature,
+  Icon,
   featureCatalog,
   flagOverrides,
   isEnabled,
@@ -32,7 +33,7 @@ function Header({ title }: { title: string }) {
   return (
     <header class="view-header">
       <button class="icon-btn" aria-label="חזרה" onClick={back}>
-        →
+        <Icon name="arrow_back" />
       </button>
       <h2>{title}</h2>
     </header>
@@ -146,7 +147,7 @@ function PrivacyView(_: ViewProps) {
       </p>
       <ul>
         <li>המיקום שלך משמש רק כדי להציג אותך במפה ולחשב מסלולים. אנחנו לא שומרים אותו בשום שרת ולא כותבים אותו ללוגים.</li>
-        <li>כשמחפשים או מחשבים מסלול, הטקסט והנקודות נשלחים לשירותי המפה (Photon, Valhalla, Overpass) כדי לקבל תשובה. לא נשלח שום מזהה שלך.</li>
+        <li>כשמחפשים או מחשבים מסלול, הטקסט והנקודות נשלחים לשירותי המפה (Photon, Valhalla, Overpass, ויקיפדיה) כדי לקבל תשובה. לא נשלח שום מזהה שלך.</li>
         <li>שמורים, רשימות והיסטוריה נשמרים במכשיר שלך בלבד. אפשר למחוק את ההיסטוריה במסך השמורים.</li>
         <li>מפת התמונות לא מעלה תמונות לשום מקום. היא שומרת תמונה מוקטנת, תאריך ומיקום במכשיר בלבד.</li>
         <li>אין פרסומות ואין מעקב שיווקי. דיווח קריסות (אם יופעל) כולל רק את השגיאה, בלי מיקום ובלי כתובת המפה.</li>
@@ -179,6 +180,21 @@ function AboutView(_: ViewProps) {
           פרטי מקומות: <a href="https://overpass-api.de" target="_blank" rel="noopener noreferrer">Overpass API</a>
         </li>
         <li>
+          עסקים ומקומות נוספים: <a href="https://overturemaps.org" target="_blank" rel="noopener noreferrer">Overture Maps Foundation</a> (CDLA Permissive 2.0)
+        </li>
+        <li>
+          תצלומי לוויין: <a href="https://s2maps.eu" target="_blank" rel="noopener noreferrer">Sentinel-2 cloudless</a> של EOX, מבוסס על נתוני Copernicus Sentinel (CC BY 4.0)
+        </li>
+        <li>
+          תבליט וקווי גובה: נתוני גובה של Mapzen Terrain Tiles (AWS Open Data)
+        </li>
+        <li>
+          תיאורי מקומות: <a href="https://www.wikipedia.org" target="_blank" rel="noopener noreferrer">ויקיפדיה</a> (CC BY-SA) ו-Wikidata
+        </li>
+        <li>
+          אייקונים: Material Symbols של Google (Apache 2.0) ו-Maki של Mapbox (CC0). גופן: Rubik (OFL)
+        </li>
+        <li>
           תצוגת המפה: <a href="https://maplibre.org" target="_blank" rel="noopener noreferrer">MapLibre GL JS</a>
         </li>
       </ul>
@@ -199,20 +215,20 @@ export default defineFeature({
     ctx.registerView('install', InstallView);
     ctx.registerView('privacy', PrivacyView);
     ctx.registerView('about', AboutView);
-    ctx.registerMenuItem({ id: 'settings', label: 'הגדרות', icon: '⚙️', order: 80, run: () => open({ kind: 'settings' }) });
-    if (!isStandalone()) ctx.registerMenuItem({ id: 'install', label: 'התקנה במסך הבית', icon: '📲', order: 85, run: () => open({ kind: 'install' }) });
+    ctx.registerMenuItem({ id: 'settings', label: 'הגדרות', icon: 'settings', order: 80, run: () => open({ kind: 'settings' }) });
+    if (!isStandalone()) ctx.registerMenuItem({ id: 'install', label: 'התקנה במסך הבית', icon: 'mobile_arrow_down', order: 85, run: () => open({ kind: 'install' }) });
     ctx.registerMenuItem({
       id: 'report',
       label: 'דיווח על טעות במפה',
-      icon: '🚩',
+      icon: 'flag',
       order: 88,
       run: () => {
         const c = map.getCenter();
         window.open(`https://www.openstreetmap.org/note/new#map=${Math.round(map.getZoom())}/${c.lat.toFixed(5)}/${c.lng.toFixed(5)}`, '_blank', 'noopener');
       },
     });
-    ctx.registerMenuItem({ id: 'privacy', label: 'פרטיות', icon: '🔒', order: 90, run: () => open({ kind: 'privacy' }) });
-    ctx.registerMenuItem({ id: 'about', label: 'אודות וקרדיטים', icon: 'ℹ️', order: 95, run: () => open({ kind: 'about' }) });
+    ctx.registerMenuItem({ id: 'privacy', label: 'פרטיות', icon: 'lock', order: 90, run: () => open({ kind: 'privacy' }) });
+    ctx.registerMenuItem({ id: 'about', label: 'אודות וקרדיטים', icon: 'info', order: 95, run: () => open({ kind: 'about' }) });
     if (ctx.initialUrl.panel && ['settings', 'install', 'privacy', 'about'].includes(ctx.initialUrl.panel)) open({ kind: ctx.initialUrl.panel });
   },
 });

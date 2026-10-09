@@ -1,6 +1,7 @@
 import type { Page, Route } from '@playwright/test';
 import { encodePolyline } from '../packages/core/src/polyline.ts';
 import { sceneTile, TILEJSON } from './basemap-scene.ts';
+import { PLACES_LISTING, PLACES_PMTILES, PLACES_RELEASE } from './places-scene.ts';
 
 /**
  * Tests never hit the real map servers: tiles, search, routing and place details
@@ -56,6 +57,26 @@ export async function stubNetwork(page: Page): Promise<void> {
     const m = /^\/planet\/test\/(\d+)\/(\d+)\/(\d+)\.pbf$/.exec(url.pathname);
     if (m) return r.fulfill({ body: sceneTile(+m[1], +m[2], +m[3]), contentType: 'application/x-protobuf' });
     return r.fulfill({ status: 404, body: '' });
+  });
+  // Overture places: the bucket listing, then HTTP range reads of the newest release's archive.
+  await page.route('https://overturemaps-extras-us-west-2.s3.us-west-2.amazonaws.com/**', (r) => {
+    const url = new URL(r.request().url());
+    if (url.searchParams.get('list-type') === '2') return r.fulfill({ body: PLACES_LISTING, contentType: 'application/xml' });
+    if (url.pathname !== `/tiles/${PLACES_RELEASE}/places.pmtiles`) return r.fulfill({ status: 404, body: '' });
+    const m = /bytes=(\d+)-(\d+)/.exec(r.request().headers()['range'] ?? '');
+    const start = m ? +m[1] : 0;
+    const end = Math.min(m ? +m[2] : PLACES_PMTILES.length - 1, PLACES_PMTILES.length - 1);
+    return r.fulfill({
+      status: 206,
+      body: PLACES_PMTILES.subarray(start, end + 1),
+      headers: {
+        'content-type': 'application/octet-stream',
+        'content-range': `bytes ${start}-${end}/${PLACES_PMTILES.length}`,
+        'access-control-allow-origin': '*',
+        'access-control-expose-headers': 'ETag, Content-Length, Content-Range',
+        etag: '"fixture"',
+      },
+    });
   });
   await page.route('https://photon.komoot.io/api**', (r) => {
     const q = new URL(r.request().url()).searchParams.get('q') ?? '';

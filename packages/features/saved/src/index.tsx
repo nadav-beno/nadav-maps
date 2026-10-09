@@ -5,6 +5,7 @@ import {
   back,
   currentView,
   defineFeature,
+  Icon,
   directionsTo,
   ensureLayer,
   EMPTY,
@@ -60,7 +61,7 @@ function PlaceRow({ p, onRemove }: { p: Place; onRemove?: () => void }) {
       </button>
       {onRemove && (
         <button class="icon-btn" aria-label={`הסרת ${p.name}`} onClick={onRemove}>
-          🗑
+          <Icon name="delete" size={20} />
         </button>
       )}
     </li>
@@ -72,7 +73,7 @@ function SaveAction({ place }: { place: Place }) {
   const saved = savedIds.value.has(place.id);
   return (
     <button class={`action ${saved ? 'primary' : ''}`} aria-pressed={saved} onClick={() => open({ kind: 'save-to', props: { place } })}>
-      <span class="circle" aria-hidden="true">{saved ? '★' : '☆'}</span>
+      <Icon name={saved ? 'bookmark' : 'bookmark_outline'} />
       {saved ? 'נשמר' : 'שמירה'}
     </button>
   );
@@ -88,7 +89,7 @@ function SaveToView({ view }: ViewProps<{ place: Place }>) {
     <div class="view">
       <header class="view-header">
         <button class="icon-btn" aria-label="חזרה" onClick={back}>
-          →
+          <Icon name="arrow_back" />
         </button>
         <h2>שמירה ברשימה</h2>
       </header>
@@ -124,10 +125,10 @@ function SaveToView({ view }: ViewProps<{ place: Place }>) {
       </form>
       <div class="home-work-set">
         <button class="btn small" onClick={() => { setHomeWork('home', place); toast('נשמר כבית'); }}>
-          🏠 הגדרה כבית
+          <Icon name="home" size={18} /> הגדרה כבית
         </button>
         <button class="btn small" onClick={() => { setHomeWork('work', place); toast('נשמר כעבודה'); }}>
-          💼 הגדרה כעבודה
+          <Icon name="work" size={18} /> הגדרה כעבודה
         </button>
       </div>
       <button class="btn primary full" onClick={back}>
@@ -151,13 +152,13 @@ function HomeShortcuts() {
     <div class="shortcuts">
       <div class="chips">
         <button class="chip" onClick={() => go('home')}>
-          🏠 {d.home ? 'בית' : 'הגדרת בית'}
+          <Icon name="home_outline" size={18} /> {d.home ? 'בית' : 'הגדרת בית'}
         </button>
         <button class="chip" onClick={() => go('work')}>
-          💼 {d.work ? 'עבודה' : 'הגדרת עבודה'}
+          <Icon name="work_outline" size={18} /> {d.work ? 'עבודה' : 'הגדרת עבודה'}
         </button>
         <button class="chip" onClick={() => open({ kind: 'saved' })}>
-          ⭐ שמורים
+          <Icon name="bookmark_outline" size={18} /> שמורים
         </button>
       </div>
       {d.history.length > 0 && (
@@ -203,7 +204,7 @@ function SavedView(_: ViewProps) {
     <div class="view">
       <header class="view-header">
         <button class="icon-btn" aria-label="חזרה" onClick={back}>
-          →
+          <Icon name="arrow_back" />
         </button>
         <h2>שמורים</h2>
       </header>
@@ -213,7 +214,7 @@ function SavedView(_: ViewProps) {
           return (
             <li key={w} class="row-with-action">
               <button class="list-item" onClick={() => (p ? openPlace(p) : toast('חפשו את הכתובת, ובכרטיס המקום לחצו שמירה'))}>
-                <span class="li-icon" aria-hidden="true">{w === 'home' ? '🏠' : '💼'}</span>
+                <span class="li-icon" aria-hidden="true"><Icon name={w === 'home' ? 'home' : 'work'} size={20} /></span>
                 <span class="li-body">
                   <div class="li-title">{w === 'home' ? 'בית' : 'עבודה'}</div>
                   <div class="li-sub">{p ? p.address ?? p.name : 'לא הוגדר'}</div>
@@ -221,7 +222,7 @@ function SavedView(_: ViewProps) {
               </button>
               {p && (
                 <button class="icon-btn" aria-label="ניקוי" onClick={() => setHomeWork(w, undefined)}>
-                  ✕
+                  <Icon name="close" size={20} />
                 </button>
               )}
             </li>
@@ -258,7 +259,7 @@ function SavedView(_: ViewProps) {
       </form>
       {fileInput}
       <label class="btn small" for="import-geojson">
-        📥 ייבוא קובץ GeoJSON
+        <Icon name="upload" size={18} /> ייבוא קובץ GeoJSON
       </label>
       {d.history.length > 0 && (
         <>
@@ -326,7 +327,7 @@ function ListView({ view }: ViewProps<{ id?: string; shared?: { name: string; pl
     <div class="view">
       <header class="view-header">
         <button class="icon-btn" aria-label="חזרה" onClick={back}>
-          →
+          <Icon name="arrow_back" />
         </button>
         {editing.value && !shared ? (
           <input
@@ -367,7 +368,7 @@ function ListView({ view }: ViewProps<{ id?: string; shared?: { name: string; pl
           שיתוף
         </button>
         <button class="action" onClick={() => download(`${list.name}.geojson`, JSON.stringify(toGeoJSON(list), null, 2))} disabled={!list.places.length}>
-          <span class="circle" aria-hidden="true">⬇</span>
+          <Icon name="download" />
           ייצוא
         </button>
         <button
@@ -381,13 +382,13 @@ function ListView({ view }: ViewProps<{ id?: string; shared?: { name: string; pl
             map.fitBounds([[w, s], [e, n]], { padding: 60, maxZoom: 15 });
           }}
         >
-          <span class="circle" aria-hidden="true">🗺</span>
+          <Icon name="map" />
           במפה
         </button>
         {!shared && !list.builtIn && (
           <>
             <button class="action" onClick={() => (editing.value = true)}>
-              <span class="circle" aria-hidden="true">✎</span>
+              <Icon name="edit" />
               שינוי שם
             </button>
             <button
@@ -398,7 +399,7 @@ function ListView({ view }: ViewProps<{ id?: string; shared?: { name: string; pl
                 if (removed) toast('הרשימה נמחקה', { label: 'ביטול', run: () => restoreList(removed) }, 6000);
               }}
             >
-              <span class="circle" aria-hidden="true">🗑</span>
+              <Icon name="delete" />
               מחיקה
             </button>
           </>
@@ -438,7 +439,8 @@ export default defineFeature({
     ctx.registerView('save-to', SaveToView);
     ctx.registerPlaceAction({ id: 'save', order: 0, Component: SaveAction });
     ctx.registerHomeSection({ id: 'saved', order: 10, Component: HomeShortcuts });
-    ctx.registerMenuItem({ id: 'saved', label: 'שמורים ורשימות', icon: '⭐', order: 10, run: () => open({ kind: 'saved' }) });
+    ctx.registerMenuItem({ id: 'saved', label: 'שמורים ורשימות', icon: 'bookmarks', order: 10, run: () => open({ kind: 'saved' }) });
+    ctx.registerTab({ id: 'saved', label: 'שמורים', icon: 'bookmark', order: 10, view: 'saved' });
 
     ctx.onStyle((m) => {
       setGeoJSON(m, 'saved-places', EMPTY);

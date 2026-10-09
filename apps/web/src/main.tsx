@@ -1,7 +1,7 @@
 import { render } from 'preact';
 import { effect } from '@preact/signals';
 import { parseUrl, providersFromEnv } from '@nm/core';
-import { applyUrlFlags, featureCatalog, isEnabled, sheet } from '@nm/core/app';
+import { applyUrlFlags, featureCatalog, isEnabled, sheet, viewStack } from '@nm/core/app';
 import { createToolClient, setToolClient } from '@nm/tools';
 import { FEATURES } from './features.ts';
 import { App, isWide } from './shell/App.tsx';
@@ -9,6 +9,7 @@ import { createMap } from './shell/map.ts';
 import { createContext } from './shell/registry.ts';
 import { startUrlSync } from './shell/url-sync.ts';
 import { initErrorReporting } from './shell/errors.ts';
+import '@fontsource-variable/rubik';
 import './styles.css';
 
 initErrorReporting();
@@ -40,11 +41,14 @@ startUrlSync(map);
 // Keep the map's visual center above the bottom sheet / beside the side panel.
 effect(() => {
   void sheet.value;
+  void viewStack.value;
   const wide = isWide.value;
   requestAnimationFrame(() => {
     const cs = getComputedStyle(document.documentElement);
-    const sheetH = parseFloat(cs.getPropertyValue('--sheet-h')) || 0;
-    map.setPadding(wide ? { top: 0, bottom: 0, left: 0, right: 400 } : { top: 64, bottom: sheetH, left: 0, right: 0 });
+    const sheetH = (parseFloat(cs.getPropertyValue('--sheet-h')) || 0) + (parseFloat(cs.getPropertyValue('--tabs-h')) || 0);
+    // The side panel is on the right in Hebrew (RTL), so the map's visual centre shifts left.
+    const side = document.dir === 'rtl' ? { left: 0, right: 408 } : { left: 408, right: 0 };
+    map.setPadding(wide ? { top: 0, bottom: 0, ...side } : { top: 110, bottom: sheetH, left: 0, right: 0 });
   });
 });
 

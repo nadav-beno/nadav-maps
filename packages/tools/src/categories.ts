@@ -1,27 +1,28 @@
-import type { Place } from '@nm/core';
+import { overtureCategory, type Place } from '@nm/core';
 
 /** Category search ("cafes near here"). Shared by the web chips and the MCP tool. */
 export interface Category {
   id: string;
   label: string;
+  /** Material Symbols icon name. */
   icon: string;
   /** Overpass tag filters, OR-ed together. */
   filters: string[];
 }
 
 export const CATEGORIES: Category[] = [
-  { id: 'restaurant', label: 'מסעדות', icon: '🍽️', filters: ['["amenity"="restaurant"]', '["amenity"="fast_food"]'] },
-  { id: 'cafe', label: 'בתי קפה', icon: '☕', filters: ['["amenity"="cafe"]'] },
-  { id: 'supermarket', label: 'סופרמרקט', icon: '🛒', filters: ['["shop"="supermarket"]', '["shop"="convenience"]'] },
-  { id: 'fuel', label: 'תחנות דלק', icon: '⛽', filters: ['["amenity"="fuel"]'] },
-  { id: 'charging', label: 'טעינה לרכב', icon: '🔌', filters: ['["amenity"="charging_station"]'] },
-  { id: 'pharmacy', label: 'בתי מרקחת', icon: '💊', filters: ['["amenity"="pharmacy"]'] },
-  { id: 'atm', label: 'כספומט', icon: '🏧', filters: ['["amenity"="atm"]', '["amenity"="bank"]["atm"="yes"]'] },
-  { id: 'parking', label: 'חניונים', icon: '🅿️', filters: ['["amenity"="parking"]'] },
-  { id: 'hotel', label: 'מלונות', icon: '🛏️', filters: ['["tourism"="hotel"]', '["tourism"="guest_house"]', '["tourism"="hostel"]'] },
-  { id: 'attraction', label: 'אטרקציות', icon: '📸', filters: ['["tourism"="attraction"]', '["tourism"="museum"]', '["tourism"="viewpoint"]'] },
-  { id: 'park', label: 'פארקים', icon: '🌳', filters: ['["leisure"="park"]'] },
-  { id: 'hospital', label: 'בתי חולים', icon: '🏥', filters: ['["amenity"="hospital"]', '["amenity"="clinic"]'] },
+  { id: 'restaurant', label: 'מסעדות', icon: 'restaurant', filters: ['["amenity"="restaurant"]', '["amenity"="fast_food"]'] },
+  { id: 'cafe', label: 'בתי קפה', icon: 'local_cafe', filters: ['["amenity"="cafe"]'] },
+  { id: 'supermarket', label: 'סופרמרקט', icon: 'grocery', filters: ['["shop"="supermarket"]', '["shop"="convenience"]'] },
+  { id: 'fuel', label: 'תחנות דלק', icon: 'local_gas_station', filters: ['["amenity"="fuel"]'] },
+  { id: 'charging', label: 'טעינה לרכב', icon: 'ev_station', filters: ['["amenity"="charging_station"]'] },
+  { id: 'pharmacy', label: 'בתי מרקחת', icon: 'local_pharmacy', filters: ['["amenity"="pharmacy"]'] },
+  { id: 'atm', label: 'כספומט', icon: 'local_atm', filters: ['["amenity"="atm"]', '["amenity"="bank"]["atm"="yes"]'] },
+  { id: 'parking', label: 'חניונים', icon: 'local_parking', filters: ['["amenity"="parking"]'] },
+  { id: 'hotel', label: 'מלונות', icon: 'hotel', filters: ['["tourism"="hotel"]', '["tourism"="guest_house"]', '["tourism"="hostel"]'] },
+  { id: 'attraction', label: 'אטרקציות', icon: 'attractions', filters: ['["tourism"="attraction"]', '["tourism"="museum"]', '["tourism"="viewpoint"]'] },
+  { id: 'park', label: 'פארקים', icon: 'park', filters: ['["leisure"="park"]'] },
+  { id: 'hospital', label: 'בתי חולים', icon: 'local_hospital', filters: ['["amenity"="hospital"]', '["amenity"="clinic"]'] },
 ];
 
 export function categoryById(id: string): Category | undefined {
@@ -96,6 +97,7 @@ const KEY_LABELS: Record<string, string> = {
 
 export function categoryLabel(c?: { key: string; value: string }): string | undefined {
   if (!c) return undefined;
+  if (c.key === 'overture') return overtureCategory(c.value).label;
   return LABELS[`${c.key}=${c.value}`] ?? KEY_LABELS[c.key];
 }
 
