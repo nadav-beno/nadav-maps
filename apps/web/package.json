@@ -1,0 +1,31 @@
+{
+  "name": "@nm/web",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@nm/core": "workspace:*",
+    "@nm/tools": "workspace:*",
+    "@nm/feature-search": "workspace:*",
+    "@nm/feature-place": "workspace:*",
+    "@nm/feature-location": "workspace:*",
+    "@nm/feature-directions": "workspace:*",
+    "@nm/feature-navigation": "workspace:*",
+    "@nm/feature-saved": "workspace:*",
+    "@nm/feature-photos": "workspace:*",
+    "@nm/feature-settings": "workspace:*",
+    "@preact/signals": "^2.11.3",
+    "maplibre-gl": "^6.13.0",
+    "preact": "^11.0.1"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
+    "@babel/core": "^7.28.0",
+    "vite": "^8.3.4"
+  }
+}

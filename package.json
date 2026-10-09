@@ -1,18 +1,26 @@
 {
   "name": "nadav-maps",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
+  "packageManager": "pnpm@10.18.0",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "maplibre-gl": "^6.13.0"
+    "dev": "pnpm --filter @nm/web dev",
+    "build": "pnpm --filter @nm/web build",
+    "preview": "pnpm --filter @nm/web preview",
+    "server": "pnpm --filter @nm/server start",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "e2e": "playwright test",
+    "boundaries": "node scripts/check-boundaries.mjs",
+    "check": "pnpm boundaries && pnpm typecheck && pnpm test && pnpm build",
+    "new-feature": "node scripts/new-feature.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@types/node": "^22.0.0",
     "typescript": "^7.0.2",
+    "vitest": "^5.0.3",
     "vite": "^8.3.4"
   }
 }

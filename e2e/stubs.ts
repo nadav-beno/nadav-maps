@@ -1,0 +1,114 @@
+import type { Page, Route } from '@playwright/test';
+import { encodePolyline } from '../packages/core/src/polyline.ts';
+
+/**
+ * Tests never hit the real map servers: tiles, search, routing and place details
+ * are answered from these fixtures, so results are deterministic and offline.
+ */
+export const STYLE = {
+  version: 8,
+  sources: {
+    demo: {
+      type: 'geojson',
+      data: {
+        type: 'FeatureCollection',
+        features: [
+          { type: 'Feature', properties: { name: 'קפה לנדוור', 'name:he': 'קפה לנדוור', class: 'cafe', subclass: 'cafe' }, geometry: { type: 'Point', coordinates: [34.7745, 32.0805] } },
+        ],
+      },
+    },
+  },
+  layers: [
+    { id: 'background', type: 'background', paint: { 'background-color': '#e8eef0' } },
+    { id: 'demo-poi', type: 'circle', source: 'demo', paint: { 'circle-radius': 6, 'circle-color': '#8d6e63' } },
+  ],
+};
+
+export const PLACES = {
+  dizengoff: {
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [34.7741, 32.0787] },
+    properties: { osm_type: 'W', osm_id: 1001, osm_key: 'highway', osm_value: 'primary', name: 'דיזנגוף', city: 'תל אביב-יפו', country: 'ישראל', countrycode: 'IL' },
+  },
+  azrieli: {
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [34.7918, 32.0745] },
+    properties: { osm_type: 'N', osm_id: 2002, osm_key: 'shop', osm_value: 'mall', name: 'קניון עזריאלי', street: 'דרך מנחם בגין', housenumber: '132', city: 'תל אביב-יפו', country: 'ישראל', countrycode: 'IL' },
+  },
+  jerusalem: {
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [35.2137, 31.7683] },
+    properties: { osm_type: 'R', osm_id: 3003, osm_key: 'place', osm_value: 'city', name: 'ירושלים', country: 'ישראל', countrycode: 'IL', extent: [35.1, 31.88, 35.3, 31.7] },
+  },
+};
+
+export const ROUTE_LINE: [number, number][] = [
+  [34.7741, 32.0787],
+  [34.7790, 32.0780],
+  [34.7850, 32.0765],
+  [34.7918, 32.0745],
+];
+
+function valhallaTrip(line: [number, number][], seconds: number) {
+  return {
+    legs: [
+      {
+        shape: encodePolyline(line, 6),
+        maneuvers: [
+          { type: 1, street_names: ['דיזנגוף'], length: 0.45, time: 60, begin_shape_index: 0 },
+          { type: 10, street_names: ['דרך מנחם בגין'], length: 1.1, time: 180, begin_shape_index: 2 },
+          { type: 4, length: 0, time: 0, begin_shape_index: line.length - 1 },
+        ],
+      },
+    ],
+    summary: { length: 1.55, time: seconds },
+  };
+}
+
+export async function stubNetwork(page: Page): Promise<void> {
+  // Anything else external fails fast. (Registered first: later routes take priority.)
+  await page.route(/^https:\/\/(?!localhost)/, (r) => r.abort());
+  await page.route('https://tiles.openfreemap.org/**', (r: Route) => {
+    if (r.request().url().includes('/styles/')) return r.fulfill({ json: STYLE });
+    return r.fulfill({ status: 404, body: '' });
+  });
+  await page.route('https://photon.komoot.io/api**', (r) => {
+    const q = new URL(r.request().url()).searchParams.get('q') ?? '';
+    const features = q.includes('עזריאלי')
+      ? [PLACES.azrieli]
+      : q.includes('ירושלים')
+        ? [PLACES.jerusalem]
+        : q.includes('דיזנגוף')
+          ? [PLACES.dizengoff]
+          : q.includes('קפה')
+            ? [PLACES.azrieli, PLACES.dizengoff]
+            : [];
+    return r.fulfill({ json: { type: 'FeatureCollection', features } });
+  });
+  await page.route('https://photon.komoot.io/reverse**', (r) => r.fulfill({ json: { type: 'FeatureCollection', features: [PLACES.dizengoff] } }));
+  await page.route('https://valhalla1.openstreetmap.de/route', (r) =>
+    r.fulfill({ json: { trip: valhallaTrip(ROUTE_LINE, 240), alternates: [{ trip: valhallaTrip([ROUTE_LINE[0], [34.78, 32.083], ROUTE_LINE[3]], 330) }] } }),
+  );
+  await page.route('https://overpass-api.de/api/interpreter', (r) => {
+    const body = decodeURIComponent(r.request().postData() ?? '');
+    if (body.includes('2002')) {
+      return r.fulfill({
+        json: {
+          elements: [
+            {
+              type: 'node',
+              id: 2002,
+              lat: 32.0745,
+              lon: 34.7918,
+              tags: { name: 'קניון עזריאלי', shop: 'mall', opening_hours: 'Su-Th 09:30-22:00; Fr 09:00-15:00; Sa 20:00-23:00', phone: '+972 3 608 1179', website: 'https://www.azrieli.com', wheelchair: 'yes' },
+            },
+          ],
+        },
+      });
+    }
+    if (body.includes('"amenity"="cafe"')) {
+      return r.fulfill({ json: { elements: [{ type: 'node', id: 4004, lat: 32.0805, lon: 34.7745, tags: { name: 'קפה לנדוור', amenity: 'cafe' } }] } });
+    }
+    return r.fulfill({ json: { elements: [] } });
+  });
+}

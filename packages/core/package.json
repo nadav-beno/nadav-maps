@@ -1,0 +1,12 @@
+{
+  "name": "@nm/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts", "./app": "./src/app/index.ts" },
+  "dependencies": {
+    "@preact/signals": "^2.11.3",
+    "maplibre-gl": "^6.13.0",
+    "preact": "^11.0.1"
+  }
+}
