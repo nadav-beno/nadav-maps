@@ -8,7 +8,8 @@ export type OsmType = 'node' | 'way' | 'relation';
 
 /**
  * A place anywhere in the world. `id` is stable across sessions:
- * "osm:n123" / "osm:w123" / "osm:r123" for OSM objects, "pt:<lng>,<lat>" for a dropped pin.
+ * "osm:n123" / "osm:w123" / "osm:r123" for OSM objects, "ovt:<uuid>" for an Overture place,
+ * "pt:<lng>,<lat>" for a dropped pin.
  */
 export interface Place {
   id: string;
@@ -17,8 +18,10 @@ export interface Place {
   lat: number;
   /** One-line address or locality, already formatted for display. */
   address?: string;
-  /** OSM key/value, e.g. amenity=cafe. */
+  /** OSM key/value, e.g. amenity=cafe; key "overture" holds an Overture basic_category. */
   category?: { key: string; value: string };
+  /** Contact details that came with the place itself (Overture), before any lookup. */
+  contact?: { phone?: string; website?: string; email?: string; socials?: string[] };
   osm?: { type: OsmType; id: number };
   countryCode?: string;
   /** Bounding box for areas (cities, countries) so the map can fit them. */
@@ -34,6 +37,7 @@ export interface PlaceDetails extends Place {
   cuisine?: string;
   imageUrl?: string;
   wikipedia?: string;
+  wikidata?: string;
 }
 
 export type TravelMode = 'car' | 'walk' | 'bike';

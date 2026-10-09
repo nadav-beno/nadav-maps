@@ -1,7 +1,7 @@
 import { signal } from '@preact/signals';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { circle } from '@nm/core';
-import { cssVar, defineFeature, ensureLayer, EMPTY, immersive, locationRequests, setGeoJSON, toast, userLocation } from '@nm/core/app';
+import { cssVar, defineFeature, ensureLayer, EMPTY, Icon, immersive, locationRequests, setGeoJSON, toast, userLocation } from '@nm/core/app';
 
 /**
  * The "my location" button, six states (see spec):
@@ -165,12 +165,12 @@ async function onButton() {
 }
 
 const ICONS: Record<LocState, string> = {
-  off: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm8.94 3A8.99 8.99 0 0 0 13 3.06V1h-2v2.06A8.99 8.99 0 0 0 3.06 11H1v2h2.06A8.99 8.99 0 0 0 11 20.94V23h2v-2.06A8.99 8.99 0 0 0 20.94 13H23v-2h-2.06ZM12 19a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z',
-  locating: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm8.94 3A8.99 8.99 0 0 0 13 3.06V1h-2v2.06A8.99 8.99 0 0 0 3.06 11H1v2h2.06A8.99 8.99 0 0 0 11 20.94V23h2v-2.06A8.99 8.99 0 0 0 20.94 13H23v-2h-2.06ZM12 19a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z',
-  shown: 'M20.94 11A8.99 8.99 0 0 0 13 3.06V1h-2v2.06A8.99 8.99 0 0 0 3.06 11H1v2h2.06A8.99 8.99 0 0 0 11 20.94V23h2v-2.06A8.99 8.99 0 0 0 20.94 13H23v-2h-2.06ZM12 19a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z',
-  follow: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm8.94 3A8.99 8.99 0 0 0 13 3.06V1h-2v2.06A8.99 8.99 0 0 0 3.06 11H1v2h2.06A8.99 8.99 0 0 0 11 20.94V23h2v-2.06A8.99 8.99 0 0 0 20.94 13H23v-2h-2.06ZM12 19a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z',
-  compass: 'M12 2 4.5 20.29l.71.71L12 18l6.79 3 .71-.71z',
-  error: 'M20.94 11A8.99 8.99 0 0 0 13 3.06V1h-2v2.06c-1.13.12-2.19.46-3.16.97l1.5 1.5A6.97 6.97 0 0 1 19 12c0 .94-.19 1.84-.52 2.65l1.5 1.5c.5-.96.84-2.02.97-3.15H23v-2h-2.06ZM3 4.27l2.04 2.04A8.94 8.94 0 0 0 3.06 11H1v2h2.06A8.99 8.99 0 0 0 11 20.94V23h2v-2.06c1.77-.2 3.38-.91 4.69-1.98L19.73 21 21 19.73 4.27 3 3 4.27Zm13.27 13.27A6.97 6.97 0 0 1 5 12c0-1.61.55-3.09 1.46-4.27l9.81 9.81Z',
+  off: 'location_searching',
+  locating: 'location_searching',
+  shown: 'location_searching',
+  follow: 'my_location',
+  compass: 'navigation',
+  error: 'location_disabled',
 };
 const LABEL: Record<LocState, string> = {
   off: 'הצגת המיקום שלי',
@@ -190,9 +190,7 @@ function LocationButton() {
       title={LABEL[s]}
       onClick={() => void onButton()}
     >
-      <svg viewBox="0 0 24 24" aria-hidden="true" class={s === 'locating' ? 'pulse' : ''}>
-        <path fill="currentColor" d={ICONS[s]} />
-      </svg>
+      <Icon name={ICONS[s]} class={s === 'locating' ? 'pulse' : ''} />
     </button>
   );
 }

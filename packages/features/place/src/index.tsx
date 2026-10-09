@@ -1,6 +1,6 @@
 import { useSignal, useSignalEffect } from '@preact/signals';
 import type { Map as MapLibreMap } from 'maplibre-gl';
-import { droppedPin, formatCoords, formatDistance, distance, parsePlaceId, type Place, type PlaceDetails } from '@nm/core';
+import { droppedPin, formatCoords, formatDistance, distance, OVERTURE_SOURCE, overturePlace, parsePlaceId, type Place, type PlaceDetails } from '@nm/core';
 import {
   back,
   currentView,
@@ -9,6 +9,7 @@ import {
   ensureLayer,
   EMPTY,
   home,
+  Icon,
   openPlace,
   placeActions,
   placeSections,
@@ -19,8 +20,9 @@ import {
   userLocation,
   type ViewProps,
 } from '@nm/core/app';
-import { categoryLabel, identifyPlace, placeDetails, placeIcon, reverseGeocode, tools } from '@nm/tools';
+import { categoryLabel, identifyPlace, placeDetails, placeSummary, reverseGeocode, tools, type PlaceSummary } from '@nm/tools';
 import { parseHours, type HoursInfo } from './hours.ts';
+import { displayPhone, socialLabel } from './contact.ts';
 
 let map: MapLibreMap;
 
@@ -53,10 +55,13 @@ function Hours({ info }: { info: HoursInfo }) {
   const expanded = useSignal(false);
   return (
     <div class="detail-row">
-      <span class="detail-icon" aria-hidden="true">🕒</span>
+      <span class="detail-icon">
+        <Icon name="schedule" />
+      </span>
       <div class="detail-body">
         <button class="hours-toggle" aria-expanded={expanded.value} onClick={() => (expanded.value = !expanded.value)}>
-          <span class={info.open ? 'ok' : info.open === false ? 'error' : 'muted'}>{info.status}</span> ▾
+          <span class={info.open ? 'ok' : info.open === false ? 'error' : 'muted'}>{info.status}</span>
+          <Icon name={expanded.value ? 'keyboard_arrow_up' : 'keyboard_arrow_down'} size={20} />
         </button>
         {expanded.value && (
           <table class="hours-table">
@@ -77,11 +82,36 @@ function Hours({ info }: { info: HoursInfo }) {
 
 const WHEELCHAIR: Record<string, string> = { yes: 'נגיש לכיסאות גלגלים', limited: 'נגישות חלקית', no: 'לא נגיש לכיסאות גלגלים' };
 
+const telHref = (phone: string) => `tel:${phone.split(';')[0].replace(/[^\d+]/g, '')}`;
+
+function Row({ icon, children, href, onClick, ltr }: { icon: string; children: preact.ComponentChildren; href?: string; onClick?: () => void; ltr?: boolean }) {
+  const body = href ? (
+    <a class="detail-body ellipsis" href={href} target={href.startsWith('http') ? '_blank' : undefined} rel="noopener noreferrer" dir={ltr ? 'ltr' : undefined}>
+      {children}
+    </a>
+  ) : onClick ? (
+    <button class="detail-body link-like ellipsis" onClick={onClick} dir={ltr ? 'ltr' : undefined}>
+      {children}
+    </button>
+  ) : (
+    <div class="detail-body">{children}</div>
+  );
+  return (
+    <div class="detail-row">
+      <span class="detail-icon">
+        <Icon name={icon} />
+      </span>
+      {body}
+    </div>
+  );
+}
+
 function PlaceView({ view }: ViewProps<{ place: Place }>) {
   const place = view.props!.place;
   const details = useSignal<PlaceDetails | null>(null);
   const loading = useSignal(false);
   const hours = useSignal<HoursInfo | null>(null);
+  const summary = useSignal<PlaceSummary | null>(null);
   const resolved = useSignal<Place>(place);
 
   useSignalEffect(() => {
@@ -89,6 +119,7 @@ function PlaceView({ view }: ViewProps<{ place: Place }>) {
     resolved.value = p;
     details.value = null;
     hours.value = null;
+    summary.value = null;
     let cancelled = false;
     const ac = new AbortController();
     (async () => {
@@ -96,10 +127,10 @@ function PlaceView({ view }: ViewProps<{ place: Place }>) {
       try {
         let d: PlaceDetails | null = null;
         if (p.osm) d = await tools().call(placeDetails, { id: p.id }, { signal: ac.signal });
-        else if (p.id.startsWith('pt:') && p.name !== 'נקודה שנבחרה' && p.name !== 'מיקום') {
-          // Label tapped on the map: find the real OSM object for details and a stable id.
+        else if (p.id.startsWith('ovt:') || (p.id.startsWith('pt:') && p.name !== 'נקודה שנבחרה' && p.name !== 'מיקום')) {
+          // A label tapped on the map: find the matching OSM object for hours, accessibility and Wikipedia.
           d = await tools().call(identifyPlace, { name: p.name, lng: p.lng, lat: p.lat }, { signal: ac.signal });
-          if (d && !cancelled) {
+          if (d && !cancelled && p.id.startsWith('pt:')) {
             const better: Place = { ...p, id: d.id, osm: d.osm, category: d.category ?? p.category, address: p.address ?? d.address };
             resolved.value = better;
             openPlace(better, { replace: true });
@@ -108,6 +139,9 @@ function PlaceView({ view }: ViewProps<{ place: Place }>) {
         if (cancelled) return;
         details.value = d;
         if (d?.openingHours) hours.value = await parseHours(d.openingHours, d.lat, d.lng, p.countryCode ?? 'il');
+        if (d && (d.wikipedia || d.wikidata) && !cancelled) {
+          summary.value = await tools().call(placeSummary, { wikipedia: d.wikipedia, wikidata: d.wikidata }, { signal: ac.signal });
+        }
       } catch {
         /* details are optional; the card still works */
       } finally {
@@ -122,102 +156,115 @@ function PlaceView({ view }: ViewProps<{ place: Place }>) {
 
   const p = resolved.value;
   const d = details.value;
-  const cat = categoryLabel(d?.category ?? p.category);
+  const c = p.contact;
+  const cat = categoryLabel(p.category?.key === 'overture' ? p.category : (d?.category ?? p.category));
   const u = userLocation.value;
   const dist = u ? distance([u.lng, u.lat], [p.lng, p.lat]) : null;
   const address = p.address ?? d?.address;
+  const phone = d?.phone ?? c?.phone;
+  const website = d?.website ?? c?.website;
+  const photos = [summary.value?.imageUrl, d?.imageUrl].filter((x, i, a): x is string => !!x && a.indexOf(x) === i);
+  const sources = [p.osm || d ? 'OpenStreetMap' : null, p.id.startsWith('ovt:') ? 'Overture Maps' : null, summary.value ? 'ויקיפדיה' : null].filter(Boolean);
 
   return (
     <article class="view place">
-      <header class="view-header">
-        <button class="icon-btn" aria-label="חזרה" onClick={back}>
-          →
+      <div class="place-head">
+        <h2 class="place-title">{p.name}</h2>
+        <button class="icon-btn filled" aria-label="סגירה" onClick={home}>
+          <Icon name="close" size={20} />
         </button>
-        <h2>{p.name}</h2>
-        <button class="icon-btn" aria-label="סגירה" onClick={home}>
-          ✕
-        </button>
-      </header>
-      {d?.imageUrl && <img class="place-photo" src={d.imageUrl} alt="" loading="lazy" referrerpolicy="no-referrer" onError={(e) => ((e.target as HTMLElement).style.display = 'none')} />}
+      </div>
       <p class="place-sub">
-        <span aria-hidden="true">{placeIcon(d ?? p)} </span>
-        {[cat, d?.cuisine?.split(';')[0], dist !== null ? formatDistance(dist, units.value) : null].filter(Boolean).join(' · ')}
+        {[cat, d?.cuisine?.split(';')[0], dist !== null ? formatDistance(dist, units.value) : null].filter(Boolean).join(' · ') || formatCoords(p.lng, p.lat)}
       </p>
-      {hours.value && <p class={`place-open ${hours.value.open ? 'ok' : 'error'}`}>{hours.value.status}</p>}
+      {hours.value && (
+        <p class="place-open">
+          <span class={hours.value.open ? 'ok' : 'error'}>{hours.value.open ? 'פתוח' : 'סגור'}</span>
+          {hours.value.status && ` · ${hours.value.status.replace(/^(פתוח|סגור)\s*·?\s*/, '')}`}
+        </p>
+      )}
 
       <div class="action-row">
         <button class="action primary" onClick={() => directionsTo(p)}>
-          <span class="circle" aria-hidden="true">↱</span>
+          <Icon name="directions" />
           מסלול
         </button>
+        {phone && (
+          <a class="action" href={telHref(phone)}>
+            <Icon name="call" />
+            חיוג
+          </a>
+        )}
         {placeActions.value.map(({ id, Component }) => (
           <Component key={id} place={p} />
         ))}
         <button class="action" onClick={() => void share(p)}>
-          <span class="circle" aria-hidden="true">⤴</span>
+          <Icon name="share" />
           שיתוף
         </button>
-        {d?.phone && (
-          <a class="action" href={`tel:${d.phone.split(';')[0].replace(/\s/g, '')}`}>
-            <span class="circle" aria-hidden="true">📞</span>
-            חיוג
-          </a>
-        )}
-        {d?.website && (
-          <a class="action" href={d.website} target="_blank" rel="noopener noreferrer">
-            <span class="circle" aria-hidden="true">🌐</span>
+        {website && (
+          <a class="action" href={website} target="_blank" rel="noopener noreferrer">
+            <Icon name="public" />
             אתר
           </a>
         )}
       </div>
 
-      <div class="details">
-        {address && (
-          <div class="detail-row">
-            <span class="detail-icon" aria-hidden="true">📍</span>
-            <div class="detail-body">{address}</div>
-          </div>
-        )}
-        {hours.value && <Hours info={hours.value} />}
-        {d?.phone && (
-          <div class="detail-row">
-            <span class="detail-icon" aria-hidden="true">📞</span>
-            <a class="detail-body" href={`tel:${d.phone.split(';')[0].replace(/\s/g, '')}`} dir="ltr">
-              {d.phone.split(';')[0]}
-            </a>
-          </div>
-        )}
-        {d?.website && (
-          <div class="detail-row">
-            <span class="detail-icon" aria-hidden="true">🌐</span>
-            <a class="detail-body ellipsis" href={d.website} target="_blank" rel="noopener noreferrer" dir="ltr">
-              {d.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}
-            </a>
-          </div>
-        )}
-        {d?.wheelchair && WHEELCHAIR[d.wheelchair] && (
-          <div class="detail-row">
-            <span class="detail-icon" aria-hidden="true">♿</span>
-            <div class="detail-body">{WHEELCHAIR[d.wheelchair]}</div>
-          </div>
-        )}
-        <div class="detail-row">
-          <span class="detail-icon" aria-hidden="true">🌐</span>
-          <button
-            class="detail-body link-like"
-            dir="ltr"
-            onClick={async () => {
-              try {
-                await navigator.clipboard.writeText(`${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`);
-                toast('הקואורדינטות הועתקו');
-              } catch {
-                /* clipboard blocked */
-              }
-            }}
-          >
-            {formatCoords(p.lng, p.lat)}
-          </button>
+      {photos.length > 0 && (
+        <div class="photo-strip">
+          {photos.map((src) => (
+            <img key={src} src={src} alt="" loading="lazy" referrerpolicy="no-referrer" onError={(e) => ((e.target as HTMLElement).style.display = 'none')} />
+          ))}
         </div>
+      )}
+
+      {summary.value && (
+        <p class="about">
+          {summary.value.extract.length > 320 ? `${summary.value.extract.slice(0, 300).replace(/\s\S*$/, '')}…` : summary.value.extract}{' '}
+          <a class="source" href={summary.value.url} target="_blank" rel="noopener noreferrer">
+            ויקיפדיה
+          </a>
+        </p>
+      )}
+
+      <div class="details">
+        {address && <Row icon="location_on">{address}</Row>}
+        {hours.value && <Hours info={hours.value} />}
+        {phone && (
+          <Row icon="call" href={telHref(phone)} ltr>
+            {displayPhone(phone)}
+          </Row>
+        )}
+        {website && (
+          <Row icon="public" href={website} ltr>
+            {website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}
+          </Row>
+        )}
+        {c?.email && (
+          <Row icon="mail" href={`mailto:${c.email}`} ltr>
+            {c.email}
+          </Row>
+        )}
+        {c?.socials?.slice(0, 2).map((url) => (
+          <Row key={url} icon="link" href={url}>
+            {socialLabel(url)}
+          </Row>
+        ))}
+        {d?.wheelchair && WHEELCHAIR[d.wheelchair] && <Row icon="accessible">{WHEELCHAIR[d.wheelchair]}</Row>}
+        <Row
+          icon="my_location"
+          ltr
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(`${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`);
+              toast('הקואורדינטות הועתקו');
+            } catch {
+              /* clipboard blocked */
+            }
+          }}
+        >
+          {formatCoords(p.lng, p.lat)}
+        </Row>
         {loading.value && !d && (
           <div class="detail-row">
             <span class="detail-icon" />
@@ -231,15 +278,18 @@ function PlaceView({ view }: ViewProps<{ place: Place }>) {
       ))}
 
       <footer class="place-footer">
-        <a href={osmNoteUrl(p)} target="_blank" rel="noopener noreferrer">
-          דיווח על טעות במפה
+        <a class="btn small" href={osmNoteUrl(p)} target="_blank" rel="noopener noreferrer">
+          <Icon name="edit_location_alt" size={18} />
+          הצעת עריכה
         </a>
         {p.osm && (
-          <a href={`https://www.openstreetmap.org/${p.osm.type}/${p.osm.id}`} target="_blank" rel="noopener noreferrer">
-            הצגה ב-OpenStreetMap
+          <a class="btn small" href={`https://www.openstreetmap.org/${p.osm.type}/${p.osm.id}`} target="_blank" rel="noopener noreferrer">
+            <Icon name="map" size={18} />
+            ב-OpenStreetMap
           </a>
         )}
       </footer>
+      {sources.length > 0 && <p class="source-note">מקורות המידע: {sources.join(', ')}</p>}
     </article>
   );
 }
@@ -303,6 +353,12 @@ export default defineFeature({
 
     // Tap a label on the base map (shop, café, town) to open its card.
     ctx.onMapClick((e, features) => {
+      const o = features.find((x) => x.source === OVERTURE_SOURCE && x.properties?.id);
+      if (o) {
+        const [lng, lat] = o.geometry.type === 'Point' ? (o.geometry.coordinates as [number, number]) : [e.lngLat.lng, e.lngLat.lat];
+        openPlace(overturePlace(o.properties, lng, lat));
+        return true;
+      }
       const f = features.find(
         (x) => x.properties?.name && (x.sourceLayer === 'poi' || x.sourceLayer === 'place' || x.sourceLayer === 'aerodrome_label' || x.sourceLayer === 'mountain_peak'),
       );
@@ -332,6 +388,25 @@ export default defineFeature({
     if (id) {
       const parsed = parsePlaceId(id);
       if (parsed.point) void openDroppedPin(parsed.point[0], parsed.point[1]);
+      else if (parsed.overture) {
+        // Overture has no lookup API: find the place in the loaded tiles around the shared view.
+        const find = () => {
+          const hit = ctx.map.querySourceFeatures(OVERTURE_SOURCE, { sourceLayer: 'place', filter: ['==', ['get', 'id'], parsed.overture!] })[0];
+          if (!hit || hit.geometry.type !== 'Point') return false;
+          const [lng, lat] = hit.geometry.coordinates as [number, number];
+          openPlace(overturePlace(hit.properties, lng, lat));
+          return true;
+        };
+        if (!ctx.initialUrl.view) toast('המקום מהקישור לא נמצא');
+        else {
+          let tries = 0;
+          const onIdle = () => {
+            if (find() || ++tries > 5) ctx.map.off('idle', onIdle);
+            if (tries > 5) toast('המקום מהקישור לא נמצא');
+          };
+          ctx.map.on('idle', onIdle);
+        }
+      }
       else if (parsed.osm) {
         tools()
           .call(placeDetails, { id })

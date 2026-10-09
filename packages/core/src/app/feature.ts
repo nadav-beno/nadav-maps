@@ -15,9 +15,21 @@ export interface Fab {
   Component: ComponentType;
 }
 
+/** A bottom tab on phones (Google's Explore / You / Contribute). Opens a panel view. */
+export interface Tab {
+  id: string;
+  label: string;
+  /** Material Symbols name. */
+  icon: string;
+  order: number;
+  /** View kind the tab opens. */
+  view: string;
+}
+
 export interface MenuItem {
   id: string;
   label: string;
+  /** Material Symbols name (or an emoji). */
   icon: string;
   order: number;
   run: () => void;
@@ -32,16 +44,19 @@ export interface HomeSection {
 /** Return true to say "handled", which stops lower-priority handlers. */
 export type MapClickHandler = (e: MapMouseEvent, features: MapGeoJSONFeature[]) => boolean | void;
 
-export type Slot = 'top' | 'overlay';
+/** top: above the map (search); controls: round buttons at the top edge (layers, compass); overlay: full screen. */
+export type Slot = 'top' | 'controls' | 'overlay';
 
 export interface FeatureContext {
   map: MapLibreMap;
   /** The URL the app was opened with, so features can restore their screen. */
   initialUrl: UrlState;
   registerSlot(slot: Slot, Component: ComponentType, order?: number): void;
-  registerView(kind: string, Component: ComponentType<ViewProps<any>>, opts?: { title?: string }): void;
+  /** hideTop: the screen has its own header (directions), so the search bar steps aside. */
+  registerView(kind: string, Component: ComponentType<ViewProps<any>>, opts?: { title?: string; hideTop?: boolean }): void;
   registerFab(fab: Fab): void;
   registerMenuItem(item: MenuItem): void;
+  registerTab(tab: Tab): void;
   registerHomeSection(section: HomeSection): void;
   /** priority: higher runs first. */
   onMapClick(handler: MapClickHandler, priority?: number): void;

@@ -3,7 +3,8 @@ import type {
   LayerSpecification,
   StyleSpecification,
 } from 'maplibre-gl';
-import { POI_GROUPS, poiIconExpression, poiColorExpression } from './poi.ts';
+import { OVERTURE_SOURCE, PROMINENT_GROUPS } from '@nm/core';
+import { POI_GROUPS, overtureCategoriesIn, overtureColorExpression, overtureIconExpression, poiIconExpression, poiColorExpression } from './poi.ts';
 
 /**
  * Our own base map style, drawn on OpenMapTiles vector tiles (OpenFreeMap, no key) plus
@@ -21,7 +22,28 @@ export interface BasemapSources {
   glyphs: string;
   /** Terrarium-encoded elevation PNG tiles ({z}/{x}/{y}); empty disables hill shading. */
   terrain: string;
+  /** Overture places as a vector source URL (pmtiles://...); empty or missing = off. */
+  places?: string;
+  /** Satellite raster XYZ template, used by the "satellite" map type. */
+  satellite?: string;
+  /** Contour line vector tile template (generated from the elevation tiles), for "terrain". */
+  contours?: string;
 }
+
+export type MapType = 'default' | 'satellite' | 'terrain';
+
+export interface StyleOptions {
+  mapType?: MapType;
+  /** Extruded buildings when the map is tilted. */
+  buildings3d?: boolean;
+  /** Highlight rail, metro and tram lines and their stations. */
+  transit?: boolean;
+  /** Highlight cycleways and bike-friendly paths. */
+  bike?: boolean;
+}
+
+/** Layers that paint the ground; the satellite photo replaces them. */
+const GROUND = new Set(['waterway', 'landuse', 'landcover', 'park', 'aeroway-area', 'hillshade', 'water', 'building', 'building-3d', 'aeroway-runway']);
 
 export const FONT = {
   regular: ['Noto Sans Regular'],
@@ -162,7 +184,11 @@ const cls = (...values: string[]): ExpressionSpecification => ['match', ['get', 
 const notTunnel: ExpressionSpecification = ['!=', ['get', 'brunnel'], 'tunnel'];
 const isBridge: ExpressionSpecification = ['==', ['get', 'brunnel'], 'bridge'];
 
-export function buildStyle(theme: 'light' | 'dark', src: BasemapSources, lang = 'he'): StyleSpecification {
+export function buildStyle(theme: 'light' | 'dark', src: BasemapSources, lang = 'he', opts: StyleOptions = {}): StyleSpecification {
+  const mapType = opts.mapType === 'satellite' && !src.satellite ? 'default' : (opts.mapType ?? 'default');
+  const satellite = mapType === 'satellite';
+  // Over a photo, labels read best light on dark, so satellite uses the dark palette.
+  theme = satellite ? 'dark' : theme;
   const c = theme === 'dark' ? DARK : LIGHT;
   const name = nameExpr(lang);
   const layers: LayerSpecification[] = [];
@@ -243,9 +269,35 @@ export function buildStyle(theme: 'light' | 'dark', src: BasemapSources, lang = 
         'hillshade-shadow-color': c.hillShadow,
         'hillshade-highlight-color': c.hillHighlight,
         'hillshade-accent-color': 'rgba(0,0,0,0)',
-        'hillshade-exaggeration': zoomLinear(5, 0.45, 10, 0.3, 15, 0.15),
+        'hillshade-exaggeration': mapType === 'terrain' ? zoomLinear(5, 0.75, 12, 0.6, 15, 0.45) : zoomLinear(5, 0.45, 10, 0.3, 15, 0.15),
         'hillshade-illumination-direction': 315,
       },
+    });
+  }
+  if (mapType === 'terrain' && src.contours) {
+    const contourColor = theme === 'dark' ? 'rgba(220,200,170,0.35)' : 'rgba(130,95,55,0.38)';
+    add({
+      id: 'contour',
+      type: 'line',
+      source: 'contours',
+      'source-layer': 'contours',
+      minzoom: 10,
+      paint: { 'line-color': contourColor, 'line-width': ['match', ['get', 'level'], 1, 1, 0.5] },
+    });
+    add({
+      id: 'contour-label',
+      type: 'symbol',
+      source: 'contours',
+      'source-layer': 'contours',
+      minzoom: 12,
+      filter: ['>', ['get', 'level'], 0],
+      layout: {
+        'symbol-placement': 'line',
+        'text-field': ['concat', ['to-string', ['get', 'ele']], ' מ׳'],
+        'text-font': FONT.regular,
+        'text-size': 10,
+      },
+      paint: { 'text-color': theme === 'dark' ? '#c9b393' : '#8a6a42', 'text-halo-color': c.halo, 'text-halo-width': 1.2 },
     });
   }
 
@@ -293,10 +345,10 @@ export function buildStyle(theme: 'light' | 'dark', src: BasemapSources, lang = 
     source: SRC,
     'source-layer': 'building',
     minzoom: 14,
-    maxzoom: 16,
+    ...(opts.buildings3d === false ? {} : { maxzoom: 16 }),
     paint: { 'fill-color': c.building, 'fill-outline-color': c.buildingLine, 'fill-opacity': zoomLinear(14, 0, 15, 1) },
   });
-  add({
+  if (opts.buildings3d !== false) add({
     id: 'building-3d',
     type: 'fill-extrusion',
     source: SRC,
@@ -334,6 +386,59 @@ export function buildStyle(theme: 'light' | 'dark', src: BasemapSources, lang = 
     filter: ['all', cls('rail', 'transit'), notTunnel],
     paint: { 'line-color': c.rail, 'line-width': zoomExp(13, 3, 18, 8), 'line-dasharray': [0.15, 3] },
   });
+  if (opts.transit) {
+    // Google's transit layer: thick coloured lines, tunnels included, over everything else.
+    add({
+      id: 'transit-line-casing',
+      type: 'line',
+      source: SRC,
+      'source-layer': 'transportation',
+      minzoom: 8,
+      filter: cls('rail', 'transit'),
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': c.land, 'line-width': zoomExp(8, 2.5, 16, 8) },
+    });
+    add({
+      id: 'transit-line',
+      type: 'line',
+      source: SRC,
+      'source-layer': 'transportation',
+      minzoom: 8,
+      filter: cls('rail', 'transit'),
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': [
+          'match', ['get', 'subclass'],
+          ['subway'], '#1565c0',
+          ['light_rail', 'tram'], '#d32f2f',
+          ['monorail', 'funicular', 'narrow_gauge'], '#7b1fa2',
+          theme === 'dark' ? '#8ab4f8' : '#3c4a5c',
+        ],
+        'line-width': zoomExp(8, 1.2, 16, 4.5),
+      },
+    });
+  }
+  if (opts.bike) {
+    const bikeFilter: ExpressionSpecification = [
+      'any',
+      ['==', ['get', 'subclass'], 'cycleway'],
+      ['in', ['get', 'bicycle'], ['literal', ['designated', 'yes']]],
+    ];
+    add({
+      id: 'bike-lane',
+      type: 'line',
+      source: SRC,
+      'source-layer': 'transportation',
+      minzoom: 11,
+      filter: bikeFilter,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': theme === 'dark' ? '#6fcf8b' : '#188038',
+        'line-width': zoomExp(11, 1, 17, 4),
+        'line-opacity': ['match', ['get', 'subclass'], 'cycleway', 1, 0.7],
+      },
+    });
+  }
   add({
     id: 'ferry',
     type: 'line',
@@ -454,6 +559,47 @@ export function buildStyle(theme: 'light' | 'dark', src: BasemapSources, lang = 
     layout: { 'text-field': ['get', 'housenumber'], 'text-font': FONT.regular, 'text-size': 10, 'text-padding': 2 },
     paint: { 'text-color': c.labelMuted, 'text-halo-color': c.halo, 'text-halo-width': 1 },
   });
+
+  // Businesses from Overture (phone, website, category) fill in what OSM lacks. They sit
+  // under the OSM POI layer, so where both have a place the curated OSM one wins.
+  if (src.places) {
+    const ovtColor = overtureColorExpression(theme);
+    const open: ExpressionSpecification = ['!=', ['get', 'operating_status'], 'permanently_closed'];
+    const prominent = overtureCategoriesIn(PROMINENT_GROUPS);
+    const ovtLayout = {
+      'icon-image': overtureIconExpression(),
+      'icon-size': zoomLinear(15, 0.8, 18, 1),
+      'text-field': ['get', '@name'],
+      'text-font': FONT.bold,
+      'text-size': zoomLinear(15, 10.5, 18, 12),
+      'text-max-width': 8,
+      'text-anchor': 'top',
+      'text-offset': [0, 1.0],
+      'text-optional': true,
+      'symbol-sort-key': ['-', 1, ['coalesce', ['get', 'confidence'], 0]],
+      'text-padding': 2,
+    } as const;
+    add({
+      id: 'ovt-poi-minor',
+      type: 'symbol',
+      source: OVERTURE_SOURCE,
+      'source-layer': 'place',
+      minzoom: 17,
+      filter: ['all', open, ['>=', ['coalesce', ['get', 'confidence'], 0], 0.5], ['!', ['in', ['coalesce', ['get', 'basic_category'], ''], ['literal', prominent]]]],
+      layout: ovtLayout as never,
+      paint: { 'text-color': ovtColor, ...halo, 'text-halo-width': 1.6 },
+    });
+    add({
+      id: 'ovt-poi',
+      type: 'symbol',
+      source: OVERTURE_SOURCE,
+      'source-layer': 'place',
+      minzoom: 15,
+      filter: ['all', open, ['>=', ['coalesce', ['get', 'confidence'], 0], 0.6], ['in', ['coalesce', ['get', 'basic_category'], ''], ['literal', prominent]]],
+      layout: ovtLayout as never,
+      paint: { 'text-color': ovtColor, ...halo, 'text-halo-width': 1.6 },
+    });
+  }
 
   // Places of interest: coloured round icon + name in the category colour, like Google.
   const poiColor = poiColorExpression(theme);
@@ -617,14 +763,37 @@ export function buildStyle(theme: 'light' | 'dark', src: BasemapSources, lang = 
     };
   }
 
+  if (src.places) {
+    sources[OVERTURE_SOURCE] = {
+      type: 'vector',
+      url: src.places,
+      attribution: 'מקומות © <a href="https://overturemaps.org" target="_blank">Overture Maps Foundation</a>',
+    };
+  }
+  if (mapType === 'terrain' && src.contours) {
+    sources.contours = { type: 'vector', tiles: [src.contours], maxzoom: 15 };
+  }
+  let out = layers;
+  if (satellite) {
+    sources.satellite = {
+      type: 'raster',
+      tiles: [src.satellite!],
+      tileSize: 256,
+      maxzoom: 15,
+      attribution: '<a href="https://s2maps.eu" target="_blank">Sentinel-2 cloudless</a> by EOX (Copernicus Sentinel data 2016)',
+    };
+    out = layers.filter((l) => !GROUND.has(l.id));
+    out.splice(1, 0, { id: 'satellite', type: 'raster', source: 'satellite', paint: { 'raster-fade-duration': 150 } });
+  }
+
   return {
     version: 8,
-    name: `nadav-maps-${theme}`,
+    name: `nadav-maps-${theme}${satellite ? '-satellite' : ''}`,
     glyphs: src.glyphs,
     // Soft, overhead light so 3D building walls read as gentle shade, not dark outlines.
     light: { anchor: 'viewport', color: '#ffffff', intensity: theme === 'dark' ? 0.25 : 0.18, position: [1.15, 210, 30] },
     sources,
-    layers,
+    layers: out,
   };
 }
 

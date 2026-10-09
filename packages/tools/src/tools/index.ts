@@ -5,6 +5,7 @@ import { defineTool } from '../define.ts';
 import { overpassCategory, overpassDetails, overpassIdentify } from '../providers/overpass.ts';
 import { photonReverse, photonSearch } from '../providers/photon.ts';
 import { valhallaRoute } from '../providers/valhalla.ts';
+import { wikipediaSummary } from '../providers/wikipedia.ts';
 
 const lng = z.number().min(-180).max(180);
 const lat = z.number().min(-90).max(90);
@@ -102,4 +103,18 @@ export const getDirections = defineTool({
   },
 });
 
-export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections];
+export const placeSummary = defineTool({
+  name: 'place_summary',
+  title: 'תיאור מקום מוויקיפדיה',
+  description:
+    'Short description and photo of a place from Wikipedia, in the UI language when an article exists. Pass the OSM "wikipedia" tag ("he:Title") and/or "wikidata" id ("Q123") from place_details.',
+  input: z
+    .object({
+      wikipedia: z.string().max(300).optional(),
+      wikidata: z.string().regex(/^Q\d+$/).optional(),
+    })
+    .refine((v) => v.wikipedia || v.wikidata, 'wikipedia or wikidata is required'),
+  run: (input, ctx) => wikipediaSummary(ctx, input),
+});
+
+export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, placeSummary];

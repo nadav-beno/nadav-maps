@@ -11,7 +11,7 @@ region with full coverage). The full product spec lives in a Claude Doc; this fi
 | `apps/server` | Hono server: `POST /api/tools/<name>` (REST) and `/mcp` (Model Context Protocol, stateless). Same tools as the web app. |
 | `packages/core` | Pure helpers (geo, polyline, Hebrew search text, URL state, formatting, regions, provider config). `@nm/core/app` holds app state (signals) and the feature API. |
 | `packages/tools` | Every data operation as a typed tool (`defineTool` + Zod schema): search, reverse geocode, details, nearby, directions. One schema drives web calls, REST and MCP. Providers: Photon, Valhalla, Overpass. |
-| `packages/features/*` | One package per feature (search, place, location, directions, navigation, saved, photos, settings). |
+| `packages/features/*` | One package per feature (search, place, location, directions, navigation, layers, saved, contribute, photos, settings). |
 | `e2e` | Playwright tests with all network stubbed (`e2e/stubs.ts`). |
 
 ## Rules
@@ -23,7 +23,10 @@ region with full coverage). The full product spec lives in a Claude Doc; this fi
 - **New data operation?** Add a tool in `packages/tools/src/tools/index.ts` and list it in `TOOLS`; it appears in the web client, REST and MCP automatically.
 - **Hebrew UI text** in the components; code, comments and commits in English.
 - The base map style is ours: `apps/web/src/shell/basemap/` (layers, palette, POI categories, icons drawn from Maki). Icons: add the Maki name in `poi.ts`, then `node --experimental-strip-types scripts/gen-maki.mjs`.
-- Map layers must be re-added in `ctx.onStyle` (dark mode swaps the style).
+- Map layers must be re-added in `ctx.onStyle` (dark mode and the map type swap the style).
+- **Icons:** `<Icon name="…">` from `@nm/core/app` draws Material Symbols (rounded). Only icons listed in `scripts/gen-icons.mjs` are bundled; add a name there and run `node scripts/gen-icons.mjs`. Map POI icons are Maki (`apps/web/src/shell/basemap/maki-paths.ts`).
+- **Businesses:** Overture places are read straight from Overture's public PMTiles (`{release}` in the URL resolves to the newest release, see `places-source.ts`). Their ids are `ovt:<uuid>`; categories, colours and icons live in `packages/core/src/overture.ts`.
+- **UI:** Google-Maps-style shell: bottom tabs (`registerTab`), floating map controls (`registerSlot('controls', …)`), views can hide the search bar (`registerView(kind, View, { hideTop: true })`).
 
 ## Adding a feature
 

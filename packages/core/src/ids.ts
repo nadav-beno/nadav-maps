@@ -13,7 +13,9 @@ export function pointPlaceId(lng: number, lat: number): string {
   return `pt:${lng.toFixed(5)},${lat.toFixed(5)}`;
 }
 
-export function parsePlaceId(id: string): { osm?: { type: OsmType; id: number }; point?: [number, number] } {
+export function parsePlaceId(id: string): { osm?: { type: OsmType; id: number }; point?: [number, number]; overture?: string } {
+  const o = /^ovt:([0-9a-f-]{8,64})$/i.exec(id);
+  if (o) return { overture: o[1] };
   const m = /^osm:([nwr])(\d+)$/.exec(id);
   if (m) return { osm: { type: TYPE[m[1]], id: Number(m[2]) } };
   const p = /^pt:(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/.exec(id);

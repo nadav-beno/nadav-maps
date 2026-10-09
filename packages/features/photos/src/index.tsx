@@ -1,7 +1,7 @@
 import { computed, signal, useSignal } from '@preact/signals';
 import * as maplibregl from 'maplibre-gl';
 import type { Map as MapLibreMap } from 'maplibre-gl';
-import { back, currentView, defineFeature, ensureLayer, EMPTY, load, open, save, setGeoJSON, toast, type ViewProps } from '@nm/core/app';
+import { back, currentView, defineFeature, ensureLayer, Icon, EMPTY, load, open, save, setGeoJSON, toast, type ViewProps } from '@nm/core/app';
 import { importFiles } from './import.ts';
 import { loadAll, loaded, photos, put, remove, removeAll, type PhotoRec } from './store.ts';
 import { groupTrips } from './trips.ts';
@@ -115,7 +115,7 @@ function PhotosView(_: ViewProps) {
     <div class="view photos">
       <header class="view-header">
         <button class="icon-btn" aria-label="חזרה" onClick={back}>
-          →
+          <Icon name="arrow_back" />
         </button>
         <h2>מפת התמונות שלי</h2>
       </header>
@@ -132,7 +132,7 @@ function PhotosView(_: ViewProps) {
         }}
       />
       <label for="photo-input" class="btn primary full">
-        📷 הוספת תמונות
+        <Icon name="add_a_photo" size={18} /> הוספת תמונות
       </label>
       <p class="muted small">באייפון: בבחירת התמונות לחצו על "אפשרויות" למעלה והפעילו "מיקום", אחרת האייפון מוחק את המיקום מהתמונות.</p>
       {progress.value && (
@@ -264,7 +264,7 @@ export default defineFeature({
     map = ctx.map;
     ctx.registerView('photos', PhotosView);
     ctx.registerSlot('overlay', Viewer, 20);
-    ctx.registerMenuItem({ id: 'photos', label: 'מפת התמונות שלי', icon: '🖼️', order: 20, run: () => open({ kind: 'photos' }) });
+    ctx.registerMenuItem({ id: 'photos', label: 'מפת התמונות שלי', icon: 'photo_library', order: 20, run: () => open({ kind: 'photos' }) });
 
     ctx.onStyle((m) => {
       setGeoJSON(m, 'photos', EMPTY, { cluster: true, clusterRadius: 50, clusterMaxZoom: 16 });

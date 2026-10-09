@@ -3,18 +3,38 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { effect } from '@preact/signals';
 import { regionAt, type ProviderConfig, type UrlState } from '@nm/core';
-import { isDark, region, toast } from '@nm/core/app';
+import mlcontour from 'maplibre-contour';
+import { isDark, mapLayers, mapType, region, toast } from '@nm/core/app';
 import { dispatchClick, dispatchLongPress, runStyleHooks } from './registry.ts';
 import { addBasemapImages, addMissingImage } from './basemap/images.ts';
 import { buildStyle } from './basemap/style.ts';
+import { placesSourceUrl } from './basemap/places-source.ts';
 
 // MapLibre 6 ships its web worker as a separate file; let Vite serve it.
 maplibregl.setWorkerUrl(workerUrl);
 
+/** Contour lines for the terrain map type, computed in the browser from the elevation tiles. */
+function contourTiles(terrain: string): string {
+  if (!terrain) return '';
+  const dem = new mlcontour.DemSource({ url: terrain, encoding: 'terrarium', maxzoom: 13, worker: true });
+  dem.setupMaplibre(maplibregl as never);
+  return dem.contourProtocolUrl({
+    thresholds: { 10: [100, 500], 12: [50, 250], 13: [20, 100], 15: [10, 50] },
+    contourLayer: 'contours',
+    elevationKey: 'ele',
+    levelKey: 'level',
+  });
+}
+
 export function createMap(container: HTMLElement, cfg: ProviderConfig, initial: UrlState): maplibregl.Map {
   const r = initial.view ? regionAt(initial.view.center) : region.value;
   const theme = () => (isDark.value ? 'dark' : 'light');
-  const style = () => buildStyle(theme(), cfg, 'he');
+  const contours = contourTiles(cfg.terrain);
+  const sources = { ...cfg, places: placesSourceUrl(cfg.places), contours };
+  const style = () => {
+    const l = mapLayers.value;
+    return buildStyle(theme(), sources, 'he', { mapType: mapType.value, buildings3d: l.buildings3d, transit: l.transit, bike: l.bike });
+  };
   const map = new maplibregl.Map({
     container,
     style: style(),
@@ -37,7 +57,11 @@ export function createMap(container: HTMLElement, cfg: ProviderConfig, initial: 
   });
   map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right');
   // Credits start folded behind the (i) button so they don't cover the map on phones.
-  map.once('idle', () => container.querySelector('.maplibregl-compact-show')?.classList.remove('maplibregl-compact-show'));
+  const fold = () => container.querySelector('.maplibregl-compact-show')?.classList.remove('maplibregl-compact-show');
+  map.once('load', fold);
+  map.once('idle', fold);
+  // MapLibre re-opens them when a new source brings new credits (e.g. switching map type).
+  map.on('styledata', () => setTimeout(fold, 0));
   // If the base map can't load (offline, server down), say so and offer a retry.
   // Only the tile index (TileJSON) failing means no map at all; single tiles failing is routine.
   const tileIndex = new RegExp(`${cfg.vectorTiles.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![/\\w])`);
@@ -50,10 +74,12 @@ export function createMap(container: HTMLElement, cfg: ProviderConfig, initial: 
     }
   });
   map.on('style.load', () => {
-    addBasemapImages(map, theme());
+    addBasemapImages(map, imageTheme());
     runStyleHooks(map);
   });
-  map.on('styleimagemissing', (e) => addMissingImage(map, theme(), e.id));
+  // Satellite always uses the dark-palette images (light labels over the photo).
+  const imageTheme = () => (mapType.value === 'satellite' ? 'dark' : theme());
+  map.on('styleimagemissing', (e) => addMissingImage(map, imageTheme(), e.id));
 
   // Theme switch = new base style; features re-add their layers in their style hooks.
   let first = true;

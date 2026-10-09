@@ -9,9 +9,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource-variable/rubik": "5.3.0",
     "@mapbox/maki": "8.2.0",
     "@nm/core": "workspace:*",
+    "@nm/feature-contribute": "workspace:*",
     "@nm/feature-directions": "workspace:*",
+    "@nm/feature-layers": "workspace:*",
     "@nm/feature-location": "workspace:*",
     "@nm/feature-navigation": "workspace:*",
     "@nm/feature-photos": "workspace:*",
@@ -21,7 +24,9 @@
     "@nm/feature-settings": "workspace:*",
     "@nm/tools": "workspace:*",
     "@preact/signals": "^2.11.3",
+    "maplibre-contour": "0.1.1",
     "maplibre-gl": "^6.13.0",
+    "pmtiles": "4.5.0",
     "preact": "^11.0.1"
   },
   "devDependencies": {

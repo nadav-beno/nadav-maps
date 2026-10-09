@@ -1,7 +1,7 @@
 import { signal, useSignal, useSignalEffect } from '@preact/signals';
-import { useRef } from 'preact/hooks';
-import { back, currentView, home, immersive, isDark, sheet, toastMessage, viewStack, type SheetSize } from '@nm/core/app';
-import { fabs, homeSections, menuItems, slots, views } from './registry.ts';
+import { useLayoutEffect, useRef } from 'preact/hooks';
+import { back, currentView, home, Icon, immersive, isDark, open, sheet, toastMessage, viewStack, type SheetSize } from '@nm/core/app';
+import { fabs, homeSections, menuItems, slots, tabs, views } from './registry.ts';
 
 const wide = signal(typeof matchMedia === 'function' && matchMedia('(min-width: 768px)').matches);
 if (typeof matchMedia === 'function') matchMedia('(min-width: 768px)').addEventListener('change', (e) => (wide.value = e.matches));
@@ -22,16 +22,25 @@ function Menu() {
     <div class="view">
       <header class="view-header">
         <button class="icon-btn" aria-label="חזרה" onClick={back}>
-          →
+          <Icon name="arrow_back" />
         </button>
         <h2>תפריט</h2>
       </header>
+      <div class="account">
+        <span class="avatar big" aria-hidden="true">
+          <Icon name="person" size={26} />
+        </span>
+        <div>
+          <div style={{ fontWeight: '500' }}>Nadav Maps</div>
+          <div class="muted small">בלי חשבון: הכול נשמר במכשיר שלך</div>
+        </div>
+      </div>
       <ul class="menu-list">
         {menuItems.value.map((m) => (
           <li key={m.id}>
             <button class="menu-item" onClick={m.run}>
-              <span class="menu-icon" aria-hidden="true">
-                {m.icon}
+              <span class="menu-icon">
+                <Icon name={m.icon} />
               </span>
               {m.label}
             </button>
@@ -41,6 +50,46 @@ function Menu() {
     </div>
   );
 }
+
+/** Which bottom tab is current: home when no screen is open, else the tab whose view is on top. */
+const currentTab = () => {
+  const v = currentView.value;
+  if (v.kind === 'home') return 'home';
+  return tabs.value.find((t) => t.view === v.kind && viewStack.value.length === 1)?.id ?? null;
+};
+
+/** Google Maps' bottom navigation: Explore, saved places, contribute... */
+function Tabs() {
+  const cur = currentTab();
+  const ref = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || wide.value) return;
+    document.documentElement.style.setProperty('--tabs-h', `${el.offsetHeight}px`);
+    return () => document.documentElement.style.setProperty('--tabs-h', '0px');
+  });
+  const all = [{ id: 'home', label: 'סביבה', icon: 'explore', view: 'home' }, ...tabs.value];
+  return (
+    <nav ref={ref} class="tabs" aria-label="ניווט ראשי">
+      {all.map((t) => (
+        <button
+          key={t.id}
+          class="tab"
+          aria-current={cur === t.id ? 'page' : undefined}
+          onClick={() => (t.view === 'home' ? home() : open({ kind: t.view }, { reset: true }))}
+        >
+          <span class="tab-icon">
+            <Icon name={cur === t.id ? t.icon : ICON_OUTLINE[t.icon] ?? t.icon} />
+          </span>
+          {t.label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+/** Unselected tabs use the outlined icon, like Google's navigation bar. */
+const ICON_OUTLINE: Record<string, string> = { explore: 'explore_outline', bookmark: 'bookmark_outline', person: 'person_outline', bookmarks: 'bookmarks_outline' };
 
 function PanelContent() {
   const v = currentView.value;
@@ -72,7 +121,8 @@ function Sheet() {
 
   const heightFor = (s: SheetSize) => {
     const vh = window.innerHeight;
-    return s === 'peek' ? 132 : s === 'half' ? Math.round(vh * 0.48) : vh - 72;
+    const tabsH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
+    return s === 'peek' ? 132 : s === 'half' ? Math.round(vh * 0.48) : vh - 72 - tabsH;
   };
 
   // Back on the home screen the sheet shrinks so the map is visible.
@@ -114,10 +164,11 @@ function Sheet() {
 
   const h = drag.value ?? heightFor(sheet.value);
   document.documentElement.style.setProperty('--sheet-h', `${Math.min(h, heightFor('half'))}px`);
+  const showTabs = currentTab() !== null;
   return (
     <section
       ref={ref}
-      class={`sheet ${drag.value !== null ? 'dragging' : ''}`}
+      class={`sheet ${drag.value !== null ? 'dragging' : ''} ${showTabs ? '' : 'no-tabs'}`}
       style={{ height: `${h}px` }}
       aria-label="לוח מידע"
     >
@@ -148,10 +199,14 @@ function Sheet() {
 
 function SidePanel() {
   return (
-    <section class={`side-panel ${currentView.value.kind === 'home' ? 'is-home' : ''}`} aria-label="לוח מידע">
+    <section
+      class={`side-panel ${currentView.value.kind === 'home' ? 'is-home' : ''} ${views.get(currentView.value.kind)?.hideTop ? 'no-top' : ''}`}
+      aria-label="לוח מידע"
+    >
       <div class="side-body">
         <PanelContent />
       </div>
+      {currentTab() !== null && <Tabs />}
     </section>
   );
 }
@@ -183,22 +238,32 @@ export function App() {
     document.querySelector('meta[name="theme-color"]:not([media])')?.remove();
   });
   const top = slots.value.filter((s) => s.slot === 'top');
+  const controls = slots.value.filter((s) => s.slot === 'controls');
   const overlay = slots.value.filter((s) => s.slot === 'overlay');
+  const showTabs = !wide.value && currentTab() !== null;
   return (
     <>
       {!immersive.value && (
         <>
-          <div class="top-bar">
+          <div class="top-bar" hidden={!!views.get(currentView.value.kind)?.hideTop}>
             {top.map(({ Component }, i) => (
               <Component key={i} />
             ))}
           </div>
+          {(wide.value || sheet.value !== 'full') && (
+            <div class="map-controls">
+              {controls.map(({ Component }, i) => (
+                <Component key={i} />
+              ))}
+            </div>
+          )}
           <div class={`fabs ${wide.value ? 'wide' : `sheet-${sheet.value}`}`}>
             {fabs.value.map(({ id, Component }) => (
               <Component key={id} />
             ))}
           </div>
           {wide.value ? <SidePanel /> : <Sheet />}
+          {showTabs && <Tabs />}
         </>
       )}
       {overlay.map(({ Component }, i) => (

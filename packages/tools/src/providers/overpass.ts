@@ -55,6 +55,7 @@ export function elementToDetails(el: OverpassElement, lang: string): PlaceDetail
     cuisine: tags.cuisine,
     imageUrl: image,
     wikipedia: tags.wikipedia,
+    wikidata: tags.wikidata,
   };
 }
 

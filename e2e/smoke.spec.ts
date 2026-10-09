@@ -24,7 +24,7 @@ test('search with autocomplete opens a place card with details', async ({ page }
 
 test('route from a shared link shows alternatives and steps', async ({ page }) => {
   await page.goto('./?route=34.7741,32.0787;34.7918,32.0745&mode=car');
-  await expect(page.getByText('4 דק׳')).toBeVisible();
+  await expect(page.locator('.route-option .route-time').first()).toHaveText('4 דק׳');
   await expect(page.locator('.route-option')).toHaveCount(2);
   await page.getByRole('button', { name: 'שלבים' }).click();
   await expect(page.getByText('פנו ימינה אל דרך מנחם בגין')).toBeVisible();
@@ -47,10 +47,39 @@ test('save a place to favorites and see it in the saved list', async ({ page }) 
   await page.getByRole('checkbox', { name: /מועדפים/ }).check();
   await page.getByRole('button', { name: 'סיום' }).click();
   await expect(page.getByRole('button', { name: 'נשמר' })).toBeVisible();
-  await page.getByRole('button', { name: 'תפריט' }).click();
-  await page.getByRole('button', { name: 'שמורים ורשימות' }).click();
+  await page.goBack();
+  await page.getByRole('navigation', { name: 'ניווט ראשי' }).getByRole('button', { name: 'שמורים' }).click();
   await page.getByRole('button', { name: /מועדפים/ }).click();
   await expect(page.getByText('קניון עזריאלי')).toBeVisible();
+});
+
+test('a business from Overture opens with its phone, website and socials', async ({ page }) => {
+  await page.goto('./?place=ovt:aaaaaaaa-0000-4000-8000-000000000001#18/32.0801/34.7792');
+  await expect(page.getByRole('heading', { name: 'ביסטרו הכרמל' })).toBeVisible();
+  await expect(page.getByText(/03-?523-?6058/)).toBeVisible();
+  await expect(page.getByText('bistro.example', { exact: true })).toBeVisible();
+  await expect(page.getByText('פייסבוק')).toBeVisible();
+});
+
+test('tapping a business on the map opens its card', async ({ page }, info) => {
+  test.skip(info.project.name !== 'desktop', 'the visual centre is easy to compute beside the side panel');
+  await page.goto('./#18/32.0801/34.7792');
+  await page.waitForTimeout(1500);
+  // The side panel takes 408px on the right, so the map's centre is at x = (1280 - 408) / 2.
+  await page.mouse.click(436, 400);
+  await expect(page.getByRole('heading', { name: 'ביסטרו הכרמל' })).toBeVisible();
+  await expect(page).toHaveURL(/place=ovt:aaaaaaaa/);
+});
+
+test('layers: satellite map type and transit lines are remembered', async ({ page }) => {
+  await page.goto('./');
+  await page.getByRole('button', { name: 'שכבות' }).click();
+  await page.getByRole('radio', { name: 'לוויין' }).click();
+  await page.getByRole('button', { name: 'תחבורה ציבורית' }).click();
+  await page.reload();
+  await page.getByRole('button', { name: 'שכבות' }).click();
+  await expect(page.getByRole('radio', { name: 'לוויין' })).toBeChecked();
+  await expect(page.getByRole('button', { name: 'תחבורה ציבורית' })).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('category chip finds nearby cafes', async ({ page }) => {

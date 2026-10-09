@@ -1,11 +1,12 @@
 import { batch, signal } from '@preact/signals';
 import type { Map as MapLibreMap } from 'maplibre-gl';
-import { formatArrival, formatDistance, formatDuration, type LngLat, type Place, type Route } from '@nm/core';
+import { formatArrival, formatDistance, formatDuration, maneuverIcon, type LngLat, type Place, type Route } from '@nm/core';
 import {
   back,
   currentView,
   defineFeature,
   ensureLayer,
+  Icon,
   EMPTY,
   immersive,
   region,
@@ -225,13 +226,10 @@ function stop() {
 }
 
 function ArrowIcon({ type }: { type: number }) {
-  const rot: Record<number, number> = { 9: 45, 10: 90, 11: 135, 16: -45, 15: -90, 14: -135, 2: 90, 3: -90, 18: 30, 19: -30, 20: 40, 21: -40, 23: 25, 24: -25, 37: 30, 38: -30, 12: 180, 13: 180 };
-  if ([4, 5, 6].includes(type)) return <span class="nav-arrow" aria-hidden="true">🏁</span>;
-  if ([26, 27].includes(type)) return <span class="nav-arrow" aria-hidden="true">⟲</span>;
   return (
-    <svg class="nav-arrow" viewBox="0 0 24 24" aria-hidden="true" style={{ transform: `rotate(${rot[type] ?? 0}deg)` }}>
-      <path fill="currentColor" d="M12 2 5 10h5v12h4V10h5z" />
-    </svg>
+    <span class="nav-arrow">
+      <Icon name={maneuverIcon(type)} size={44} />
+    </span>
   );
 }
 
@@ -246,7 +244,7 @@ function Overlay() {
       <div class={`nav-banner ${s.rerouting ? 'rerouting' : ''}`} role="status" aria-live="polite">
         {s.arrived ? (
           <div class="nav-main">
-            <span class="nav-arrow" aria-hidden="true">🏁</span>
+            <ArrowIcon type={4} />
             <div>
               <div class="nav-dist">הגעתם</div>
               <div class="nav-instr">{s.destination?.name ?? 'ליעד'}</div>
@@ -266,7 +264,11 @@ function Overlay() {
             </div>
           </div>
         )}
-        {!s.arrived && p?.after && p.toNextM < 400 && <div class="nav-then">ואז: {p.after.instruction}</div>}
+        {!s.arrived && p?.after && p.toNextM < 400 && (
+          <div class="nav-then">
+            ואז <Icon name={maneuverIcon(p.after.type)} size={20} /> {p.after.instruction}
+          </div>
+        )}
       </div>
       {!userLocation.value && !s.simulate && <div class="nav-wait">ממתין ל-GPS…</div>}
       <div class="nav-bottom">
@@ -278,7 +280,7 @@ function Overlay() {
             if (!s.muted) speechSynthesis?.cancel();
           }}
         >
-          {s.muted ? '🔇' : '🔊'}
+          <Icon name={s.muted ? 'volume_off' : 'volume_up'} />
         </button>
         <div class="nav-eta">
           {p ? (
