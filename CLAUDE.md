@@ -18,10 +18,11 @@ region with full coverage). The full product spec lives in a Claude Doc; this fi
 
 - **Features never import each other or the shell.** Only `@nm/core`, `@nm/core/app`, `@nm/tools` and libraries. `pnpm boundaries` enforces it. Cross-feature navigation goes through view kinds: `open({kind:'place'})`, `openPlace()`, `directionsTo()`, extension points (`registerPlaceAction`, `registerPlaceSection`, `registerHomeSection`, `registerMenuItem`, `registerSlot`).
 - **Everything shareable lives in the URL** (`packages/core/src/url-state.ts`): a screen sets `view.props.url` and the shell syncs it with history.
-- **Nothing regional is hard-coded.** Units, time zone, language and coverage come from `packages/core/src/region.ts`. Provider URLs come from env (`VITE_PHOTON_URL`, `VITE_VALHALLA_URL`, `VITE_OVERPASS_URL`, `VITE_STYLE_LIGHT`, `VITE_STYLE_DARK`; on the server the same names without `VITE_`).
+- **Nothing regional is hard-coded.** Units, time zone, language and coverage come from `packages/core/src/region.ts`. Provider URLs come from env (`VITE_PHOTON_URL`, `VITE_VALHALLA_URL`, `VITE_OVERPASS_URL`, `VITE_VECTOR_TILES_URL`, `VITE_GLYPHS_URL`, `VITE_TERRAIN_URL`; on the server the same names without `VITE_`).
 - **Privacy:** never log or send coordinates or search text to our servers' logs or to error reporting.
 - **New data operation?** Add a tool in `packages/tools/src/tools/index.ts` and list it in `TOOLS`; it appears in the web client, REST and MCP automatically.
 - **Hebrew UI text** in the components; code, comments and commits in English.
+- The base map style is ours: `apps/web/src/shell/basemap/` (layers, palette, POI categories, icons drawn from Maki). Icons: add the Maki name in `poi.ts`, then `node --experimental-strip-types scripts/gen-maki.mjs`.
 - Map layers must be re-added in `ctx.onStyle` (dark mode swaps the style).
 
 ## Adding a feature
