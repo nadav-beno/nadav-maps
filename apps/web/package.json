@@ -9,23 +9,25 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@mapbox/maki": "8.2.0",
     "@nm/core": "workspace:*",
-    "@nm/tools": "workspace:*",
-    "@nm/feature-search": "workspace:*",
-    "@nm/feature-place": "workspace:*",
-    "@nm/feature-location": "workspace:*",
     "@nm/feature-directions": "workspace:*",
+    "@nm/feature-location": "workspace:*",
     "@nm/feature-navigation": "workspace:*",
-    "@nm/feature-saved": "workspace:*",
     "@nm/feature-photos": "workspace:*",
+    "@nm/feature-place": "workspace:*",
+    "@nm/feature-saved": "workspace:*",
+    "@nm/feature-search": "workspace:*",
     "@nm/feature-settings": "workspace:*",
+    "@nm/tools": "workspace:*",
     "@preact/signals": "^2.11.3",
     "maplibre-gl": "^6.13.0",
     "preact": "^11.0.1"
   },
   "devDependencies": {
-    "@preact/preset-vite": "^2.10.6",
     "@babel/core": "^7.28.0",
+    "@maplibre/maplibre-gl-style-spec": "26.4.4",
+    "@preact/preset-vite": "^2.10.6",
     "vite": "^8.3.4"
   }
 }

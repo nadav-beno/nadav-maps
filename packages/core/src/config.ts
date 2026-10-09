@@ -10,9 +10,10 @@ export interface ProviderConfig {
   valhallaUrl: string;
   /** Overpass API interpreter URL. */
   overpassUrl: string;
-  /** Map style URLs. */
-  styleLight: string;
-  styleDark: string;
+  /** Base map: OpenMapTiles-schema vector TileJSON, glyph template, Terrarium elevation tiles ('' = no hill shading). */
+  vectorTiles: string;
+  glyphs: string;
+  terrain: string;
   /** Identifies us to public servers, as their usage policies ask. */
   userAgent: string;
 }
@@ -21,8 +22,9 @@ export const DEFAULT_PROVIDERS: ProviderConfig = {
   photonUrl: 'https://photon.komoot.io',
   valhallaUrl: 'https://valhalla1.openstreetmap.de',
   overpassUrl: 'https://overpass-api.de/api/interpreter',
-  styleLight: 'https://tiles.openfreemap.org/styles/liberty',
-  styleDark: 'https://tiles.openfreemap.org/styles/dark',
+  vectorTiles: 'https://tiles.openfreemap.org/planet',
+  glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+  terrain: 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png',
   userAgent: 'NadavMaps/0.2 (+https://github.com/nadav-beno/nadav-maps)',
 };
 
@@ -32,8 +34,9 @@ export function providersFromEnv(env: Record<string, string | undefined>, prefix
     photonUrl: get('PHOTON_URL') ?? DEFAULT_PROVIDERS.photonUrl,
     valhallaUrl: get('VALHALLA_URL') ?? DEFAULT_PROVIDERS.valhallaUrl,
     overpassUrl: get('OVERPASS_URL') ?? DEFAULT_PROVIDERS.overpassUrl,
-    styleLight: get('STYLE_LIGHT') ?? DEFAULT_PROVIDERS.styleLight,
-    styleDark: get('STYLE_DARK') ?? DEFAULT_PROVIDERS.styleDark,
+    vectorTiles: get('VECTOR_TILES_URL') ?? DEFAULT_PROVIDERS.vectorTiles,
+    glyphs: get('GLYPHS_URL') ?? DEFAULT_PROVIDERS.glyphs,
+    terrain: env[prefix + 'TERRAIN_URL'] ?? DEFAULT_PROVIDERS.terrain,
     userAgent: DEFAULT_PROVIDERS.userAgent,
   };
 }

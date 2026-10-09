@@ -31,3 +31,20 @@ test('screens', async ({ page }, info) => {
   await page.waitForTimeout(800);
   await shot('7-dark');
 });
+
+test('basemap', async ({ page }, info) => {
+  await stubNetwork(page);
+  const shot = (n: string) => page.screenshot({ path: `${dir}/${info.project.name}-map-${n}.png` });
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    for (const z of [13, 15, 16.5]) {
+      await page.goto(`./?t=${scheme}${z}#${z}/32.081/34.784`);
+      await page.waitForTimeout(2000);
+      await shot(`${scheme}-z${z}`);
+    }
+  }
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto('./?t=3d#16.5/32.081/34.786/30/55');
+  await page.waitForTimeout(1500);
+  await shot('light-3d');
+});

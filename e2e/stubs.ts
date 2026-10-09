@@ -1,29 +1,11 @@
 import type { Page, Route } from '@playwright/test';
 import { encodePolyline } from '../packages/core/src/polyline.ts';
+import { sceneTile, TILEJSON } from './basemap-scene.ts';
 
 /**
  * Tests never hit the real map servers: tiles, search, routing and place details
  * are answered from these fixtures, so results are deterministic and offline.
  */
-export const STYLE = {
-  version: 8,
-  sources: {
-    demo: {
-      type: 'geojson',
-      data: {
-        type: 'FeatureCollection',
-        features: [
-          { type: 'Feature', properties: { name: 'קפה לנדוור', 'name:he': 'קפה לנדוור', class: 'cafe', subclass: 'cafe' }, geometry: { type: 'Point', coordinates: [34.7745, 32.0805] } },
-        ],
-      },
-    },
-  },
-  layers: [
-    { id: 'background', type: 'background', paint: { 'background-color': '#e8eef0' } },
-    { id: 'demo-poi', type: 'circle', source: 'demo', paint: { 'circle-radius': 6, 'circle-color': '#8d6e63' } },
-  ],
-};
-
 export const PLACES = {
   dizengoff: {
     type: 'Feature',
@@ -69,7 +51,10 @@ export async function stubNetwork(page: Page): Promise<void> {
   // Anything else external fails fast. (Registered first: later routes take priority.)
   await page.route(/^https:\/\/(?!localhost)/, (r) => r.abort());
   await page.route('https://tiles.openfreemap.org/**', (r: Route) => {
-    if (r.request().url().includes('/styles/')) return r.fulfill({ json: STYLE });
+    const url = new URL(r.request().url());
+    if (url.pathname === '/planet') return r.fulfill({ json: TILEJSON });
+    const m = /^\/planet\/test\/(\d+)\/(\d+)\/(\d+)\.pbf$/.exec(url.pathname);
+    if (m) return r.fulfill({ body: sceneTile(+m[1], +m[2], +m[3]), contentType: 'application/x-protobuf' });
     return r.fulfill({ status: 404, body: '' });
   });
   await page.route('https://photon.komoot.io/api**', (r) => {
