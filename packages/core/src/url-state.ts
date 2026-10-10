@@ -12,6 +12,10 @@ export interface UrlState {
   view?: { zoom: number; center: LngLat; bearing?: number; pitch?: number };
   place?: string;
   q?: string;
+  /** Category search ("cafe"), see CATEGORIES in @nm/tools. */
+  cat?: string;
+  /** Result filters, comma separated ("open" = open now). */
+  filter?: string;
   route?: LngLat[];
   /** route starts at the user's current location ("route=me;lng,lat"). */
   fromMe?: boolean;
@@ -40,6 +44,10 @@ export function parseUrl(href: string): UrlState {
   if (place) out.place = place;
   const q = p.get('q');
   if (q) out.q = q;
+  const cat = p.get('cat');
+  if (cat && /^[a-z_]{1,32}$/.test(cat)) out.cat = cat;
+  const filter = p.get('filter');
+  if (filter && /^[a-z,]{1,64}$/.test(filter)) out.filter = filter;
   const route = p.get('route');
   if (route) {
     const tokens = route.split(';');
@@ -79,6 +87,8 @@ export function buildUrl(base: string, s: UrlState): string {
   const p = url.searchParams;
   if (s.place) p.set('place', s.place);
   if (s.q) p.set('q', s.q);
+  if (s.cat) p.set('cat', s.cat);
+  if (s.filter) p.set('filter', s.filter);
   if (s.route && s.route.length >= (s.fromMe ? 1 : 2)) {
     const pts = s.route.map(([x, y]) => `${round(x, 6)},${round(y, 6)}`);
     p.set('route', (s.fromMe ? ['me', ...pts] : pts).join(';'));

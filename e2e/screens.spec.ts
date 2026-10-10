@@ -79,6 +79,35 @@ test('measure', async ({ page }, info) => {
   await shot('2-area');
 });
 
+test('search results', async ({ page }, info) => {
+  await stubNetwork(page);
+  const shot = (n: string) => page.screenshot({ path: `${dir}/${info.project.name}-${n}.png` });
+  await page.goto('./#15/32.08/34.78');
+  await page.waitForTimeout(1200);
+  await page.getByRole('button', { name: 'בתי קפה' }).click();
+  await page.locator('.list').getByText('קפה לנדוור').waitFor();
+  // Pan the map so "search this area" shows up.
+  const desktop = info.project.name === 'desktop';
+  const y = desktop ? 400 : 230;
+  await page.mouse.move(desktop ? 80 : 40, y);
+  await page.mouse.down();
+  await page.mouse.move(desktop ? 480 : 330, y, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(1000);
+  await shot('11-results');
+  await page.locator('.result-filters').getByRole('button', { name: 'פתוח עכשיו' }).click();
+  await page.waitForTimeout(800);
+  await shot('12-results-open-now');
+  await page.goto('./#17/32.0801/34.7792');
+  await page.waitForTimeout(1500);
+  await page.getByRole('searchbox').fill('ביסטרו');
+  await page.waitForTimeout(800);
+  await shot('13-suggest-business');
+  await page.getByRole('searchbox').fill('https://maps.app.goo.gl/AbCdEf');
+  await page.waitForTimeout(400);
+  await shot('14-short-link');
+});
+
 test('basemap', async ({ page }, info) => {
   await stubNetwork(page);
   const shot = (n: string) => page.screenshot({ path: `${dir}/${info.project.name}-map-${n}.png` });

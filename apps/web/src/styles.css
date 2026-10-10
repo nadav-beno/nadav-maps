@@ -584,3 +584,25 @@ kbd {
   font: 500 13px/1 inherit; color: var(--text);
 }
 [hidden] { display: none !important; }
+
+/* ---------- search: "search this area", result filters, pasted links ---------- */
+.area-pill {
+  align-self: center; display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 16px 0 14px;
+  border: 0; border-radius: 18px; background: var(--surface); color: var(--accent); box-shadow: var(--shadow-2);
+  font-size: 14px; font-weight: 500; white-space: nowrap; animation: pill-in 0.18s ease-out;
+}
+.area-pill:hover { background: var(--bg-2); }
+@keyframes pill-in { from { opacity: 0; } }
+@media (min-width: 768px) {
+  /* Centred over the map, beside the side panel (which sits on the inline-start side). */
+  .area-pill { position: fixed; top: 16px; left: calc((100vw - 408px) / 2); transform: translateX(-50%); }
+  [dir='ltr'] .area-pill { left: calc(408px + (100vw - 408px) / 2); }
+}
+.result-filters { margin: 0 -16px 4px; padding: 2px 16px 8px; }
+.result-sub.open-now { color: var(--ok); }
+.result-sub.closed-now { color: var(--danger); }
+.hidden-note { margin: 12px 0 0; text-align: center; }
+.suggestion.link-help { align-items: flex-start; cursor: default; }
+.suggestion.link-help:hover { background: none; }
+.suggestion .li-sub.wrap { white-space: normal; line-height: 1.45; margin-top: 2px; }
+.suggestion .li-icon.link { background: var(--accent-soft); color: var(--accent-soft-text); }

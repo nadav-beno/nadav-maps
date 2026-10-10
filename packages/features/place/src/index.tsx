@@ -21,7 +21,7 @@ import {
   type ViewProps,
 } from '@nm/core/app';
 import { categoryLabel, identifyPlace, placeDetails, placeSummary, reverseGeocode, tools, type PlaceSummary } from '@nm/tools';
-import { parseHours, type HoursInfo } from './hours.ts';
+import { parseHours, type HoursInfo } from '@nm/core';
 import { displayPhone, socialLabel } from './contact.ts';
 
 let map: MapLibreMap;
