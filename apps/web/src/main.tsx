@@ -49,7 +49,10 @@ effect(() => {
     const sheetH = (parseFloat(cs.getPropertyValue('--sheet-h')) || 0) + (parseFloat(cs.getPropertyValue('--tabs-h')) || 0);
     // The side panel is on the right in Hebrew (RTL), so the map's visual centre shifts left.
     const side = document.dir === 'rtl' ? { left: 0, right: 408 } : { left: 408, right: 0 };
-    map.setPadding(wide ? { top: 0, bottom: 0, ...side } : { top: 110, bottom: sheetH, left: 0, right: 0 });
+    const next = wide ? { top: 0, bottom: 0, ...side } : { top: 110, bottom: sheetH, left: 0, right: 0 };
+    // Setting the same padding again would stop a flyTo that a view just started.
+    const cur = map.getPadding();
+    if (next.top !== cur.top || next.bottom !== cur.bottom || next.left !== cur.left || next.right !== cur.right) map.setPadding(next);
   });
 });
 

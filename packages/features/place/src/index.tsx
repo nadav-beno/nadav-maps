@@ -1,4 +1,5 @@
-import { useSignal, useSignalEffect } from '@preact/signals';
+import { useSignal } from '@preact/signals';
+import { useEffect, useRef } from 'preact/hooks';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { droppedPin, formatCoords, formatDistance, distance, OVERTURE_SOURCE, overturePlace, parsePlaceId, type Place, type PlaceDetails } from '@nm/core';
 import {
@@ -113,10 +114,15 @@ function PlaceView({ view }: ViewProps<{ place: Place }>) {
   const hours = useSignal<HoursInfo | null>(null);
   const summary = useSignal<PlaceSummary | null>(null);
   const resolved = useSignal<Place>(place);
+  // The id this card upgraded itself to (a tapped label matched to OSM), so that swap doesn't reload.
+  const upgradedTo = useRef<string | null>(null);
 
-  useSignalEffect(() => {
+  // Reload whenever another place is shown in this same card (search results, long-press pins).
+  useEffect(() => {
     const p = place;
     resolved.value = p;
+    if (upgradedTo.current === p.id) return;
+    upgradedTo.current = null;
     details.value = null;
     hours.value = null;
     summary.value = null;
@@ -133,6 +139,7 @@ function PlaceView({ view }: ViewProps<{ place: Place }>) {
           if (d && !cancelled && p.id.startsWith('pt:')) {
             const better: Place = { ...p, id: d.id, osm: d.osm, category: d.category ?? p.category, address: p.address ?? d.address };
             resolved.value = better;
+            upgradedTo.current = better.id;
             openPlace(better, { replace: true });
           }
         }
@@ -152,7 +159,7 @@ function PlaceView({ view }: ViewProps<{ place: Place }>) {
       cancelled = true;
       ac.abort();
     };
-  });
+  }, [place.id, place.name, place.lng, place.lat]);
 
   const p = resolved.value;
   const d = details.value;
