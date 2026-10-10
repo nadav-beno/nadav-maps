@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { stubNetwork } from './stubs.ts';
+import { TAKEOUT_DAY, TAKEOUT_FIXTURE } from './timeline-fixture.ts';
 
 test.beforeEach(async ({ page }) => {
   await stubNetwork(page);
@@ -276,4 +277,47 @@ test('keyboard shortcuts on desktop: ? opens the help, Escape closes it, M measu
   await page.getByRole('searchbox', { name: 'חיפוש מקום או כתובת' }).fill('m?');
   await expect(page.getByRole('heading', { name: 'קיצורי מקלדת' })).toBeHidden();
   await expect(page.locator('.measure-value')).toBeHidden();
+});
+
+test('timeline: importing a Google Takeout file shows the day, and a visit can be renamed', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.goto('./?panel=timeline');
+  await expect(page.getByRole('heading', { name: 'ציר הזמן שלי' })).toBeVisible();
+  await expect(page.getByText('הקלטת ציר זמן כבויה')).toBeVisible();
+  await page.getByRole('button', { name: 'הגדרות ציר הזמן' }).click();
+  await page.locator('#tl-import').setInputFiles({ name: '2019_MARCH.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(TAKEOUT_FIXTURE)) });
+  await expect(page).toHaveURL(new RegExp(`panel=timeline&day=${TAKEOUT_DAY}`));
+  const day = page.getByRole('list', { name: 'המקומות והדרכים של היום' });
+  await expect(day.getByText('מחנה יהודה')).toBeVisible();
+  await expect(day.getByText('נסיעה ברכבת')).toBeVisible();
+  // Times in the region's time zone (Israel, UTC+2 in March).
+  await expect(day.locator('.tl-time').filter({ hasText: '13:30–15:00' })).toBeVisible();
+  await expect(page.getByLabel('סיכום היום')).toContainText('4');
+  // "This was…": give the café our own name.
+  await day.getByRole('button', { name: 'תיקון המקום: קפה לנדוור' }).click();
+  await page.getByRole('textbox', { name: 'שם משלך' }).fill('הקפה של הבוקר');
+  await page.getByRole('textbox', { name: 'שם משלך' }).press('Enter');
+  await expect(day.getByText('הקפה של הבוקר')).toBeVisible();
+  // Everything is on the device: a reload of the shared link shows the same day.
+  await page.reload();
+  await expect(day.getByText('הקפה של הבוקר')).toBeVisible({ timeout: 20_000 });
+  await expect(day.getByText('קניון עזריאלי')).toBeVisible();
+});
+
+test.describe('timeline with location', () => {
+  test.use({ geolocation: { latitude: 32.0787, longitude: 34.7741 }, permissions: ['geolocation'] });
+
+  test('timeline: recording is opt-in and saves location points while the app is open', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.goto('./?panel=timeline');
+    await page.getByRole('button', { name: 'הפעלה' }).click();
+    await expect(page.getByText('מקליט בזמן שהאפליקציה פתוחה')).toBeVisible();
+    await expect(page.getByText(/נקודה אחת נשמרה/)).toBeVisible();
+    // The choice is remembered, and the home screen shows that it records.
+    await page.goto('./');
+    await expect(page.getByRole('button', { name: /ציר הזמן מקליט/ })).toBeVisible();
+    await page.getByRole('button', { name: /ציר הזמן מקליט/ }).click();
+    await page.getByRole('button', { name: 'עצירה' }).click();
+    await expect(page.getByText('הקלטת ציר זמן כבויה')).toBeVisible();
+  });
 });
