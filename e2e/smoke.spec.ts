@@ -67,8 +67,13 @@ test('a business from Overture opens with its phone, website and socials', async
 test('tapping a business on the map opens its card', async ({ page }, info) => {
   test.skip(info.project.name !== 'desktop', 'the visual centre is easy to compute beside the side panel');
   await page.goto('./#18/32.0801/34.7792');
-  await page.waitForTimeout(1500);
   // The side panel takes 408px on the right, so the map's centre is at x = (1280 - 408) / 2.
+  // The places archive loads lazily: wait until the business is drawn there before tapping it.
+  type Q = { map: { queryRenderedFeatures(b: [[number, number], [number, number]], o: { layers: string[] }): unknown[] } };
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as Q).map.queryRenderedFeatures([[426, 390], [446, 410]], { layers: ['ovt-poi'] }).length), { timeout: 15_000 })
+    .toBeGreaterThan(0);
+  await page.waitForTimeout(300);
   await page.mouse.click(436, 400);
   await expect(page.getByRole('heading', { name: 'ביסטרו הכרמל' })).toBeVisible();
   await expect(page).toHaveURL(/place=ovt:aaaaaaaa/);
