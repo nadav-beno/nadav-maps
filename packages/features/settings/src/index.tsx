@@ -13,21 +13,10 @@ import {
   type ThemePref,
   type ViewProps,
 } from '@nm/core/app';
+import { InstallGuide, InstallSheet, installInfo, scheduleInstallHint } from './install.tsx';
 
 let map: MapLibreMap;
 const reloadNeeded = signal(false);
-
-/** Android/desktop Chrome lets us show our own install button. */
-let installPrompt: (Event & { prompt(): Promise<void> }) | null = null;
-const canInstall = signal(false);
-addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  installPrompt = e as typeof installPrompt;
-  canInstall.value = true;
-});
-
-const isStandalone = () => matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
-const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 function Header({ title }: { title: string }) {
   return (
@@ -49,6 +38,17 @@ function SettingsView(_: ViewProps) {
   return (
     <div class="view">
       <Header title="הגדרות" />
+      {installInfo().method !== 'installed' && (
+        <button class="list-item install-row" onClick={() => open({ kind: 'install' })}>
+          <span class="li-icon">
+            <Icon name="mobile_arrow_down" size={20} />
+          </span>
+          <span class="li-body">
+            <div class="li-title">התקנה כאפליקציה</div>
+            <div class="li-sub">אייקון במסך הבית ומסך מלא, בלי App Store</div>
+          </span>
+        </button>
+      )}
       <h3 class="section-title">מראה</h3>
       <div class="segmented" role="group" aria-label="ערכת צבעים">
         {themes.map((t) => (
@@ -105,35 +105,8 @@ function SettingsView(_: ViewProps) {
 function InstallView(_: ViewProps) {
   return (
     <div class="view">
-      <Header title="התקנה במסך הבית" />
-      {isStandalone() ? (
-        <p>האפליקציה כבר מותקנת. 🎉</p>
-      ) : isIOS() ? (
-        <ol class="install-steps">
-          <li>
-            פתחו את האתר ב-<strong>Safari</strong>.
-          </li>
-          <li>
-            לחצו על כפתור השיתוף <span aria-hidden="true">⬆︎</span> בתחתית המסך.
-          </li>
-          <li>
-            גללו ובחרו <strong>"הוספה למסך הבית"</strong>, ואז <strong>"הוספה"</strong>.
-          </li>
-          <li>פתחו את האפליקציה מהאייקון החדש. מהאייקון היא נפתחת על מסך מלא ויכולה להשאיר את המסך דלוק בזמן ניווט.</li>
-        </ol>
-      ) : canInstall.value ? (
-        <button
-          class="btn primary"
-          onClick={async () => {
-            await installPrompt?.prompt();
-            canInstall.value = false;
-          }}
-        >
-          התקנת האפליקציה
-        </button>
-      ) : (
-        <p>בתפריט הדפדפן בחרו "התקנת האפליקציה" או "הוספה למסך הבית".</p>
-      )}
+      <Header title="התקנה כאפליקציה" />
+      <InstallGuide info={installInfo()} />
     </div>
   );
 }
@@ -219,7 +192,12 @@ export default defineFeature({
     ctx.registerView('privacy', PrivacyView);
     ctx.registerView('about', AboutView);
     ctx.registerMenuItem({ id: 'settings', label: 'הגדרות', icon: 'settings', order: 80, run: () => open({ kind: 'settings' }) });
-    if (!isStandalone()) ctx.registerMenuItem({ id: 'install', label: 'התקנה במסך הבית', icon: 'mobile_arrow_down', order: 85, run: () => open({ kind: 'install' }) });
+    ctx.registerSlot('overlay', InstallSheet, 40);
+    if (installInfo().method !== 'installed') {
+      ctx.registerMenuItem({ id: 'install', label: 'התקנה כאפליקציה', icon: 'mobile_arrow_down', order: 85, run: () => open({ kind: 'install' }) });
+      // Opened on a specific screen (e.g. ?panel=install): no hint on top of it this time.
+      if (!ctx.initialUrl.panel) scheduleInstallHint();
+    }
     ctx.registerMenuItem({
       id: 'report',
       label: 'דיווח על טעות במפה',

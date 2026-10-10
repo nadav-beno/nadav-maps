@@ -112,6 +112,18 @@ function PanelContent() {
 
 const SNAP: SheetSize[] = ['peek', 'half', 'full'];
 
+/** env(safe-area-inset-top) in pixels (CSS custom properties hold it unresolved). */
+let safeTopProbe: HTMLElement | null = null;
+function safeTop(): number {
+  if (!safeTopProbe) {
+    safeTopProbe = document.createElement('div');
+    safeTopProbe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none';
+    safeTopProbe.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(safeTopProbe);
+  }
+  return safeTopProbe.offsetHeight;
+}
+
 /** Mobile bottom sheet with three snap points; drag the handle or tap it to cycle. */
 function Sheet() {
   const drag = useSignal<number | null>(null);
@@ -122,7 +134,8 @@ function Sheet() {
   const heightFor = (s: SheetSize) => {
     const vh = window.innerHeight;
     const tabsH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
-    return s === 'peek' ? 132 : s === 'half' ? Math.round(vh * 0.48) : vh - 72 - tabsH;
+    // Full height stops below the search bar, which sits under the status bar when installed.
+    return s === 'peek' ? 132 : s === 'half' ? Math.round(vh * 0.48) : vh - 72 - safeTop() - tabsH;
   };
 
   // Back on the home screen the sheet shrinks so the map is visible.
@@ -236,6 +249,10 @@ export function App() {
   useSignalEffect(() => {
     document.documentElement.dataset.theme = isDark.value ? 'dark' : 'light';
     document.querySelector('meta[name="theme-color"]:not([media])')?.remove();
+    // Browser chrome follows the app's theme, also when it is set by hand in Settings.
+    for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"][media]')) {
+      meta.content = isDark.value ? '#202124' : '#ffffff';
+    }
   });
   const top = slots.value.filter((s) => s.slot === 'top');
   const controls = slots.value.filter((s) => s.slot === 'controls');
