@@ -62,7 +62,8 @@ export interface FeatureContext {
   onMapClick(handler: MapClickHandler, priority?: number): void;
   registerPlaceAction(action: PlaceAction): void;
   registerPlaceSection(section: PlaceAction): void;
-  onMapLongPress(handler: (lngLat: { lng: number; lat: number }) => void): void;
+  /** Long press (touch) or right click. Return true to say "handled"; priority: higher runs first. */
+  onMapLongPress(handler: (lngLat: { lng: number; lat: number }) => boolean | void, priority?: number): void;
   /** Runs now (if the style is ready) and again after every style change (e.g. dark mode). */
   onStyle(fn: (map: MapLibreMap) => void): void;
 }

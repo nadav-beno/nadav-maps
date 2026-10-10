@@ -15,6 +15,30 @@ export function formatDistance(m: number, units: Units = 'metric'): string {
   return `${km < 10 ? km.toFixed(1) : Math.round(km)} ק״מ`;
 }
 
+const num = (n: number, digits = 0) => n.toLocaleString('he-IL', { maximumFractionDigits: digits });
+const digitsFor = (n: number) => (n < 10 ? 2 : n < 100 ? 1 : 0);
+
+/**
+ * An area for display. Metric: m², then dunams where the region speaks Hebrew (the unit
+ * Israelis use for plots), hectares elsewhere, then km². Imperial: ft², acres, mi².
+ */
+export function formatArea(m2: number, units: Units = 'metric', lang = 'he'): string {
+  if (units === 'imperial') {
+    const acres = m2 / 4046.8564224;
+    if (acres < 0.25) return `${num(Math.round(m2 * 10.7639104))} רגל רבועה`;
+    if (acres < 640) return `${num(acres, digitsFor(acres))} אייקר`;
+    const mi2 = m2 / 2589988.110336;
+    return `${num(mi2, digitsFor(mi2))} מייל רבוע`;
+  }
+  if (m2 < (lang === 'he' ? 1000 : 10000)) return `${num(Math.round(m2))} מ״ר`;
+  if (m2 < 1_000_000) {
+    const v = lang === 'he' ? m2 / 1000 : m2 / 10000;
+    return `${num(v, digitsFor(v))} ${lang === 'he' ? 'דונם' : 'הקטאר'}`;
+  }
+  const km2 = m2 / 1_000_000;
+  return `${num(km2, digitsFor(km2))} קמ״ר`;
+}
+
 export function formatDuration(s: number): string {
   const min = Math.max(1, Math.round(s / 60));
   if (min < 60) return `${min} דק׳`;

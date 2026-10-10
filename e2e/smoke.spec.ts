@@ -147,3 +147,52 @@ test('dark mode and units from settings persist across reloads', async ({ page }
   await page.getByRole('button', { name: 'הגדרות' }).click();
   await expect(page.getByRole('button', { name: 'מיילים' })).toHaveAttribute('aria-pressed', 'true');
 });
+
+test('measure distance: two taps on the map show the distance', async ({ page }) => {
+  await page.goto('./#15/32.08/34.78');
+  await page.getByRole('button', { name: 'תפריט' }).click();
+  await page.getByRole('button', { name: 'מדידת מרחק' }).click();
+  const value = page.locator('.measure-value');
+  await expect(value).toHaveText('מדידת מרחק');
+  await page.waitForTimeout(500);
+  const { width, height } = page.viewportSize()!;
+  await page.mouse.click(Math.round(width * 0.2), Math.round(height * 0.35));
+  await expect(page.locator('.measure-sub')).toHaveText('לחצו על נקודה נוספת במפה');
+  await page.mouse.click(Math.round(width * 0.45), Math.round(height * 0.45));
+  await expect(value).toHaveText(/^\d[\d.,]* (מ׳|ק״מ)$/);
+  await expect(page).toHaveURL(/panel=measure/);
+  await page.getByRole('button', { name: 'בטל נקודה אחרונה' }).click();
+  await expect(value).toHaveText('מדידת מרחק');
+  await page.getByRole('button', { name: 'סגירת המדידה' }).click();
+  await expect(value).toBeHidden();
+});
+
+test('save map image downloads a PNG on desktop', async ({ page }, info) => {
+  test.skip(info.project.name !== 'desktop', 'phones open the share sheet instead');
+  await page.goto('./#15/32.08/34.78');
+  await page.waitForTimeout(1000);
+  await page.getByRole('button', { name: 'תפריט' }).click();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'שמירת תמונת מפה' }).click();
+  expect((await download).suggestedFilename()).toMatch(/^nadav-maps-.*\.png$/);
+  await expect(page.getByText('תמונת המפה נשמרה')).toBeVisible();
+});
+
+test('keyboard shortcuts on desktop: ? opens the help, Escape closes it, M measures', async ({ page }, info) => {
+  test.skip(info.project.name !== 'desktop', 'keyboard shortcuts are for computers');
+  await page.goto('./');
+  await expect(page.locator('.maplibregl-canvas')).toBeVisible();
+  await page.keyboard.press('?');
+  await expect(page.getByRole('heading', { name: 'קיצורי מקלדת' })).toBeVisible();
+  await expect(page.getByText('מדידת מרחק')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('heading', { name: 'קיצורי מקלדת' })).toBeHidden();
+  await page.keyboard.press('m');
+  await expect(page.locator('.measure-value')).toHaveText('מדידת מרחק');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.measure-value')).toBeHidden();
+  // Typing in the search box never triggers a shortcut.
+  await page.getByRole('searchbox', { name: 'חיפוש מקום או כתובת' }).fill('m?');
+  await expect(page.getByRole('heading', { name: 'קיצורי מקלדת' })).toBeHidden();
+  await expect(page.locator('.measure-value')).toBeHidden();
+});

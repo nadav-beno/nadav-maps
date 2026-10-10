@@ -60,6 +60,25 @@ test('screens', async ({ page }, info) => {
   await shot('10-dark');
 });
 
+test('measure', async ({ page }, info) => {
+  await stubNetwork(page);
+  const shot = (n: string) => page.screenshot({ path: `${dir}/${info.project.name}-measure-${n}.png` });
+  await page.goto('./?panel=measure#16/32.08/34.78');
+  await page.waitForTimeout(1500);
+  const { width, height } = page.viewportSize()!;
+  const desktop = width >= 768;
+  // Points on the visible map (beside the side panel on desktop, above the sheet on phones).
+  const at = (x: number, y: number) => page.mouse.click(Math.round((desktop ? width - 408 : width) * x), Math.round(height * y));
+  await at(0.25, 0.3);
+  await at(0.7, 0.36);
+  await at(0.6, 0.62);
+  await page.waitForTimeout(500);
+  await shot('1-distance');
+  await at(0.25, 0.3);
+  await page.waitForTimeout(500);
+  await shot('2-area');
+});
+
 test('basemap', async ({ page }, info) => {
   await stubNetwork(page);
   const shot = (n: string) => page.screenshot({ path: `${dir}/${info.project.name}-map-${n}.png` });

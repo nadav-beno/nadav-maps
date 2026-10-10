@@ -8,6 +8,7 @@ import saved from '@nm/feature-saved';
 import photos from '@nm/feature-photos';
 import settings from '@nm/feature-settings';
 import layers from '@nm/feature-layers';
+import measure from '@nm/feature-measure';
 import contribute from '@nm/feature-contribute';
 import transit from '@nm/feature-transit';
 
@@ -16,4 +17,4 @@ import transit from '@nm/feature-transit';
  * To remove one: delete it from this list (or switch it off with its flag).
  * Order matters only for what appears first in menus and on the home screen.
  */
-export const FEATURES: Feature[] = [search, place, location, directions, transit, navigation, layers, saved, contribute, photos, settings];
+export const FEATURES: Feature[] = [search, place, location, directions, transit, navigation, layers, measure, saved, contribute, photos, settings];

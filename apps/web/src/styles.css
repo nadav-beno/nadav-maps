@@ -564,4 +564,23 @@ a.detail-body { color: var(--text); }
 .contribute-card { display: flex; gap: 16px; align-items: flex-start; padding: 16px; border-radius: 16px; background: var(--bg-2); margin: 10px 0; text-decoration: none; color: inherit; }
 .contribute-card .icon { color: var(--accent); }
 .contribute-card strong { display: block; font-weight: 500; margin-bottom: 2px; }
+
+/* ---------- measure, keyboard shortcuts ---------- */
+.measure { padding-top: 2px; }
+.side-panel .measure { padding-top: 8px; }
+.measure-head { display: flex; align-items: center; gap: 4px; }
+.measure-value { flex: 1; min-width: 0; margin: 0; font-size: 26px; font-weight: 500; line-height: 40px; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.measure-value.is-title { font-size: 20px; }
+.measure-sub { margin: 0 0 10px; min-height: 1.4em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.measure-head .icon-btn:last-child { margin-inline-end: -8px; }
+.measure-head .icon-btn:disabled { opacity: 0.38; cursor: default; background: none; }
+.chip:disabled { opacity: 0.45; cursor: default; }
+.kbd-list { list-style: none; margin: 0 0 12px; padding: 0; }
+.kbd-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; border-bottom: 1px solid var(--divider); }
+.kbd-keys { display: flex; gap: 6px; direction: ltr; }
+kbd {
+  display: inline-grid; place-items: center; min-width: 30px; height: 30px; padding: 0 8px;
+  border: 1px solid var(--border); border-bottom-width: 3px; border-radius: 8px; background: var(--bg-2);
+  font: 500 13px/1 inherit; color: var(--text);
+}
 [hidden] { display: none !important; }

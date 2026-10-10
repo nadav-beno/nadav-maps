@@ -80,6 +80,9 @@ importers:
       '@nm/feature-location':
         specifier: workspace:*
         version: link:../../packages/features/location
+      '@nm/feature-measure':
+        specifier: workspace:*
+        version: link:../../packages/features/measure
       '@nm/feature-navigation':
         specifier: workspace:*
         version: link:../../packages/features/navigation
@@ -201,6 +204,21 @@ importers:
       '@nm/tools':
         specifier: workspace:*
         version: link:../../tools
+      '@preact/signals':
+        specifier: ^2.11.3
+        version: 2.11.3(preact@11.0.1)
+      maplibre-gl:
+        specifier: ^6.13.0
+        version: 6.13.0
+      preact:
+        specifier: ^11.0.1
+        version: 11.0.1
+
+  packages/features/measure:
+    dependencies:
+      '@nm/core':
+        specifier: workspace:*
+        version: link:../../core
       '@preact/signals':
         specifier: ^2.11.3
         version: 2.11.3(preact@11.0.1)
