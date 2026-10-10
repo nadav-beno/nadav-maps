@@ -2,6 +2,7 @@ import { computed, signal } from '@preact/signals';
 import { DEFAULT_REGION, type Region } from '../region.ts';
 import type { Place } from '../types.ts';
 import type { Units } from '../format.ts';
+import { DEFAULT_PROVIDERS, type ProviderConfig } from '../config.ts';
 import { load, save } from './storage.ts';
 
 /** A screen in the side panel / bottom sheet. Features register a component per `kind`. */
@@ -49,6 +50,8 @@ mapLayers.subscribe((v) => save('mapLayers', v));
 
 /** Region under the map center, updated by the shell. */
 export const region = signal<Region>(DEFAULT_REGION);
+/** Data provider URLs in use (set by the shell from env). */
+export const providers = signal<ProviderConfig>(DEFAULT_PROVIDERS);
 export const units = computed<Units>(() => (unitsPref.value === 'auto' ? region.value.units : unitsPref.value));
 
 /** View stack: the last entry is what the panel shows. Empty = home. */

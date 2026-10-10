@@ -73,3 +73,109 @@ export function lineLength(line: LngLat[], from = 0, to = line.length - 1): numb
   for (let i = Math.max(0, from); i < Math.min(to, line.length - 1); i++) sum += distance(line[i], line[i + 1]);
   return sum;
 }
+
+/** `n` evenly spaced points along a line, each with its distance from the start (m). */
+export function sampleLine(line: LngLat[], n: number): { p: LngLat; d: number }[] {
+  if (line.length < 2 || n < 2) return line.slice(0, 1).map((p) => ({ p, d: 0 }));
+  const total = lineLength(line);
+  const out: { p: LngLat; d: number }[] = [];
+  let seg = 0;
+  let segStart = 0;
+  for (let k = 0; k < n; k++) {
+    const target = (total * k) / (n - 1);
+    while (seg < line.length - 2 && segStart + distance(line[seg], line[seg + 1]) < target) {
+      segStart += distance(line[seg], line[seg + 1]);
+      seg++;
+    }
+    const len = distance(line[seg], line[seg + 1]);
+    const t = len === 0 ? 0 : Math.min(1, Math.max(0, (target - segStart) / len));
+    const a = line[seg], b = line[seg + 1];
+    out.push({ p: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], d: target });
+  }
+  return out;
+}
+
+/** Total climb and descent of an elevation series, ignoring jitter under `noiseM`. */
+export function climb(heights: number[], noiseM = 3): { up: number; down: number } {
+  let up = 0, down = 0;
+  let ref = heights[0];
+  for (const h of heights.slice(1)) {
+    const diff = h - ref;
+    if (Math.abs(diff) < noiseM) continue;
+    if (diff > 0) up += diff;
+    else down -= diff;
+    ref = h;
+  }
+  return { up: Math.round(up), down: Math.round(down) };
+}
+
+/** Terrarium-encoded elevation (Mapzen / AWS terrain tiles) from one RGB pixel. */
+export function terrariumHeight(r: number, g: number, b: number): number {
+  return r * 256 + g + b / 256 - 32768;
+}
+
+/** Web-Mercator tile and pixel (0..size) for a point. */
+export function tilePixel([lng, lat]: LngLat, z: number, size = 256): { x: number; y: number; px: number; py: number } {
+  const n = 2 ** z;
+  const fx = ((lng + 180) / 360) * n;
+  const r = (lat * Math.PI) / 180;
+  const fy = ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n;
+  const x = Math.floor(fx), y = Math.floor(fy);
+  return { x, y, px: Math.min(size - 1, Math.floor((fx - x) * size)), py: Math.min(size - 1, Math.floor((fy - y) * size)) };
+}
+
+/** Length of a path in meters; `closed` adds the segment from the last point back to the first. */
+export function pathLength(points: LngLat[], closed = false): number {
+  const open = lineLength(points);
+  return closed && points.length > 2 ? open + distance(points[points.length - 1], points[0]) : open;
+}
+
+/**
+ * Area of a polygon ring on the sphere, in square meters (always positive).
+ * The ring may or may not repeat its first point. Same method as d3-geo and turf
+ * (Chamberlain & Duquette, "Some algorithms for polygons on a sphere", 2007).
+ */
+export function ringArea(ring: LngLat[]): number {
+  const first = ring[0], last = ring[ring.length - 1];
+  const pts = ring.length > 1 && first[0] === last[0] && first[1] === last[1] ? ring.slice(0, -1) : ring;
+  const n = pts.length;
+  if (n < 3) return 0;
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    const a = pts[i], b = pts[(i + 1) % n];
+    sum += rad(b[0] - a[0]) * (2 + Math.sin(rad(a[1])) + Math.sin(rad(b[1])));
+  }
+  return Math.abs((sum * R * R) / 2);
+}
+
+/**
+ * Points along the great circle from a to b (both included), at most `stepM` meters apart,
+ * so a long measured line is drawn as the true shortest path, not a straight Mercator line.
+ */
+export function greatCircle(a: LngLat, b: LngLat, stepM = 20000): LngLat[] {
+  const d = distance(a, b);
+  const steps = Math.min(256, Math.ceil(d / stepM));
+  if (steps <= 1) return [a, b];
+  const φ1 = rad(a[1]), λ1 = rad(a[0]), φ2 = rad(b[1]), λ2 = rad(b[0]);
+  const δ = d / R;
+  const out: LngLat[] = [a];
+  let prevLng = a[0];
+  // Keep longitudes continuous across the antimeridian so the line doesn't wrap the globe.
+  const near = (lng: number) => {
+    while (lng - prevLng > 180) lng -= 360;
+    while (lng - prevLng < -180) lng += 360;
+    return lng;
+  };
+  for (let i = 1; i < steps; i++) {
+    const f = i / steps;
+    const A = Math.sin((1 - f) * δ) / Math.sin(δ);
+    const B = Math.sin(f * δ) / Math.sin(δ);
+    const x = A * Math.cos(φ1) * Math.cos(λ1) + B * Math.cos(φ2) * Math.cos(λ2);
+    const y = A * Math.cos(φ1) * Math.sin(λ1) + B * Math.cos(φ2) * Math.sin(λ2);
+    const z = A * Math.sin(φ1) + B * Math.sin(φ2);
+    prevLng = near((Math.atan2(y, x) * 180) / Math.PI);
+    out.push([prevLng, (Math.atan2(z, Math.hypot(x, y)) * 180) / Math.PI]);
+  }
+  out.push([near(b[0]), b[1]]);
+  return out;
+}

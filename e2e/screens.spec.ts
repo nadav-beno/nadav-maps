@@ -25,6 +25,20 @@ test('screens', async ({ page }, info) => {
   await page.goto('./?route=34.7741,32.0787;34.7918,32.0745&mode=car');
   await page.waitForTimeout(1500);
   await shot('05-directions');
+  await page.goto('./?route=34.7741,32.0787;34.7918,32.0745&mode=transit');
+  await page.waitForTimeout(1500);
+  await shot('05b-transit');
+  await page.getByRole('button', { name: 'שלבים' }).click();
+  await page.waitForTimeout(300);
+  await shot('05c-transit-steps');
+  await page.goto('./?route=34.7741,32.0787;34.7850,32.0765;34.7918,32.0745&mode=walk');
+  await page.waitForTimeout(1500);
+  await shot('05d-walk-via');
+  await page.goto('./#16/32.0779/34.7752');
+  await page.getByRole('button', { name: 'תפריט' }).click();
+  await page.getByRole('button', { name: 'יציאות קרובות' }).click();
+  await page.waitForTimeout(800);
+  await shot('05e-departures');
   await page.goto('./?panel=layers#15/32.08/34.78');
   await page.waitForTimeout(1200);
   await shot('06-layers');
@@ -44,6 +58,54 @@ test('screens', async ({ page }, info) => {
   await page.goto('./#16/32.08/34.78');
   await page.waitForTimeout(1500);
   await shot('10-dark');
+});
+
+test('measure', async ({ page }, info) => {
+  await stubNetwork(page);
+  const shot = (n: string) => page.screenshot({ path: `${dir}/${info.project.name}-measure-${n}.png` });
+  await page.goto('./?panel=measure#16/32.08/34.78');
+  await page.waitForTimeout(1500);
+  const { width, height } = page.viewportSize()!;
+  const desktop = width >= 768;
+  // Points on the visible map (beside the side panel on desktop, above the sheet on phones).
+  const at = (x: number, y: number) => page.mouse.click(Math.round((desktop ? width - 408 : width) * x), Math.round(height * y));
+  await at(0.25, 0.3);
+  await at(0.7, 0.36);
+  await at(0.6, 0.62);
+  await page.waitForTimeout(500);
+  await shot('1-distance');
+  await at(0.25, 0.3);
+  await page.waitForTimeout(500);
+  await shot('2-area');
+});
+
+test('search results', async ({ page }, info) => {
+  await stubNetwork(page);
+  const shot = (n: string) => page.screenshot({ path: `${dir}/${info.project.name}-${n}.png` });
+  await page.goto('./#15/32.08/34.78');
+  await page.waitForTimeout(1200);
+  await page.getByRole('button', { name: 'בתי קפה' }).click();
+  await page.locator('.list').getByText('קפה לנדוור').waitFor();
+  // Pan the map so "search this area" shows up.
+  const desktop = info.project.name === 'desktop';
+  const y = desktop ? 400 : 230;
+  await page.mouse.move(desktop ? 80 : 40, y);
+  await page.mouse.down();
+  await page.mouse.move(desktop ? 480 : 330, y, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(1000);
+  await shot('11-results');
+  await page.locator('.result-filters').getByRole('button', { name: 'פתוח עכשיו' }).click();
+  await page.waitForTimeout(800);
+  await shot('12-results-open-now');
+  await page.goto('./#17/32.0801/34.7792');
+  await page.waitForTimeout(1500);
+  await page.getByRole('searchbox').fill('ביסטרו');
+  await page.waitForTimeout(800);
+  await shot('13-suggest-business');
+  await page.getByRole('searchbox').fill('https://maps.app.goo.gl/AbCdEf');
+  await page.waitForTimeout(400);
+  await shot('14-short-link');
 });
 
 test('basemap', async ({ page }, info) => {

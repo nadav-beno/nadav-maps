@@ -4,6 +4,7 @@ import { CATEGORIES, categoryById } from '../categories.ts';
 import { defineTool } from '../define.ts';
 import { overpassCategory, overpassDetails, overpassIdentify } from '../providers/overpass.ts';
 import { photonReverse, photonSearch } from '../providers/photon.ts';
+import { transitDepartures, transitPlan } from '../providers/transitous.ts';
 import { valhallaRoute } from '../providers/valhalla.ts';
 import { wikipediaSummary } from '../providers/wikipedia.ts';
 
@@ -21,14 +22,16 @@ export const searchPlaces = defineTool({
     near: point.optional().describe('[lng, lat] to prefer results near'),
     zoom: z.number().min(0).max(22).optional().describe('How local the bias is (map zoom)'),
     limit: z.number().int().min(1).max(20).default(8),
+    bbox: z.tuple([lng, lat, lng, lat]).optional().describe('[west, south, east, north] to search only inside (e.g. "search this area")'),
   }),
   async run(input, ctx) {
     const q = normalizeQuery(input.query);
-    let results = await photonSearch(ctx, q, { near: input.near as LngLat | undefined, zoom: input.zoom, limit: input.limit });
+    const opts = { near: input.near as LngLat | undefined, zoom: input.zoom, limit: input.limit, bbox: input.bbox as BBox | undefined };
+    let results = await photonSearch(ctx, q, opts);
     // Hebrew prefixes and connector words hurt recall; retry with variants when thin.
     if (results.length < 3) {
       for (const v of queryVariants(input.query)) {
-        const more = await photonSearch(ctx, v, { near: input.near as LngLat | undefined, zoom: input.zoom, limit: input.limit });
+        const more = await photonSearch(ctx, v, opts);
         const ids = new Set(results.map((r) => r.id));
         results = [...results, ...more.filter((m) => !ids.has(m.id))];
         if (results.length >= 3) break;
@@ -117,4 +120,34 @@ export const placeSummary = defineTool({
   run: (input, ctx) => wikipediaSummary(ctx, input),
 });
 
-export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, placeSummary];
+export const transitDirections = defineTool({
+  name: 'transit_directions',
+  title: 'מסלול בתחבורה ציבורית',
+  description:
+    'Public transport journeys (bus, train, light rail, ferry) between two points, with walking to and from stops. Times are ISO 8601; live times when the operator publishes them. Returns up to 5 options with each leg: line, headsign, stops, times and geometry.',
+  input: z.object({
+    from: point.describe('[lng, lat] origin'),
+    to: point.describe('[lng, lat] destination'),
+    time: z.string().datetime({ offset: true }).optional().describe('Departure (or arrival with arriveBy) time, ISO 8601; default now'),
+    arriveBy: z.boolean().default(false),
+    wheelchair: z.boolean().default(false).describe('Only step-free journeys'),
+    maxItineraries: z.number().int().min(1).max(8).default(5),
+  }),
+  run: (input, ctx) => transitPlan(ctx, input.from as LngLat, input.to as LngLat, input),
+});
+
+export const transitDeparturesTool = defineTool({
+  name: 'transit_departures',
+  title: 'יציאות מתחנה',
+  description: 'Next public transport departures from the stops around a point (or from one stop id): line, headsign, time, and whether the time is live.',
+  input: z.object({
+    near: point.optional().describe('[lng, lat]; departures from all stops within radius'),
+    radius: z.number().int().min(20).max(1000).default(200),
+    stopId: z.string().max(200).optional(),
+    time: z.string().datetime({ offset: true }).optional(),
+    limit: z.number().int().min(1).max(50).default(12),
+  }).refine((v) => v.near || v.stopId, 'near or stopId is required'),
+  run: (input, ctx) => transitDepartures(ctx, { stopId: input.stopId, center: input.near as LngLat | undefined, radiusM: input.radius }, input.limit, input.time),
+});
+
+export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, transitDirections, transitDeparturesTool, placeSummary];

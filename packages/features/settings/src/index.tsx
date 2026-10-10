@@ -177,6 +177,9 @@ function AboutView(_: ViewProps) {
           מסלולים: <a href="https://valhalla.github.io/valhalla/" target="_blank" rel="noopener noreferrer">Valhalla</a> (שרת FOSSGIS)
         </li>
         <li>
+          תחבורה ציבורית: <a href="https://transitous.org" target="_blank" rel="noopener noreferrer">Transitous</a> (MOTIS), לוחות זמנים פתוחים מהמפעילים
+        </li>
+        <li>
           פרטי מקומות: <a href="https://overpass-api.de" target="_blank" rel="noopener noreferrer">Overpass API</a>
         </li>
         <li>

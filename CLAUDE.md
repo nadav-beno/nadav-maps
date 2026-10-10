@@ -9,16 +9,16 @@ region with full coverage). The full product spec lives in a Claude Doc; this fi
 |---|---|
 | `apps/web` | The PWA shell: map, bottom sheet / side panel, URL sync, error reporting. Knows no feature by name except in `src/features.ts`. |
 | `apps/server` | Hono server: `POST /api/tools/<name>` (REST) and `/mcp` (Model Context Protocol, stateless). Same tools as the web app. |
-| `packages/core` | Pure helpers (geo, polyline, Hebrew search text, URL state, formatting, regions, provider config). `@nm/core/app` holds app state (signals) and the feature API. |
-| `packages/tools` | Every data operation as a typed tool (`defineTool` + Zod schema): search, reverse geocode, details, nearby, directions. One schema drives web calls, REST and MCP. Providers: Photon, Valhalla, Overpass, Wikipedia/Wikidata. |
-| `packages/features/*` | One package per feature (search, place, location, directions, navigation, layers, saved, contribute, photos, settings). |
+| `packages/core` | Pure helpers (geo, polyline, Hebrew search text, URL state, formatting, regions, provider config, opening hours, `map-link.ts` for pasted Google/Waze/Apple links, `local-search.ts`). `@nm/core/app` holds app state (signals, incl. `providers`), the feature API and shared UI (`LineChip` for transit lines, `elevationProfile` read from the terrain tiles). |
+| `packages/tools` | Every data operation as a typed tool (`defineTool` + Zod schema): search, reverse geocode, details, nearby, directions. One schema drives web calls, REST and MCP. Providers: Photon, Valhalla, Overpass, Wikipedia/Wikidata, Transitous (MOTIS API, public transit plans and departures). |
+| `packages/features/*` | One package per feature (search, place, location, directions, navigation, transit, measure, layers, saved, contribute, photos, settings). |
 | `e2e` | Playwright tests with all network stubbed (`e2e/stubs.ts`). |
 
 ## Rules
 
 - **Features never import each other or the shell.** Only `@nm/core`, `@nm/core/app`, `@nm/tools` and libraries. `pnpm boundaries` enforces it. Cross-feature navigation goes through view kinds: `open({kind:'place'})`, `openPlace()`, `directionsTo()`, extension points (`registerPlaceAction`, `registerPlaceSection`, `registerHomeSection`, `registerMenuItem`, `registerSlot`).
 - **Everything shareable lives in the URL** (`packages/core/src/url-state.ts`): a screen sets `view.props.url` and the shell syncs it with history.
-- **Nothing regional is hard-coded.** Units, time zone, language and coverage come from `packages/core/src/region.ts`. Provider URLs come from env (`VITE_PHOTON_URL`, `VITE_VALHALLA_URL`, `VITE_OVERPASS_URL`, `VITE_VECTOR_TILES_URL`, `VITE_GLYPHS_URL`, `VITE_TERRAIN_URL`, `VITE_PLACES_URL`, `VITE_SATELLITE_URL`; on the server the same names without `VITE_`; an empty value switches a source off).
+- **Nothing regional is hard-coded.** Units, time zone, language and coverage come from `packages/core/src/region.ts`. Provider URLs come from env (`VITE_PHOTON_URL`, `VITE_VALHALLA_URL`, `VITE_OVERPASS_URL`, `VITE_VECTOR_TILES_URL`, `VITE_GLYPHS_URL`, `VITE_TERRAIN_URL`, `VITE_PLACES_URL`, `VITE_SATELLITE_URL`, `VITE_TRANSIT_URL`; on the server the same names without `VITE_`; an empty value switches a source off).
 - **Privacy:** never log or send coordinates or search text to our servers' logs or to error reporting.
 - **New data operation?** Add a tool in `packages/tools/src/tools/index.ts` and list it in `TOOLS`; it appears in the web client, REST and MCP automatically.
 - **Hebrew UI text** in the components; code, comments and commits in English.

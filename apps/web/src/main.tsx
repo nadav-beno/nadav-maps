@@ -1,7 +1,7 @@
 import { render } from 'preact';
 import { effect } from '@preact/signals';
 import { parseUrl, providersFromEnv } from '@nm/core';
-import { applyUrlFlags, featureCatalog, isEnabled, sheet, viewStack } from '@nm/core/app';
+import { applyUrlFlags, featureCatalog, isEnabled, providers, sheet, viewStack } from '@nm/core/app';
 import { createToolClient, setToolClient } from '@nm/tools';
 import { FEATURES } from './features.ts';
 import { App, isWide } from './shell/App.tsx';
@@ -16,6 +16,7 @@ initErrorReporting();
 
 const config = providersFromEnv(import.meta.env as Record<string, string | undefined>, 'VITE_');
 setToolClient(createToolClient(config, 'he'));
+providers.value = config;
 
 applyUrlFlags(location.search);
 const initialUrl = parseUrl(location.href);
@@ -48,7 +49,10 @@ effect(() => {
     const sheetH = (parseFloat(cs.getPropertyValue('--sheet-h')) || 0) + (parseFloat(cs.getPropertyValue('--tabs-h')) || 0);
     // The side panel is on the right in Hebrew (RTL), so the map's visual centre shifts left.
     const side = document.dir === 'rtl' ? { left: 0, right: 408 } : { left: 408, right: 0 };
-    map.setPadding(wide ? { top: 0, bottom: 0, ...side } : { top: 110, bottom: sheetH, left: 0, right: 0 });
+    const next = wide ? { top: 0, bottom: 0, ...side } : { top: 110, bottom: sheetH, left: 0, right: 0 };
+    // Setting the same padding again would stop a flyTo that a view just started.
+    const cur = map.getPadding();
+    if (next.top !== cur.top || next.bottom !== cur.bottom || next.left !== cur.left || next.right !== cur.right) map.setPadding(next);
   });
 });
 

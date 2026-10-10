@@ -10,3 +10,6 @@ export * from './config.ts';
 export * from './overture.ts';
 export * from './place-visual.ts';
 export * from './maneuver.ts';
+export * from './hours.ts';
+export * from './map-link.ts';
+export * from './local-search.ts';

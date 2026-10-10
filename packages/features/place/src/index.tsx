@@ -1,4 +1,5 @@
-import { useSignal, useSignalEffect } from '@preact/signals';
+import { useSignal } from '@preact/signals';
+import { useEffect, useRef } from 'preact/hooks';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { droppedPin, formatCoords, formatDistance, distance, OVERTURE_SOURCE, overturePlace, parsePlaceId, type Place, type PlaceDetails } from '@nm/core';
 import {
@@ -21,7 +22,7 @@ import {
   type ViewProps,
 } from '@nm/core/app';
 import { categoryLabel, identifyPlace, placeDetails, placeSummary, reverseGeocode, tools, type PlaceSummary } from '@nm/tools';
-import { parseHours, type HoursInfo } from './hours.ts';
+import { parseHours, type HoursInfo } from '@nm/core';
 import { displayPhone, socialLabel } from './contact.ts';
 
 let map: MapLibreMap;
@@ -113,10 +114,15 @@ function PlaceView({ view }: ViewProps<{ place: Place }>) {
   const hours = useSignal<HoursInfo | null>(null);
   const summary = useSignal<PlaceSummary | null>(null);
   const resolved = useSignal<Place>(place);
+  // The id this card upgraded itself to (a tapped label matched to OSM), so that swap doesn't reload.
+  const upgradedTo = useRef<string | null>(null);
 
-  useSignalEffect(() => {
+  // Reload whenever another place is shown in this same card (search results, long-press pins).
+  useEffect(() => {
     const p = place;
     resolved.value = p;
+    if (upgradedTo.current === p.id) return;
+    upgradedTo.current = null;
     details.value = null;
     hours.value = null;
     summary.value = null;
@@ -133,6 +139,7 @@ function PlaceView({ view }: ViewProps<{ place: Place }>) {
           if (d && !cancelled && p.id.startsWith('pt:')) {
             const better: Place = { ...p, id: d.id, osm: d.osm, category: d.category ?? p.category, address: p.address ?? d.address };
             resolved.value = better;
+            upgradedTo.current = better.id;
             openPlace(better, { replace: true });
           }
         }
@@ -152,7 +159,7 @@ function PlaceView({ view }: ViewProps<{ place: Place }>) {
       cancelled = true;
       ac.abort();
     };
-  });
+  }, [place.id, place.name, place.lng, place.lat]);
 
   const p = resolved.value;
   const d = details.value;
@@ -399,12 +406,17 @@ export default defineFeature({
         };
         if (!ctx.initialUrl.view) toast('המקום מהקישור לא נמצא');
         else {
-          let tries = 0;
-          const onIdle = () => {
-            if (find() || ++tries > 5) ctx.map.off('idle', onIdle);
-            if (tries > 5) toast('המקום מהקישור לא נמצא');
+          // The places archive loads lazily; keep looking while its tiles arrive, up to 20 s.
+          const until = Date.now() + 20_000;
+          const onLoad = () => {
+            const found = find();
+            if (!found && Date.now() < until) return;
+            ctx.map.off('idle', onLoad);
+            ctx.map.off('sourcedata', onLoad);
+            if (!found) toast('המקום מהקישור לא נמצא');
           };
-          ctx.map.on('idle', onIdle);
+          ctx.map.on('idle', onLoad);
+          ctx.map.on('sourcedata', onLoad);
         }
       }
       else if (parsed.osm) {

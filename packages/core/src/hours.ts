@@ -20,11 +20,18 @@ function when(next: Date, now: Date): string {
   return `ביום ${DAYS[next.getDay()]} ב-${hhmm(next)}`;
 }
 
-export async function parseHours(value: string, lat: number, lng: number, countryCode = 'il', now = new Date()): Promise<HoursInfo | null> {
-  let oh: import('opening_hours').default;
+type OpeningHoursCtor = typeof import('opening_hours').default;
+let ohModule: Promise<OpeningHoursCtor | null> | undefined;
+
+/** The opening_hours library is big: load it on first use. */
+function loadOpeningHours(): Promise<OpeningHoursCtor | null> {
+  ohModule ??= import('opening_hours').then((m) => m.default).catch(() => null);
+  return ohModule;
+}
+
+function evaluate(Ctor: OpeningHoursCtor, value: string, lat: number, lng: number, countryCode: string): InstanceType<OpeningHoursCtor> | null {
   try {
-    const { default: OpeningHours } = await import('opening_hours');
-    oh = new OpeningHours(value, { lat, lon: lng, address: { country_code: countryCode, state: '' } } as never, {
+    return new Ctor(value, { lat, lon: lng, address: { country_code: countryCode, state: '' } } as never, {
       mode: 0,
       tag_key: 'opening_hours',
       locale: 'en',
@@ -32,6 +39,12 @@ export async function parseHours(value: string, lat: number, lng: number, countr
   } catch {
     return null;
   }
+}
+
+export async function parseHours(value: string, lat: number, lng: number, countryCode = 'il', now = new Date()): Promise<HoursInfo | null> {
+  const Ctor = await loadOpeningHours();
+  const oh = Ctor && evaluate(Ctor, value, lat, lng, countryCode);
+  if (!oh) return null;
   const unsure = oh.getUnknown(now);
   const open = unsure ? null : oh.getState(now);
   const next = oh.getNextChange(now);
@@ -62,4 +75,38 @@ export async function parseHours(value: string, lat: number, lng: number, countr
     week.push({ day: DAYS[from.getDay()], hours, today: from.getDay() === now.getDay() });
   }
   return { open, status, week, unsure };
+}
+
+/** Something with an opening_hours value, e.g. a category search result. */
+export interface WithHours {
+  id: string;
+  lat: number;
+  lng: number;
+  countryCode?: string;
+  openingHours?: string;
+}
+
+/**
+ * Open right now? true / false, or null when unknown (no hours, a rule we can't parse, or
+ * one that depends on things like "by appointment"). Keyed by place id.
+ */
+export async function openNowStates(places: WithHours[], now = new Date()): Promise<Map<string, boolean | null>> {
+  const out = new Map<string, boolean | null>();
+  const Ctor = places.some((p) => p.openingHours) ? await loadOpeningHours() : null;
+  for (const p of places) {
+    const oh = Ctor && p.openingHours ? evaluate(Ctor, p.openingHours, p.lat, p.lng, p.countryCode ?? 'il') : null;
+    out.set(p.id, !oh || oh.getUnknown(now) ? null : oh.getState(now));
+  }
+  return out;
+}
+
+/** The "open now" filter: keeps open places; `unknown` counts those hidden because their hours are unknown. */
+export function filterOpenNow<T extends { id: string }>(places: T[], states: Map<string, boolean | null>): { places: T[]; unknown: number } {
+  let unknown = 0;
+  const kept = places.filter((p) => {
+    const s = states.get(p.id) ?? null;
+    if (s === null) unknown++;
+    return s === true;
+  });
+  return { places: kept, unknown };
 }

@@ -80,6 +80,9 @@ importers:
       '@nm/feature-location':
         specifier: workspace:*
         version: link:../../packages/features/location
+      '@nm/feature-measure':
+        specifier: workspace:*
+        version: link:../../packages/features/measure
       '@nm/feature-navigation':
         specifier: workspace:*
         version: link:../../packages/features/navigation
@@ -98,6 +101,9 @@ importers:
       '@nm/feature-settings':
         specifier: workspace:*
         version: link:../../packages/features/settings
+      '@nm/feature-transit':
+        specifier: workspace:*
+        version: link:../../packages/features/transit
       '@nm/tools':
         specifier: workspace:*
         version: link:../../packages/tools
@@ -138,6 +144,9 @@ importers:
       maplibre-gl:
         specifier: ^6.13.0
         version: 6.13.0
+      opening_hours:
+        specifier: ^3.15.0
+        version: 3.15.0(typescript@7.0.2)
       preact:
         specifier: ^11.0.1
         version: 11.0.1
@@ -198,6 +207,21 @@ importers:
       '@nm/tools':
         specifier: workspace:*
         version: link:../../tools
+      '@preact/signals':
+        specifier: ^2.11.3
+        version: 2.11.3(preact@11.0.1)
+      maplibre-gl:
+        specifier: ^6.13.0
+        version: 6.13.0
+      preact:
+        specifier: ^11.0.1
+        version: 11.0.1
+
+  packages/features/measure:
+    dependencies:
+      '@nm/core':
+        specifier: workspace:*
+        version: link:../../core
       '@preact/signals':
         specifier: ^2.11.3
         version: 2.11.3(preact@11.0.1)
@@ -308,6 +332,24 @@ importers:
         version: 11.0.1
 
   packages/features/settings:
+    dependencies:
+      '@nm/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@nm/tools':
+        specifier: workspace:*
+        version: link:../../tools
+      '@preact/signals':
+        specifier: ^2.11.3
+        version: 2.11.3(preact@11.0.1)
+      maplibre-gl:
+        specifier: ^6.13.0
+        version: 6.13.0
+      preact:
+        specifier: ^11.0.1
+        version: 11.0.1
+
+  packages/features/transit:
     dependencies:
       '@nm/core':
         specifier: workspace:*

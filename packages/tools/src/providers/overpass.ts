@@ -1,4 +1,4 @@
-import { osmPlaceId, type BBox, type OsmType, type Place, type PlaceDetails } from '@nm/core';
+import { osmPlaceId, type BBox, type OsmType, type PlaceDetails } from '@nm/core';
 import { getJson, type ToolContext } from '../define.ts';
 
 interface OverpassElement {
@@ -75,7 +75,7 @@ export async function overpassDetails(ctx: ToolContext, type: OsmType, id: numbe
   return els[0] ? elementToDetails(els[0], ctx.lang) : null;
 }
 
-export async function overpassCategory(ctx: ToolContext, filters: string[], bbox: BBox, limit = 60): Promise<Place[]> {
+export async function overpassCategory(ctx: ToolContext, filters: string[], bbox: BBox, limit = 60): Promise<PlaceDetails[]> {
   const [w, s, e, n] = bbox;
   const b = `${s.toFixed(5)},${w.toFixed(5)},${n.toFixed(5)},${e.toFixed(5)}`;
   const parts = filters.map((f) => `nwr${f}(${b});`).join('');

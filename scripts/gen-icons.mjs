@@ -8,6 +8,7 @@ import { join } from 'node:path';
 const NAMES = `
 menu close arrow_back arrow_forward search my_location location_searching location_disabled navigation explore layers
 directions turn_right near_me call public schedule location_on share bookmark star home work history
+tram subway directions_railway departure_board add remove trending_up trending_down elevation airport_shuttle gondola_lift commute rss_feed directions_subway do_not_disturb_on update
 restaurant local_cafe shopping_cart local_gas_station ev_station local_pharmacy local_atm local_parking hotel
 photo_camera park local_hospital directions_car directions_walk directions_bike directions_railway swap_vert
 more_vert add delete edit download upload link settings flag lock mobile_arrow_down volume_up volume_off sports_score
@@ -24,6 +25,7 @@ landscape water luggage home_repair_service real_estate_agent hiking wc icecream
 toys music_note book_2 nature_people cottage camping golf_course playground child_care hearing visibility
 emergency volunteer_activism groups account_circle bookmarks photo_library rate_review add_a_photo feedback
 mode_of_travel route alt_route tune event filter_list dark_mode light_mode language straighten
+keyboard undo
 `.trim().split(/\s+/);
 // Icons drawn filled (selected / solid look), as Google does for these.
 const FILLED = new Set(['navigation', 'location_on', 'bookmark', 'star', 'home', 'work', 'directions', 'trip_origin', 'explore', 'person', 'account_circle', 'bookmarks']);
