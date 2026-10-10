@@ -183,7 +183,7 @@ test('pasting a Google Maps link drops a pin there', async ({ page }) => {
     el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
   }, 'https://www.google.com/maps/@32.0853,34.7818,16z');
   await expect(page).toHaveURL(/place=pt:34\.78180,32\.08530/);
-  await expect(page.getByRole('heading', { name: 'נקודה שנבחרה' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'דיזנגוף' })).toBeVisible();
   await expect(page).toHaveURL(/#16\/32\.085\d*\/34\.781\d*/);
 });
 
