@@ -1,7 +1,7 @@
 import { render } from 'preact';
 import { effect } from '@preact/signals';
 import { parseUrl, providersFromEnv } from '@nm/core';
-import { applyUrlFlags, featureCatalog, isEnabled, sheet, viewStack } from '@nm/core/app';
+import { applyUrlFlags, featureCatalog, isEnabled, providers, sheet, viewStack } from '@nm/core/app';
 import { createToolClient, setToolClient } from '@nm/tools';
 import { FEATURES } from './features.ts';
 import { App, isWide } from './shell/App.tsx';
@@ -16,6 +16,7 @@ initErrorReporting();
 
 const config = providersFromEnv(import.meta.env as Record<string, string | undefined>, 'VITE_');
 setToolClient(createToolClient(config, 'he'));
+providers.value = config;
 
 applyUrlFlags(location.search);
 const initialUrl = parseUrl(location.href);

@@ -22,6 +22,7 @@
     "@nm/feature-saved": "workspace:*",
     "@nm/feature-search": "workspace:*",
     "@nm/feature-settings": "workspace:*",
+    "@nm/feature-transit": "workspace:*",
     "@nm/tools": "workspace:*",
     "@preact/signals": "^2.11.3",
     "maplibre-contour": "0.1.1",

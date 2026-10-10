@@ -21,6 +21,11 @@ export interface ProviderConfig {
   places: string;
   /** Satellite imagery XYZ template for the "satellite" map type ('' = hide that option). */
   satellite: string;
+  /**
+   * Public transport router (MOTIS API: routes, departures, stops), '' = no transit.
+   * Transitous is a free community service for open-source, non-commercial apps.
+   */
+  transitUrl: string;
   /** Identifies us to public servers, as their usage policies ask. */
   userAgent: string;
 }
@@ -35,6 +40,7 @@ export const DEFAULT_PROVIDERS: ProviderConfig = {
   places: 'https://overturemaps-extras-us-west-2.s3.us-west-2.amazonaws.com/tiles/{release}/places.pmtiles',
   // Sentinel-2 cloudless 2016 by EOX (CC BY 4.0). Later editions are non-commercial only.
   satellite: 'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg',
+  transitUrl: 'https://api.transitous.org',
   userAgent: 'NadavMaps/0.2 (+https://github.com/nadav-beno/nadav-maps)',
 };
 
@@ -49,6 +55,7 @@ export function providersFromEnv(env: Record<string, string | undefined>, prefix
     terrain: env[prefix + 'TERRAIN_URL'] ?? DEFAULT_PROVIDERS.terrain,
     places: env[prefix + 'PLACES_URL'] ?? DEFAULT_PROVIDERS.places,
     satellite: env[prefix + 'SATELLITE_URL'] ?? DEFAULT_PROVIDERS.satellite,
+    transitUrl: env[prefix + 'TRANSIT_URL'] ?? DEFAULT_PROVIDERS.transitUrl,
     userAgent: DEFAULT_PROVIDERS.userAgent,
   };
 }

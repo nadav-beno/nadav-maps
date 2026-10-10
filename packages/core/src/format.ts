@@ -37,3 +37,23 @@ export function formatArrival(secondsFromNow: number, now = Date.now(), timeZone
 export function formatCoords(lng: number, lat: number): string {
   return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
 }
+
+/** "08:12" for an ISO time, in the given (or local) time zone. */
+export function formatClock(iso: string, timeZone?: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone }).format(d);
+}
+
+/** "עכשיו" / "בעוד 4 דק׳" / "14:35" for a departure, like transit apps do. */
+export function formatDeparture(iso: string, now = Date.now(), timeZone?: string): string {
+  const min = Math.round((new Date(iso).getTime() - now) / 60000);
+  if (min <= 0) return 'עכשיו';
+  if (min < 60) return `בעוד ${min} דק׳`;
+  return formatClock(iso, timeZone);
+}
+
+/** Minutes a live time is late (+) or early (−) against the timetable. */
+export function delayMinutes(actual: string, scheduled: string): number {
+  return Math.round((new Date(actual).getTime() - new Date(scheduled).getTime()) / 60000);
+}

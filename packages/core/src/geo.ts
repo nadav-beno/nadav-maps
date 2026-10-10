@@ -73,3 +73,53 @@ export function lineLength(line: LngLat[], from = 0, to = line.length - 1): numb
   for (let i = Math.max(0, from); i < Math.min(to, line.length - 1); i++) sum += distance(line[i], line[i + 1]);
   return sum;
 }
+
+/** `n` evenly spaced points along a line, each with its distance from the start (m). */
+export function sampleLine(line: LngLat[], n: number): { p: LngLat; d: number }[] {
+  if (line.length < 2 || n < 2) return line.slice(0, 1).map((p) => ({ p, d: 0 }));
+  const total = lineLength(line);
+  const out: { p: LngLat; d: number }[] = [];
+  let seg = 0;
+  let segStart = 0;
+  for (let k = 0; k < n; k++) {
+    const target = (total * k) / (n - 1);
+    while (seg < line.length - 2 && segStart + distance(line[seg], line[seg + 1]) < target) {
+      segStart += distance(line[seg], line[seg + 1]);
+      seg++;
+    }
+    const len = distance(line[seg], line[seg + 1]);
+    const t = len === 0 ? 0 : Math.min(1, Math.max(0, (target - segStart) / len));
+    const a = line[seg], b = line[seg + 1];
+    out.push({ p: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], d: target });
+  }
+  return out;
+}
+
+/** Total climb and descent of an elevation series, ignoring jitter under `noiseM`. */
+export function climb(heights: number[], noiseM = 3): { up: number; down: number } {
+  let up = 0, down = 0;
+  let ref = heights[0];
+  for (const h of heights.slice(1)) {
+    const diff = h - ref;
+    if (Math.abs(diff) < noiseM) continue;
+    if (diff > 0) up += diff;
+    else down -= diff;
+    ref = h;
+  }
+  return { up: Math.round(up), down: Math.round(down) };
+}
+
+/** Terrarium-encoded elevation (Mapzen / AWS terrain tiles) from one RGB pixel. */
+export function terrariumHeight(r: number, g: number, b: number): number {
+  return r * 256 + g + b / 256 - 32768;
+}
+
+/** Web-Mercator tile and pixel (0..size) for a point. */
+export function tilePixel([lng, lat]: LngLat, z: number, size = 256): { x: number; y: number; px: number; py: number } {
+  const n = 2 ** z;
+  const fx = ((lng + 180) / 360) * n;
+  const r = (lat * Math.PI) / 180;
+  const fy = ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n;
+  const x = Math.floor(fx), y = Math.floor(fy);
+  return { x, y, px: Math.min(size - 1, Math.floor((fx - x) * size)), py: Math.min(size - 1, Math.floor((fy - y) * size)) };
+}

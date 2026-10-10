@@ -399,12 +399,17 @@ export default defineFeature({
         };
         if (!ctx.initialUrl.view) toast('המקום מהקישור לא נמצא');
         else {
-          let tries = 0;
-          const onIdle = () => {
-            if (find() || ++tries > 5) ctx.map.off('idle', onIdle);
-            if (tries > 5) toast('המקום מהקישור לא נמצא');
+          // The places archive loads lazily; keep looking while its tiles arrive, up to 20 s.
+          const until = Date.now() + 20_000;
+          const onLoad = () => {
+            const found = find();
+            if (!found && Date.now() < until) return;
+            ctx.map.off('idle', onLoad);
+            ctx.map.off('sourcedata', onLoad);
+            if (!found) toast('המקום מהקישור לא נמצא');
           };
-          ctx.map.on('idle', onIdle);
+          ctx.map.on('idle', onLoad);
+          ctx.map.on('sourcedata', onLoad);
         }
       }
       else if (parsed.osm) {

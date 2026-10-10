@@ -59,3 +59,38 @@ describe('maneuver icons', () => {
     expect(maneuverIcon(999)).toBe('arrow_upward');
   });
 });
+
+describe('elevation helpers', () => {
+  it('samples a line evenly', async () => {
+    const { sampleLine, lineLength } = await import('./geo.ts');
+    const line: [number, number][] = [[34.78, 32.08], [34.79, 32.08], [34.79, 32.09]];
+    const s = sampleLine(line, 5);
+    expect(s).toHaveLength(5);
+    expect(s[0].p).toEqual(line[0]);
+    expect(s[4].p[0]).toBeCloseTo(34.79, 6);
+    expect(s[4].p[1]).toBeCloseTo(32.09, 6);
+    expect(s[4].d).toBeCloseTo(lineLength(line), 3);
+  });
+  it('sums climb and descent without jitter', async () => {
+    const { climb } = await import('./geo.ts');
+    expect(climb([10, 11, 10, 30, 29, 5])).toEqual({ up: 20, down: 25 });
+  });
+  it('decodes terrarium pixels and finds tiles', async () => {
+    const { terrariumHeight, tilePixel } = await import('./geo.ts');
+    expect(terrariumHeight(128, 0, 0)).toBe(0);
+    expect(terrariumHeight(128, 100, 128)).toBe(100.5);
+    const t = tilePixel([0, 0], 1);
+    expect(t).toMatchObject({ x: 1, y: 1, px: 0, py: 0 });
+  });
+});
+
+describe('departure times', () => {
+  it('reads like a transit app', async () => {
+    const { formatDeparture, delayMinutes } = await import('./format.ts');
+    const now = Date.parse('2026-10-10T08:00:00Z');
+    expect(formatDeparture('2026-10-10T07:59:30Z', now)).toBe('עכשיו');
+    expect(formatDeparture('2026-10-10T08:04:00Z', now)).toBe('בעוד 4 דק׳');
+    expect(formatDeparture('2026-10-10T09:30:00Z', now, 'Asia/Jerusalem')).toBe('12:30');
+    expect(delayMinutes('2026-10-10T08:05:00Z', '2026-10-10T08:02:00Z')).toBe(3);
+  });
+});

@@ -55,7 +55,8 @@ test('save a place to favorites and see it in the saved list', async ({ page }) 
 
 test('a business from Overture opens with its phone, website and socials', async ({ page }) => {
   await page.goto('./?place=ovt:aaaaaaaa-0000-4000-8000-000000000001#18/32.0801/34.7792');
-  await expect(page.getByRole('heading', { name: 'ביסטרו הכרמל' })).toBeVisible();
+  // The places archive is found and read lazily (bucket listing, then range reads).
+  await expect(page.getByRole('heading', { name: 'ביסטרו הכרמל' })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(/03-?523-?6058/)).toBeVisible();
   await expect(page.getByText('bistro.example', { exact: true })).toBeVisible();
   await expect(page.getByText('פייסבוק')).toBeVisible();
@@ -80,6 +81,35 @@ test('layers: satellite map type and transit lines are remembered', async ({ pag
   await page.getByRole('button', { name: 'שכבות' }).click();
   await expect(page.getByRole('radio', { name: 'לוויין' })).toBeChecked();
   await expect(page.getByRole('button', { name: 'תחבורה ציבורית' })).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('public transport directions show lines, live times and steps', async ({ page }) => {
+  await page.goto('./?route=34.7741,32.0787;34.7918,32.0745&mode=transit');
+  await expect(page.locator('.transit-option')).toHaveCount(2);
+  const first = page.locator('.transit-option').first();
+  await expect(first.locator('.line-chip')).toContainText('18');
+  await expect(first).toContainText('בזמן אמת');
+  await page.getByRole('button', { name: 'שלבים' }).click();
+  await expect(page.getByText('לכיוון תחנה מרכזית')).toBeVisible();
+  await expect(page.getByText('3 תחנות')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Waze' })).toHaveAttribute('href', /waze\.com\/ul\?ll=32\.0745,34\.7918/);
+});
+
+test('departures near me list the next buses', async ({ page }) => {
+  await page.goto('./#16/32.0779/34.7752');
+  await page.getByRole('button', { name: 'תפריט' }).click();
+  await page.getByRole('button', { name: 'יציאות קרובות' }).click();
+  await expect(page.getByText('לכיוון בת ים')).toBeVisible();
+  await expect(page.locator('.departure').first().locator('.dep-time')).toHaveClass(/live/);
+  await expect(page.locator('.departure')).toHaveCount(3);
+});
+
+test('a stop on the way is kept in the link', async ({ page }) => {
+  await page.goto('./?route=34.7741,32.0787;34.7850,32.0765;34.7918,32.0745');
+  await expect(page.getByRole('textbox', { name: 'עצירה 1' })).toBeVisible();
+  await expect(page.locator('.route-option').first()).toBeVisible();
+  await page.getByRole('button', { name: 'הסרת עצירה 1' }).click();
+  await expect(page).toHaveURL(/route=34\.7741,32\.0787;34\.7918,32\.0745/);
 });
 
 test('category chip finds nearby cafes', async ({ page }) => {

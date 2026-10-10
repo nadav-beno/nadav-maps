@@ -41,6 +41,69 @@ export interface PlaceDetails extends Place {
 }
 
 export type TravelMode = 'car' | 'walk' | 'bike';
+/** What the directions screen can plan: the road modes plus public transport. */
+export type DirectionsMode = TravelMode | 'transit';
+
+/** Kinds of public transport, for icons and colours. */
+export type TransitMode = 'bus' | 'coach' | 'rail' | 'tram' | 'subway' | 'ferry' | 'cable' | 'other';
+
+export interface TransitStop {
+  name: string;
+  lng: number;
+  lat: number;
+  stopId?: string;
+  /** Platform or track, when the operator publishes one. */
+  track?: string;
+}
+
+/** One part of a public transport journey: a walk, or a ride on one line. */
+export interface TransitLeg {
+  kind: 'walk' | 'ride';
+  mode?: TransitMode;
+  from: TransitStop;
+  to: TransitStop;
+  /** ISO times; `scheduled*` differ from the actual times only with live data. */
+  start: string;
+  end: string;
+  scheduledStart: string;
+  scheduledEnd: string;
+  realtime: boolean;
+  distanceM?: number;
+  /** Line number or name ("5", "רכבת ישראל"). */
+  line?: string;
+  headsign?: string;
+  /** Hex colours without '#', from the operator. */
+  color?: string;
+  textColor?: string;
+  agency?: string;
+  /** Number of stops ridden. */
+  stops?: number;
+  geometry: LngLat[];
+}
+
+export interface TransitItinerary {
+  start: string;
+  end: string;
+  durationS: number;
+  transfers: number;
+  walkM: number;
+  legs: TransitLeg[];
+}
+
+/** A departure from a stop near the user. */
+export interface Departure {
+  stop: TransitStop;
+  mode: TransitMode;
+  line: string;
+  headsign: string;
+  time: string;
+  scheduledTime: string;
+  realtime: boolean;
+  cancelled: boolean;
+  color?: string;
+  textColor?: string;
+  agency?: string;
+}
 
 export interface RouteStep {
   /** Valhalla maneuver type number. */

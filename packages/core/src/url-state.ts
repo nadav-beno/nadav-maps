@@ -1,4 +1,4 @@
-import type { LngLat, TravelMode } from './types.ts';
+import type { DirectionsMode, LngLat } from './types.ts';
 
 /**
  * Everything worth sharing lives in the URL, so any screen can be linked to:
@@ -15,12 +15,12 @@ export interface UrlState {
   route?: LngLat[];
   /** route starts at the user's current location ("route=me;lng,lat"). */
   fromMe?: boolean;
-  mode?: TravelMode;
+  mode?: DirectionsMode;
   list?: string;
   panel?: string;
 }
 
-const MODES: TravelMode[] = ['car', 'walk', 'bike'];
+const MODES: DirectionsMode[] = ['car', 'walk', 'bike', 'transit'];
 
 export function parseUrl(href: string): UrlState {
   const url = new URL(href);
@@ -53,7 +53,7 @@ export function parseUrl(href: string): UrlState {
     if (pts.length >= (out.fromMe ? 1 : 2)) out.route = pts;
     else delete out.fromMe;
   }
-  const mode = p.get('mode') as TravelMode | null;
+  const mode = p.get('mode') as DirectionsMode | null;
   if (mode && MODES.includes(mode)) out.mode = mode;
   const list = p.get('list');
   if (list) out.list = list;

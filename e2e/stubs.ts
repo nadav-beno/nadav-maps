@@ -2,6 +2,7 @@ import type { Page, Route } from '@playwright/test';
 import { encodePolyline } from '../packages/core/src/polyline.ts';
 import { sceneTile, TILEJSON } from './basemap-scene.ts';
 import { PLACES_LISTING, PLACES_PMTILES, PLACES_RELEASE } from './places-scene.ts';
+import { motisPlan, motisStoptimes } from './transit-fixture.ts';
 
 /**
  * Tests never hit the real map servers: tiles, search, routing and place details
@@ -95,6 +96,12 @@ export async function stubNetwork(page: Page): Promise<void> {
   await page.route('https://valhalla1.openstreetmap.de/route', (r) =>
     r.fulfill({ json: { trip: valhallaTrip(ROUTE_LINE, 240), alternates: [{ trip: valhallaTrip([ROUTE_LINE[0], [34.78, 32.083], ROUTE_LINE[3]], 330) }] } }),
   );
+  await page.route('https://api.transitous.org/api/**', (r) => {
+    const path = new URL(r.request().url()).pathname;
+    if (path.endsWith('/plan')) return r.fulfill({ json: motisPlan(), headers: { 'access-control-allow-origin': '*' } });
+    if (path.endsWith('/stoptimes')) return r.fulfill({ json: motisStoptimes(), headers: { 'access-control-allow-origin': '*' } });
+    return r.fulfill({ status: 404, body: '' });
+  });
   await page.route('https://overpass-api.de/api/interpreter', (r) => {
     const body = decodeURIComponent(r.request().postData() ?? '');
     if (body.includes('2002')) {

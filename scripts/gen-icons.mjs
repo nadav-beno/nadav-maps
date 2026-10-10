@@ -8,6 +8,7 @@ import { join } from 'node:path';
 const NAMES = `
 menu close arrow_back arrow_forward search my_location location_searching location_disabled navigation explore layers
 directions turn_right near_me call public schedule location_on share bookmark star home work history
+tram subway directions_railway departure_board add remove trending_up trending_down elevation airport_shuttle gondola_lift commute rss_feed directions_subway do_not_disturb_on update
 restaurant local_cafe shopping_cart local_gas_station ev_station local_pharmacy local_atm local_parking hotel
 photo_camera park local_hospital directions_car directions_walk directions_bike directions_railway swap_vert
 more_vert add delete edit download upload link settings flag lock mobile_arrow_down volume_up volume_off sports_score

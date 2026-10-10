@@ -98,6 +98,9 @@ importers:
       '@nm/feature-settings':
         specifier: workspace:*
         version: link:../../packages/features/settings
+      '@nm/feature-transit':
+        specifier: workspace:*
+        version: link:../../packages/features/transit
       '@nm/tools':
         specifier: workspace:*
         version: link:../../packages/tools
@@ -308,6 +311,24 @@ importers:
         version: 11.0.1
 
   packages/features/settings:
+    dependencies:
+      '@nm/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@nm/tools':
+        specifier: workspace:*
+        version: link:../../tools
+      '@preact/signals':
+        specifier: ^2.11.3
+        version: 2.11.3(preact@11.0.1)
+      maplibre-gl:
+        specifier: ^6.13.0
+        version: 6.13.0
+      preact:
+        specifier: ^11.0.1
+        version: 11.0.1
+
+  packages/features/transit:
     dependencies:
       '@nm/core':
         specifier: workspace:*
