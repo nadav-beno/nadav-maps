@@ -124,3 +124,28 @@ test('basemap', async ({ page }, info) => {
   await page.waitForTimeout(1500);
   await shot('light-3d');
 });
+
+test('traffic here', async ({ page }, info) => {
+  await stubNetwork(page);
+  const shot = (n: string) => page.screenshot({ path: `${dir}/${info.project.name}-traffic-here-${n}.png` });
+  await page.goto('./?here=test&panel=layers#15/32.085/34.79');
+  await page.getByRole('button', { name: 'תנועה', exact: true }).click();
+  await page.waitForTimeout(1500);
+  await shot('1-layers');
+  await page.goto('./?here=test#15/32.085/34.79');
+  await page.waitForTimeout(2000);
+  await shot('2-map');
+  type W = { map: { project(p: [number, number]): { x: number; y: number } } };
+  const at = await page.evaluate(() => (window as unknown as W).map.project([34.792, 32.088]));
+  const box = (await page.locator('.maplibregl-canvas').boundingBox())!;
+  await page.mouse.click(box.x + at.x, box.y + at.y);
+  await page.waitForTimeout(1200);
+  await shot('3-incident');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('./?here=test#15/32.085/34.79');
+  await page.waitForTimeout(2000);
+  await shot('4-dark');
+  await page.goto('./?here=test&route=34.7741,32.0787;34.7918,32.0745&mode=car');
+  await page.waitForTimeout(2000);
+  await shot('5-route');
+});

@@ -14,7 +14,7 @@ import './styles.css';
 
 initErrorReporting();
 
-// On localhost, ?tomtom=<key> switches TomTom on without a rebuild (e2e tests, trying a key).
+// On localhost, ?tomtom=<key> / ?here=<key> switch traffic on without a rebuild (e2e tests, trying a key).
 const config = withDevOverrides(providersFromEnv(import.meta.env as Record<string, string | undefined>, 'VITE_'), location.href);
 setToolClient(createToolClient(config, 'he'));
 providers.value = config;

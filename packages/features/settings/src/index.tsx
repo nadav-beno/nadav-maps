@@ -194,6 +194,11 @@ function AboutView(_: ViewProps) {
             תנועה בזמן אמת ואירועי תנועה: <a href="https://www.tomtom.com" target="_blank" rel="noopener noreferrer">© TomTom</a>
           </li>
         )}
+        {providers.value.hereKey && (
+          <li>
+            תנועה בזמן אמת ואירועי תנועה: <a href="https://www.here.com" target="_blank" rel="noopener noreferrer">© {new Date().getFullYear()} HERE</a>
+          </li>
+        )}
         <li>
           תבליט וקווי גובה: נתוני גובה של Mapzen Terrain Tiles (AWS Open Data)
         </li>

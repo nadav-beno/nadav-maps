@@ -14,3 +14,4 @@ export * from './hours.ts';
 export * from './map-link.ts';
 export * from './local-search.ts';
 export * from './tomtom.ts';
+export * from './here.ts';

@@ -9,3 +9,4 @@ export * from './client.ts';
 export { parseWikipediaTag, type PlaceSummary } from './providers/wikipedia.ts';
 export { motisItinerary, motisDeparture, transitMode } from './providers/transitous.ts';
 export { parseIncident, NO_KEY_MESSAGE, type TrafficIncident, type TrafficTime } from './providers/tomtom.ts';
+export { parseHereIncident, hereRouteSummary } from './providers/here.ts';

@@ -1,6 +1,6 @@
 import { signal } from '@preact/signals';
 import { back, defineFeature, Icon, mapLayers, mapType, open, region, type FeatureContext, type MapLayers, type MapTypePref, type ViewProps } from '@nm/core/app';
-import { hasTraffic, onTrafficClick, syncTraffic, TrafficIncidentView, trafficOn, TrafficToggle } from './traffic.tsx';
+import { currentTraffic, hasTraffic, onTrafficClick, PROVIDER_NAME, syncTraffic, TrafficIncidentView, trafficOn, TrafficToggle } from './traffic.tsx';
 
 let map: FeatureContext['map'];
 const bearing = signal(0);
@@ -60,12 +60,7 @@ function LayersView(_: ViewProps) {
           />
         )}
       </div>
-      {hasTraffic() && trafficOn.value && (
-        <p class="muted small">
-          תנועה בזמן אמת מ-TomTom: ירוק זורם, כתום ואדום איטי, אדום כהה פקק. הקישו על סמל של אירוע לפרטים.
-          {region.value.bbox && !region.value.coverage.traffic && ` ל-TomTom אין עדיין נתוני תנועה בזמן אמת ב${region.value.name}, אז ייתכן שלא יופיע כאן כלום.`}
-        </p>
-      )}
+      {hasTraffic() && trafficOn.value && <TrafficNote />}
       {mapType.value === 'satellite' && (
         <p class="muted small">
           תצלומי לוויין Sentinel-2 (רזולוציה של 10 מטר לפיקסל): מתאימים למבט על אזורים, לא לזיהוי בתים. תצלומים מפורטים יותר דורשים רישיון בתשלום.
@@ -73,6 +68,18 @@ function LayersView(_: ViewProps) {
       )}
       {mapType.value === 'terrain' && <p class="muted small">הצללת תבליט וקווי גובה כל 10 עד 100 מטר, לפי רמת הזום.</p>}
     </div>
+  );
+}
+
+function TrafficNote() {
+  const t = currentTraffic();
+  if (!t) return null;
+  const name = PROVIDER_NAME[t.id];
+  return (
+    <p class="muted small">
+      תנועה בזמן אמת מ-{name}: ירוק זורם, כתום ואדום איטי, אדום כהה פקק. הקישו על סמל של אירוע לפרטים.
+      {region.value.bbox && !t.live && ` ל-${name} אין עדיין נתוני תנועה בזמן אמת ב${region.value.name}, אז ייתכן שלא יופיע כאן כלום.`}
+    </p>
   );
 }
 
@@ -110,6 +117,17 @@ export default defineFeature({
     if (hasTraffic()) {
       ctx.registerView('traffic-incident', TrafficIncidentView);
       ctx.onStyle(syncTraffic);
+      // The provider follows the region on screen (HERE in Israel, TomTom elsewhere when both keys exist).
+      let seen = region.peek().id;
+      region.subscribe((r) => {
+        if (r.id === seen) return;
+        seen = r.id;
+        try {
+          syncTraffic(ctx.map);
+        } catch {
+          /* style still loading: onStyle will add the right layers */
+        }
+      });
       ctx.onMapClick((_e, features) => onTrafficClick(ctx.map, features as never), 60);
     }
     const sync = () => {

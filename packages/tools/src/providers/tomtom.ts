@@ -41,7 +41,7 @@ interface TomTomIncident {
   };
 }
 
-export const NO_KEY_MESSAGE = 'מידע על תנועה בזמן אמת לא הוגדר כאן (חסר מפתח TomTom).';
+export const NO_KEY_MESSAGE = 'מידע על תנועה בזמן אמת לא הוגדר כאן (חסר מפתח TomTom או HERE).';
 
 function requireKey(ctx: ToolContext): string {
   const key = ctx.config.tomtomKey;

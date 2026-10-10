@@ -10,9 +10,11 @@ re-checked before relying on it.
 - **Transitous (תחבורה ציבורית) מותר רק לפרויקט קוד פתוח ולא מסחרי.** אם Nadav Maps יהיה מסחרי (פרסומות, מנויים), צריך להחליף או להקים MOTIS משלנו על GTFS של משרד התחבורה.
 - **אריחי העסקים של Overture:** Overture עצמה כותבת שלא להשתמש באריחי ה-PMTiles שלה בפרודקשן (השכבות והשדות משתנים בלי הודעה). כדאי לייצר אריחים משלנו מהנתונים (רישיון פתוח) ולשים אותם על אחסון שלנו.
 - **לוויין:** אנחנו משתמשים בגרסת 2016 של Sentinel-2 cloudless, היחידה ברישיון CC BY 4.0. כל הגרסאות החדשות לא מסחריות (CC BY-NC-SA) או בתשלום ל-EOX.
-- **TomTom חובר, כבוי עד שתוסיף מפתח:** שכבת "תנועה" בשכבות (צבעים כמו בגוגל, אירועים עם פרטים בהקשה), זמן נסיעה "עם תנועה" במסלולי רכב, וכלי `traffic_incidents` ב-REST וב-MCP. **הממצא החשוב: לפי התיעוד של TomTom, אין להם תנועה בזמן אמת בישראל** (ישראל לא ברשימת הכיסוי של Traffic API, ובניתוב מסומנת בלי Real-time Traffic). בארה"ב, באירופה ובמפרץ זה יעבוד. **לישראל, HERE כן מכסה תנועה ואירועים** (חינם עד 30 אלף אריחי תנועה בחודש), ולכן ההמלצה היא להוסיף את HERE כספק תנועה לישראל באותו מבנה.
+- **TomTom חובר, כבוי עד שתוסיף מפתח:** שכבת "תנועה" בשכבות (צבעים כמו בגוגל, אירועים עם פרטים בהקשה), זמן נסיעה "עם תנועה" במסלולי רכב, וכלי `traffic_incidents` ב-REST וב-MCP. **הממצא החשוב: לפי התיעוד של TomTom, אין להם תנועה בזמן אמת בישראל** (ישראל לא ברשימת הכיסוי של Traffic API, ובניתוב מסומנת בלי Real-time Traffic). בארה"ב, באירופה ובמפרץ זה יעבוד. **לישראל, HERE כן מכסה תנועה ואירועים** (חינם עד 30 אלף אריחי תנועה בחודש), ולכן HERE חובר עכשיו באותו מבנה.
+- **HERE חובר, כבוי עד שתוסיף מפתח:** אותה שכבת "תנועה", אותם אירועים ואותו "עם תנועה" במסלולים, מנתוני HERE. בישראל האפליקציה בוחרת HERE (גם אם יש מפתח TomTom), בארה"ב ובבריטניה TomTom כשיש את שני המפתחות, ו-HERE לבד עובד בכל מקום שהוא מכסה. הקרדיט "© HERE" מופיע רק כשהשכבה דולקת. **שים לב למכסה:** אירועי תנועה של HERE (Traffic API) חינם רק עד 5,000 בקשות בחודש; אנחנו קוראים להם רק כשמקישים על אירוע.
 - **מה כדאי לעשות קודם (לפי סדר):** (1) שרת Photon + Valhalla משלנו לישראל (בערך 20 עד 40 דולר בחודש על VPS אחד); (2) אריחי Overture משלנו; (3) מפתח HERE לתנועה בישראל, ומפתח TomTom לשאר העולם; (4) Open-Meteo למזג אוויר ואיכות אוויר (חינם לשימוש לא מסחרי); (5) Mapillary לתמונות רחוב (חינם עם טוקן).
 - **מה אתה צריך לעשות כדי להדליק את TomTom:** פרטים בסעיף [Switching TomTom on](#switching-tomtom-on). בקצרה: חשבון ב-developer.tomtom.com, מפתח, הגבלת המפתח לדומיין שלנו, ומשתנה `VITE_TOMTOM_KEY` ב-GitHub (Settings > Secrets and variables > Actions > Variables).
+- **מה אתה צריך לעשות כדי להדליק את HERE (לישראל):** פרטים בסעיף [Switching HERE on](#switching-here-on). בקצרה: חשבון ב-platform.here.com, אפליקציה עם API key, Trusted Domains עם הדומיין שלנו, ומשתנה `VITE_HERE_KEY` באותו מקום ב-GitHub.
 
 ## The sources we use today
 
@@ -27,7 +29,8 @@ re-checked before relying on it.
 | Hillshade, contours, elevation profile | Mapzen Terrain Tiles on AWS Open Data `s3.amazonaws.com/elevation-tiles-prod` | `TERRAIN_URL` | Per-source credits (SRTM/USGS public domain, EU-DEM, etc.), plus "Mapzen" ([attribution.md](https://raw.githubusercontent.com/tilezen/joerd/master/docs/attribution.md)); no AWS account needed ([registry](https://registry.opendata.aws/terrain-tiles/)) | No usage policy published; AWS Open Data sponsorship | Low: static, sponsored dataset (not updated, but terrain doesn't move) | **Keep.** Our credit says "Mapzen Terrain" and links the list, which matches the attribution doc |
 | Public transport | Transitous (MOTIS) `api.transitous.org` | `TRANSIT_URL` | Must "link to transitous.org/sources in a visible place" + OSM attribution ([API terms](https://transitous.org/api/)) | Only for projects that are **open source and not commercial**; "commercial use is not allowed"; contact them before resource-intensive endpoints; send a User-Agent with contact ([API terms](https://transitous.org/api/)) | **High if we go commercial**, medium otherwise (volunteer service) | **Keep while non-commercial** (we now link the sources page in About). Before any monetisation: self-host MOTIS with Israel GTFS (~$20–40/month) |
 | Place descriptions and photos | Wikipedia REST + Wikidata | (fixed) | CC BY-SA, link back | Be considerate, requests in series, descriptive User-Agent ([API:Etiquette](https://www.mediawiki.org/wiki/API:Etiquette)) | Low | **Keep** |
-| Live traffic, incidents, traffic-aware car times (new, off) | TomTom `api.tomtom.com` | `TOMTOM_KEY` | "© TomTom" (we show it in the map credits and About only while it's on) | Free tier per month: 200K traffic vector tiles, 2.5K Incident Details, 20K Routing ([pricing](https://docs.tomtom.com/pricing)); commercial use allowed "even as part of the free evaluation" ([FAQ](https://docs.tomtom.com/platform/documentation/status-and-support/faqs)) | **No live traffic in Israel** (see below); browser key is public by nature | **Key-based, wired, off.** Use for the US/Europe/Gulf; add HERE for Israel |
+| Live traffic, incidents, traffic-aware car times (new, off) | TomTom `api.tomtom.com` | `TOMTOM_KEY` | "© TomTom" (we show it in the map credits and About only while it's on) | Free tier per month: 200K traffic vector tiles, 2.5K Incident Details, 20K Routing ([pricing](https://docs.tomtom.com/pricing)); commercial use allowed "even as part of the free evaluation" ([FAQ](https://docs.tomtom.com/platform/documentation/status-and-support/faqs)) | **No live traffic in Israel** (see below); browser key is public by nature | **Key-based, wired, off.** Use for the US/Europe/Gulf; HERE for Israel |
+| Live traffic, incidents, traffic-aware car times (new, off) | HERE `traffic.vector.hereapi.com`, `data.traffic.hereapi.com`, `router.hereapi.com` | `HERE_KEY` | "© <year> HERE" (map credits and About, only while it's on) | Free per month: 30K Traffic Vector Tile, 5K Traffic (v7 incidents), 30K Routing car ([HERE plans](https://developers.here.com/plans)) | Low-medium: 5K incident calls/month is small; browser key is public (limit it with Trusted Domains) | **Key-based, wired, off.** The provider for Israel |
 
 Things that are already done right: provider URLs are all env driven, `''` switches a source off, the
 User-Agent identifies us, our own server logs never carry coordinates or search text, and error
@@ -43,9 +46,10 @@ does receive the coordinates or search text it needs to answer; that is unavoida
   [v1 traffic coverage](https://docs.tomtom.com/traffic-api/documentation/tomtom-maps/v1/product-information/market-coverage)).
   The Routing API lists Israel for Calculate Route but **without** "Real-time Traffic"
   ([routing coverage](https://docs.tomtom.com/routing-api/documentation/tomtom-maps/product-information/market-coverage)).
-  The app copes: the region entry for Israel says `traffic: false`, the layers screen says so when the
-  traffic layer is on in Israel, and the directions screen shows "עם תנועה" there only if TomTom reports
-  a real delay (≥ 1 minute).
+  The app copes: the region entry for Israel lists only HERE under `coverage.traffic`, so
+  `trafficProvider()` picks HERE there when its key exists. With only a TomTom key, the layers screen
+  says TomTom has no live data in Israel and the directions screen shows "עם תנועה" there only if
+  TomTom reports a real delay (≥ 1 minute).
 - **Endpoints we use** (v4 "Genesis", GA; TomTom recommends Orbis for new work, and the Orbis raster
   flow tiles currently document only `light`/`dark` styles): vector flow tiles
   ([doc](https://docs.tomtom.com/traffic-api/documentation/traffic-flow/vector-flow-tiles)), vector
@@ -69,11 +73,52 @@ does receive the coordinates or search text it needs to answer; that is unavoida
   not cache TomTom responses beyond the browser's normal HTTP cache and the tool client's 5-minute
   in-memory cache, and we show "© TomTom" whenever the layer is on.
 
+## HERE: what we verified
+
+- **Coverage.** Israel is listed with Flow ✅ and Incidents ✅ (code E0435); the UK and every US row too
+  ([HERE Traffic API v7 coverage](https://docs.here.com/traffic-api/docs/traffic-here-traffic-api-v7-coverage-information)).
+- **Which provider where** (`trafficProvider(region, keys)` in `packages/core/src/region.ts`, unit tested):
+  each region lists the providers with live traffic, best first (Israel `['here']`, US/UK
+  `['tomtom', 'here']`). The first listed one with a key wins; else any configured key (TomTom first),
+  marked not live. The map layer follows the region on screen; the tools pick by the box centre / route start.
+- **Endpoints we use** (all with `apiKey=`):
+  - Flow + incidents on the map: Traffic Vector Tile API v2,
+    `https://traffic.vector.hereapi.com/v2/traffictiles/traffic/mc/{z}/{x}/{y}/omv`, zoom 0 to 17, layers
+    `traffic_flow` (`kind` free/minor/slow/queuing/stationary, `drives_on_left`), `traffic_incidents`
+    (`road_closed`), `incident_icons` (`kind`, `warning_level`, `is_primary`)
+    ([get started](https://docs.here.com/traffic-api/docs/get-started-with-traffic-vector-tile),
+    [layers](https://docs.here.com/traffic-api/docs/traffic-vector-tile-layers)). We draw it ourselves in the
+    same Google-like colours as TomTom, under our labels and route lines, re-added after every style swap,
+    slightly translucent in dark mode. The raster alternative, Traffic Raster Tile API v3
+    `https://traffic.maps.hereapi.com/v3/flow/mc/{z}/{x}/{y}/png?style=explore.day` (HERE's own colours,
+    [reference](https://docs.here.com/traffic-api/reference/here-traffic-raster-tile-api-v3-gettile)), is not used.
+  - Incident details: Traffic API v7 `https://data.traffic.hereapi.com/v7/incidents?in=bbox:w,s,e,n&locationReferencing=shape&lang=he-IL`;
+    the box may be at most 1° wide and 1° tall ([geospatial filters](https://docs.here.com/traffic-api/docs/geospatial-filters-here-traffic-api-v7-concepts),
+    [reference](https://docs.here.com/traffic-api/reference/traffic-api-v7-getincidents)). v7 has no delay
+    in seconds, so HERE incidents show severity (criticality) instead.
+  - Traffic-aware car time: Routing v8 `https://router.hereapi.com/v8/routes?transportMode=car&origin=…&destination=…&via=lat,lng!passThrough=true…&departureTime=<now>&return=summary,typicalDuration`
+    ([reference](https://docs.here.com/routing/reference/routing-api-v8-calculateroutes)). Up to 30
+    pass-through points from our Valhalla line (plus each stop) make HERE time *our* route; we read
+    `duration` and `baseDuration` (free flow).
+- **Free tier vs our usage** ([HERE Base plan](https://developers.here.com/plans)): Traffic Vector Tile
+  30K/month then $0.113 per 1,000; Traffic (v7 incidents) 5K/month then $2.75 per 1,000 (called only when
+  someone taps an incident or uses `traffic_incidents`); Routing car 30K/month then $0.83 per 1,000 (one
+  call per car route looked at). Whether a `departureTime` route counts as plain "Car" or as the pricier
+  "Time Aware" routing line on that page is **(unverified)**. The page does not say a card is needed for
+  the Base plan **(unverified)**; without payment details the Limited plan's requests-per-second caps apply.
+- **Key protection**: Trusted Domains on the app's credentials (up to 20 in the web UI); requests from other
+  sites "may be rejected" ([HERE KB](https://docs.here.com/here-kb/docs/trusted-domains-for-api-keys-allow-only-approved-websites-to-use-your-credentials)).
+  How server calls without a Referer are treated is **(unverified)**, so give the REST/MCP server its own
+  key without domain limits.
+- **HERE data on a non-HERE base map, and caching**: not checked against HERE's service terms
+  **(unverified)**; until then no caching beyond the browser's HTTP cache and the tool client's 5-minute
+  in-memory cache, and "© HERE" whenever the layer is on.
+
 ## Gaps vs Google Maps, and what would close them
 
 | Gap | Best source | Terms / cost (verified where linked) | Notes |
 |---|---|---|---|
-| Live traffic and incidents, **Israel** | HERE Traffic API / Traffic Vector Tiles | Israel listed with flow and incidents ([HERE coverage](https://docs.here.com/traffic-api/docs/here-traffic-api-v7-coverage-information)); free 30K traffic tiles/month then $0.113 per 1,000, Traffic API 5K free then $2.75 per 1,000 ([HERE plans](https://developers.here.com/plans)) | Next step: a `HERE_KEY` provider behind the same layer and tool. HERE terms on non-HERE base maps **(unverified)** |
+| Live traffic and incidents, **Israel** | HERE Traffic API / Traffic Vector Tiles | Israel listed with flow and incidents ([HERE coverage](https://docs.here.com/traffic-api/docs/here-traffic-api-v7-coverage-information)); free 30K traffic tiles/month then $0.113 per 1,000, Traffic API 5K free then $2.75 per 1,000 ([HERE plans](https://developers.here.com/plans)) | **Wired** (`HERE_KEY`, off until set), see above. HERE terms on non-HERE base maps **(unverified)** |
 | Live traffic and incidents, rest of world | TomTom (wired) | See above | Covers US, UK, EU, Gulf |
 | Traffic-aware ETAs | TomTom Routing (wired, 20K/month free), HERE Routing (30K/month free) | [TomTom pricing](https://docs.tomtom.com/pricing), [HERE plans](https://developers.here.com/plans) | Valhalla stays the route source; the provider only times it |
 | Business hours, photos, reviews | OSM + Overture (no reviews), **Foursquare OS Places** (open, Apache 2.0, also a PMTiles file; [access](https://docs.foursquare.com/data-products/docs/access-fsq-os-places)); TomTom Places (Details 5K/month free, [pricing](https://docs.tomtom.com/pricing)) | | Reviews and user photos are the one thing no open dataset has; they need our own accounts + moderation, or a paid provider |
@@ -99,3 +144,19 @@ does receive the coordinates or search text it needs to answer; that is unavoida
 
 To try a key locally without a build: `pnpm dev` and open `http://localhost:5173/?tomtom=<key>`
 (the `?tomtom=` override is ignored on any host except localhost).
+
+## Switching HERE on
+
+1. Create an account at [platform.here.com](https://platform.here.com/) (Base plan). Under
+   **Access Manager > Apps**, register an app and create an **API key** for it.
+2. On the same app, open **Trusted Domains** and add `nadav-beno.github.io` (and `localhost` to try it
+   locally). The key ends up in the public JavaScript, so this is what stops others from using it.
+3. In GitHub: repository **Settings > Secrets and variables > Actions > Variables > New repository
+   variable**, name `VITE_HERE_KEY`, value = the key. For the REST/MCP server set `HERE_KEY` in its
+   environment (use a second key without Trusted Domains there).
+4. Re-run the "Deploy to GitHub Pages" workflow (or push to main). The "תנועה" button appears under
+   שכבות; in Israel it shows HERE traffic, and car routes there show "עם תנועה".
+5. Watch usage in the HERE platform for the first weeks, mainly the 5K/month Traffic (incidents) line.
+
+To try a key locally without a build: `pnpm dev` and open `http://localhost:5173/?here=<key>`
+(ignored on any host except localhost).

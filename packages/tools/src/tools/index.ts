@@ -1,10 +1,11 @@
-import { normalizeQuery, parsePlaceId, queryVariants, type BBox, type LngLat } from '@nm/core';
+import { normalizeQuery, parsePlaceId, queryVariants, regionAt, trafficProvider, type BBox, type LngLat } from '@nm/core';
 import { z } from 'zod';
 import { CATEGORIES, categoryById } from '../categories.ts';
-import { defineTool } from '../define.ts';
+import { defineTool, ProviderError, type ToolContext } from '../define.ts';
 import { overpassCategory, overpassDetails, overpassIdentify } from '../providers/overpass.ts';
 import { photonReverse, photonSearch } from '../providers/photon.ts';
-import { tomtomIncidents, tomtomTrafficTime } from '../providers/tomtom.ts';
+import { hereIncidents, hereTrafficTime } from '../providers/here.ts';
+import { NO_KEY_MESSAGE, tomtomIncidents, tomtomTrafficTime } from '../providers/tomtom.ts';
 import { transitDepartures, transitPlan } from '../providers/transitous.ts';
 import { valhallaRoute } from '../providers/valhalla.ts';
 import { wikipediaSummary } from '../providers/wikipedia.ts';
@@ -151,28 +152,39 @@ export const transitDeparturesTool = defineTool({
   run: (input, ctx) => transitDepartures(ctx, { stopId: input.stopId, center: input.near as LngLat | undefined, radiusM: input.radius }, input.limit, input.time),
 });
 
+/** The traffic provider for a place with the keys this client or server has (see trafficProvider). */
+function trafficAt(ctx: ToolContext, at: LngLat) {
+  const choice = trafficProvider(regionAt(at), ctx.config);
+  if (!choice) throw new ProviderError(NO_KEY_MESSAGE, 503, 'traffic');
+  return choice.id;
+}
+
 export const trafficIncidents = defineTool({
   name: 'traffic_incidents',
   title: 'אירועי תנועה',
   description:
-    'Live traffic incidents (accidents, road works, closures, jams) inside a bounding box of at most 10,000 km², worst first: type, description, delay (s), length (m), from/to road names, road numbers and a [lng, lat] point. Data from TomTom; needs a configured key.',
+    'Live traffic incidents (accidents, road works, closures, jams) inside a bounding box (at most 10,000 km² with TomTom, 1° by 1° with HERE), worst first: type, description, delay (s, TomTom only), length (m), from/to road names, roads and a [lng, lat] point. Data from HERE where TomTom has no live traffic (Israel) and TomTom elsewhere, whichever has a configured key.',
   input: z.object({
     bbox: z.tuple([lng, lat, lng, lat]).describe('[west, south, east, north]'),
     limit: z.number().int().min(1).max(100).default(50),
   }),
-  run: (input, ctx) => tomtomIncidents(ctx, input.bbox as BBox, input.limit),
+  run: (input, ctx) => {
+    const [w, s, e, n] = input.bbox as BBox;
+    return trafficAt(ctx, [(w + e) / 2, (s + n) / 2]) === 'here' ? hereIncidents(ctx, input.bbox as BBox, input.limit) : tomtomIncidents(ctx, input.bbox as BBox, input.limit);
+  },
 });
 
 export const trafficTravelTime = defineTool({
   name: 'traffic_travel_time',
   title: 'זמן נסיעה עם תנועה',
   description:
-    'Travel time by car with live traffic (TomTom) for a route: the time, the time without traffic and the delay, in seconds. Pass the route geometry from get_directions to time that exact route. Needs a configured key.',
+    'Travel time by car with live traffic (HERE or TomTom, by region and configured keys) for a route: the time, the time without traffic and the delay, in seconds. Pass the route geometry from get_directions to time that exact route. Needs a configured key.',
   input: z.object({
     waypoints: z.array(point).min(2).max(10).describe('[[lng, lat], ...] origin first, destination last'),
     geometry: z.array(point).max(5000).optional().describe('The route line to time, [[lng, lat], ...]'),
   }),
-  run: (input, ctx) => tomtomTrafficTime(ctx, input.waypoints as LngLat[], input.geometry as LngLat[] | undefined),
+  run: (input, ctx) =>
+    (trafficAt(ctx, input.waypoints[0] as LngLat) === 'here' ? hereTrafficTime : tomtomTrafficTime)(ctx, input.waypoints as LngLat[], input.geometry as LngLat[] | undefined),
 });
 
 export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, transitDirections, transitDeparturesTool, placeSummary, trafficIncidents, trafficTravelTime];

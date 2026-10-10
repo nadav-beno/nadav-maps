@@ -31,6 +31,11 @@ export interface ProviderConfig {
    * In the browser build it is public by nature; restrict it to our domain in TomTom's dashboard.
    */
   tomtomKey: string;
+  /**
+   * HERE API key ('' = off): the same traffic features, preferred where TomTom has no live
+   * traffic (Israel). Public in the browser build too; limit it with HERE's trusted domains.
+   */
+  hereKey: string;
   /** Identifies us to public servers, as their usage policies ask. */
   userAgent: string;
 }
@@ -47,6 +52,7 @@ export const DEFAULT_PROVIDERS: ProviderConfig = {
   satellite: 'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg',
   transitUrl: 'https://api.transitous.org',
   tomtomKey: '',
+  hereKey: '',
   userAgent: 'NadavMaps/0.2 (+https://github.com/nadav-beno/nadav-maps)',
 };
 
@@ -63,12 +69,14 @@ export function providersFromEnv(env: Record<string, string | undefined>, prefix
     satellite: env[prefix + 'SATELLITE_URL'] ?? DEFAULT_PROVIDERS.satellite,
     transitUrl: env[prefix + 'TRANSIT_URL'] ?? DEFAULT_PROVIDERS.transitUrl,
     tomtomKey: (env[prefix + 'TOMTOM_KEY'] ?? '').trim(),
+    hereKey: (env[prefix + 'HERE_KEY'] ?? '').trim(),
     userAgent: DEFAULT_PROVIDERS.userAgent,
   };
 }
 
 /**
- * Lets tests (and developers) switch on key-based sources without a build: `?tomtom=<key>`.
+ * Lets tests (and developers) switch on key-based sources without a build: `?tomtom=<key>`,
+ * `?here=<key>`.
  * Honoured only on localhost, so the public site can't be pointed at someone else's key.
  */
 export function withDevOverrides(cfg: ProviderConfig, href: string): ProviderConfig {
@@ -79,6 +87,8 @@ export function withDevOverrides(cfg: ProviderConfig, href: string): ProviderCon
     return cfg;
   }
   if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) return cfg;
-  const key = url.searchParams.get('tomtom');
-  return key ? { ...cfg, tomtomKey: key } : cfg;
+  const tomtom = url.searchParams.get('tomtom');
+  const here = url.searchParams.get('here');
+  if (!tomtom && !here) return cfg;
+  return { ...cfg, ...(tomtom ? { tomtomKey: tomtom } : {}), ...(here ? { hereKey: here } : {}) };
 }
