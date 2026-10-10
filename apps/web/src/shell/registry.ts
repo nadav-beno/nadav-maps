@@ -14,7 +14,7 @@ export const homeSections = signal<HomeSection[]>([]);
 export const slots = signal<{ slot: Slot; Component: ComponentType; order: number }[]>([]);
 
 const clickHandlers: { handler: MapClickHandler; priority: number }[] = [];
-const longPressHandlers: ((p: { lng: number; lat: number }) => void)[] = [];
+const longPressHandlers: { handler: (p: { lng: number; lat: number }) => boolean | void; priority: number }[] = [];
 const styleHooks: ((map: MapLibreMap) => void)[] = [];
 
 export function createContext(map: MapLibreMap, initialUrl: UrlState): FeatureContext {
@@ -34,7 +34,10 @@ export function createContext(map: MapLibreMap, initialUrl: UrlState): FeatureCo
       clickHandlers.push({ handler, priority });
       clickHandlers.sort((a, b) => b.priority - a.priority);
     },
-    onMapLongPress: (h) => longPressHandlers.push(h),
+    onMapLongPress: (handler, priority = 0) => {
+      longPressHandlers.push({ handler, priority });
+      longPressHandlers.sort((a, b) => b.priority - a.priority);
+    },
     onStyle: (fn) => {
       styleHooks.push(fn);
       if (map.isStyleLoaded()) fn(map);
@@ -57,5 +60,5 @@ export function dispatchClick(e: MapMouseEvent, features: MapGeoJSONFeature[]): 
 }
 
 export function dispatchLongPress(p: { lng: number; lat: number }): void {
-  for (const h of longPressHandlers) h(p);
+  for (const { handler } of longPressHandlers) if (handler(p) === true) return;
 }

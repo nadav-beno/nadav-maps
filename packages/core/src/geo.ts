@@ -73,3 +73,59 @@ export function lineLength(line: LngLat[], from = 0, to = line.length - 1): numb
   for (let i = Math.max(0, from); i < Math.min(to, line.length - 1); i++) sum += distance(line[i], line[i + 1]);
   return sum;
 }
+
+/** Length of a path in meters; `closed` adds the segment from the last point back to the first. */
+export function pathLength(points: LngLat[], closed = false): number {
+  const open = lineLength(points);
+  return closed && points.length > 2 ? open + distance(points[points.length - 1], points[0]) : open;
+}
+
+/**
+ * Area of a polygon ring on the sphere, in square meters (always positive).
+ * The ring may or may not repeat its first point. Same method as d3-geo and turf
+ * (Chamberlain & Duquette, "Some algorithms for polygons on a sphere", 2007).
+ */
+export function ringArea(ring: LngLat[]): number {
+  const first = ring[0], last = ring[ring.length - 1];
+  const pts = ring.length > 1 && first[0] === last[0] && first[1] === last[1] ? ring.slice(0, -1) : ring;
+  const n = pts.length;
+  if (n < 3) return 0;
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    const a = pts[i], b = pts[(i + 1) % n];
+    sum += rad(b[0] - a[0]) * (2 + Math.sin(rad(a[1])) + Math.sin(rad(b[1])));
+  }
+  return Math.abs((sum * R * R) / 2);
+}
+
+/**
+ * Points along the great circle from a to b (both included), at most `stepM` meters apart,
+ * so a long measured line is drawn as the true shortest path, not a straight Mercator line.
+ */
+export function greatCircle(a: LngLat, b: LngLat, stepM = 20000): LngLat[] {
+  const d = distance(a, b);
+  const steps = Math.min(256, Math.ceil(d / stepM));
+  if (steps <= 1) return [a, b];
+  const φ1 = rad(a[1]), λ1 = rad(a[0]), φ2 = rad(b[1]), λ2 = rad(b[0]);
+  const δ = d / R;
+  const out: LngLat[] = [a];
+  let prevLng = a[0];
+  // Keep longitudes continuous across the antimeridian so the line doesn't wrap the globe.
+  const near = (lng: number) => {
+    while (lng - prevLng > 180) lng -= 360;
+    while (lng - prevLng < -180) lng += 360;
+    return lng;
+  };
+  for (let i = 1; i < steps; i++) {
+    const f = i / steps;
+    const A = Math.sin((1 - f) * δ) / Math.sin(δ);
+    const B = Math.sin(f * δ) / Math.sin(δ);
+    const x = A * Math.cos(φ1) * Math.cos(λ1) + B * Math.cos(φ2) * Math.cos(λ2);
+    const y = A * Math.cos(φ1) * Math.sin(λ1) + B * Math.cos(φ2) * Math.sin(λ2);
+    const z = A * Math.sin(φ1) + B * Math.sin(φ2);
+    prevLng = near((Math.atan2(y, x) * 180) / Math.PI);
+    out.push([prevLng, (Math.atan2(z, Math.hypot(x, y)) * 180) / Math.PI]);
+  }
+  out.push([near(b[0]), b[1]]);
+  return out;
+}

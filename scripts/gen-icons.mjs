@@ -24,6 +24,7 @@ landscape water luggage home_repair_service real_estate_agent hiking wc icecream
 toys music_note book_2 nature_people cottage camping golf_course playground child_care hearing visibility
 emergency volunteer_activism groups account_circle bookmarks photo_library rate_review add_a_photo feedback
 mode_of_travel route alt_route tune event filter_list dark_mode light_mode language straighten
+keyboard undo
 `.trim().split(/\s+/);
 // Icons drawn filled (selected / solid look), as Google does for these.
 const FILLED = new Set(['navigation', 'location_on', 'bookmark', 'star', 'home', 'work', 'directions', 'trip_origin', 'explore', 'person', 'account_circle', 'bookmarks']);

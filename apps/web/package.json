@@ -16,6 +16,7 @@
     "@nm/feature-directions": "workspace:*",
     "@nm/feature-layers": "workspace:*",
     "@nm/feature-location": "workspace:*",
+    "@nm/feature-measure": "workspace:*",
     "@nm/feature-navigation": "workspace:*",
     "@nm/feature-photos": "workspace:*",
     "@nm/feature-place": "workspace:*",
