@@ -113,7 +113,15 @@ export async function stubNetwork(page: Page): Promise<void> {
       });
     }
     if (body.includes('"amenity"="cafe"')) {
-      return r.fulfill({ json: { elements: [{ type: 'node', id: 4004, lat: 32.0805, lon: 34.7745, tags: { name: 'קפה לנדוור', amenity: 'cafe' } }] } });
+      return r.fulfill({
+        json: {
+          elements: [
+            { type: 'node', id: 4004, lat: 32.0805, lon: 34.7745, tags: { name: 'קפה לנדוור', amenity: 'cafe' } },
+            { type: 'node', id: 4005, lat: 32.0812, lon: 34.7802, tags: { name: 'קפה תמיד', amenity: 'cafe', opening_hours: '24/7' } },
+            { type: 'node', id: 4006, lat: 32.0791, lon: 34.7768, tags: { name: 'קפה אף פעם', amenity: 'cafe', opening_hours: 'off' } },
+          ],
+        },
+      });
     }
     return r.fulfill({ json: { elements: [] } });
   });

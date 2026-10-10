@@ -88,6 +88,87 @@ test('category chip finds nearby cafes', async ({ page }) => {
   await expect(page.getByText('קפה לנדוור')).toBeVisible();
 });
 
+test('"open now" filter keeps open places and says how many had no hours', async ({ page }) => {
+  await page.goto('./#15/32.08/34.78');
+  await page.getByRole('button', { name: 'בתי קפה' }).click();
+  const list = page.locator('.list');
+  await expect(list.getByText('קפה לנדוור')).toBeVisible();
+  await expect(list.getByText('קפה אף פעם')).toBeVisible();
+  await expect(list.getByText('סגור', { exact: true })).toBeVisible();
+  await page.locator('.result-filters').getByRole('button', { name: 'פתוח עכשיו' }).click();
+  await expect(page.locator('.result-filters').getByRole('button', { name: 'פתוח עכשיו' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(list.getByText('קפה תמיד')).toBeVisible();
+  await expect(list.getByText('קפה לנדוור')).toBeHidden();
+  await expect(list.getByText('קפה אף פעם')).toBeHidden();
+  await expect(page.getByText('תוצאה אחת ללא שעות פתיחה ידועות הוסתרה')).toBeVisible();
+  await expect(page).toHaveURL(/cat=cafe&filter=open/);
+  // The filtered list is shareable.
+  await page.reload();
+  await expect(page.locator('.list').getByText('קפה תמיד')).toBeVisible();
+  await expect(page.locator('.list').getByText('קפה לנדוור')).toBeHidden();
+});
+
+test('moving the map offers "search this area" and runs the search again', async ({ page }, info) => {
+  await page.goto('./#15/32.08/34.78');
+  await page.getByRole('button', { name: 'בתי קפה' }).click();
+  await expect(page.locator('.list').getByText('קפה לנדוור')).toBeVisible();
+  const pill = page.getByRole('button', { name: 'חיפוש באזור הזה' });
+  await expect(pill).toBeHidden();
+  // Drag the map well past a third of its width (on phones, above the half-open sheet).
+  const desktop = info.project.name === 'desktop';
+  const y = desktop ? 400 : 230;
+  const [x0, x1] = desktop ? [80, 480] : [40, 330];
+  await page.mouse.move(x0, y);
+  await page.mouse.down();
+  await page.mouse.move((x0 + x1) / 2, y, { steps: 5 });
+  await page.mouse.move(x1, y, { steps: 5 });
+  await page.mouse.up();
+  await expect(pill).toBeVisible();
+  const again = page.waitForRequest((r) => r.url().includes('overpass') && decodeURIComponent(r.postData() ?? '').includes('"amenity"="cafe"'));
+  await pill.click();
+  await again;
+  await expect(pill).toBeHidden();
+  await expect(page.locator('.list').getByText('קפה לנדוור')).toBeVisible();
+});
+
+test('typing a business name suggests Overture places loaded on the map', async ({ page }) => {
+  await page.goto('./#17/32.0801/34.7792');
+  await page.waitForTimeout(1500);
+  await page.getByRole('searchbox', { name: 'חיפוש מקום או כתובת' }).fill('ביסטרו');
+  const option = page.getByRole('option').filter({ hasText: 'ביסטרו הכרמל' });
+  await expect(option).toBeVisible();
+  await expect(option).toContainText('מסעדה');
+  await option.click();
+  await expect(page.getByRole('heading', { name: 'ביסטרו הכרמל' })).toBeVisible();
+  await expect(page).toHaveURL(/place=ovt:aaaaaaaa-0000-4000-8000-000000000001/);
+});
+
+test('pasting a Google Maps link drops a pin there', async ({ page }) => {
+  await page.goto('./#13/32.07/34.79');
+  const box = page.getByRole('searchbox', { name: 'חיפוש מקום או כתובת' });
+  await box.focus();
+  await box.evaluate((el, text) => {
+    const data = new DataTransfer();
+    data.setData('text/plain', text);
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  }, 'https://www.google.com/maps/@32.0853,34.7818,16z');
+  await expect(page).toHaveURL(/place=pt:34\.78180,32\.08530/);
+  await expect(page.getByRole('heading', { name: 'נקודה שנבחרה' })).toBeVisible();
+  await expect(page).toHaveURL(/#16\/32\.085\d*\/34\.781\d*/);
+});
+
+test('typed Waze link opens on Enter; short links explain what to do', async ({ page }) => {
+  await page.goto('./');
+  const box = page.getByRole('searchbox', { name: 'חיפוש מקום או כתובת' });
+  await box.fill('https://maps.app.goo.gl/AbCdEf');
+  await expect(page.getByText('קישור מקוצר לא נפתח ישירות')).toBeVisible();
+  await expect(page.getByText(/העתיקו את הכתובת המלאה/)).toBeVisible();
+  await box.fill('https://waze.com/ul?ll=32.0745%2C34.7918&navigate=yes');
+  await expect(page.getByRole('option').filter({ hasText: 'המיקום מהקישור' })).toBeVisible();
+  await box.press('Enter');
+  await expect(page).toHaveURL(/place=pt:34\.79180,32\.07450/);
+});
+
 test.describe('with location', () => {
   test.use({ geolocation: { latitude: 32.0787, longitude: 34.7741 }, permissions: ['geolocation'] });
 

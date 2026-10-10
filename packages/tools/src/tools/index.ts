@@ -21,14 +21,16 @@ export const searchPlaces = defineTool({
     near: point.optional().describe('[lng, lat] to prefer results near'),
     zoom: z.number().min(0).max(22).optional().describe('How local the bias is (map zoom)'),
     limit: z.number().int().min(1).max(20).default(8),
+    bbox: z.tuple([lng, lat, lng, lat]).optional().describe('[west, south, east, north] to search only inside (e.g. "search this area")'),
   }),
   async run(input, ctx) {
     const q = normalizeQuery(input.query);
-    let results = await photonSearch(ctx, q, { near: input.near as LngLat | undefined, zoom: input.zoom, limit: input.limit });
+    const opts = { near: input.near as LngLat | undefined, zoom: input.zoom, limit: input.limit, bbox: input.bbox as BBox | undefined };
+    let results = await photonSearch(ctx, q, opts);
     // Hebrew prefixes and connector words hurt recall; retry with variants when thin.
     if (results.length < 3) {
       for (const v of queryVariants(input.query)) {
-        const more = await photonSearch(ctx, v, { near: input.near as LngLat | undefined, zoom: input.zoom, limit: input.limit });
+        const more = await photonSearch(ctx, v, opts);
         const ids = new Set(results.map((r) => r.id));
         results = [...results, ...more.filter((m) => !ids.has(m.id))];
         if (results.length >= 3) break;

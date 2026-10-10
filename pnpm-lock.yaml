@@ -138,6 +138,9 @@ importers:
       maplibre-gl:
         specifier: ^6.13.0
         version: 6.13.0
+      opening_hours:
+        specifier: ^3.15.0
+        version: 3.15.0(typescript@7.0.2)
       preact:
         specifier: ^11.0.1
         version: 11.0.1
