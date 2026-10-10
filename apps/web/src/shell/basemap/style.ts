@@ -72,6 +72,8 @@ export interface Palette {
   buildingLine: string;
   road: string;
   roadCasing: string;
+  /** Casing of primary/secondary streets: a touch darker than minor streets'. */
+  majorCasing: string;
   minorRoad: string;
   path: string;
   highway: string;
@@ -85,85 +87,105 @@ export interface Palette {
   roadLabel: string;
   halo: string;
   shield: string;
+  shieldLine: string;
   shieldText: string;
+  shieldMajorText: string;
+  peak: string;
+  oneway: string;
   hillShadow: string;
   hillHighlight: string;
 }
 
+/**
+ * Light palette in the colour families people know from Google Maps (cool grey land,
+ * soft green parks, light blue water, white streets, yellow highways). Our own values,
+ * picked by eye; no Google style data or assets.
+ */
 export const LIGHT: Palette = {
-  land: '#f1efea',
-  water: '#9fcff5',
-  waterLabel: '#3a74a8',
-  park: '#cbe8c3',
-  wood: '#c3e1b4',
-  grass: '#d8edcf',
-  sand: '#f4ead2',
-  ice: '#f2f8fb',
-  residential: '#efede8',
-  commercial: '#f6eee4',
-  industrial: '#eceae6',
-  hospital: '#f9e3e1',
-  school: '#f3ecdc',
-  cemetery: '#d9e7d3',
-  airport: '#e9e8ef',
-  building: '#e3dfd8',
-  buildingTop: '#ebe8e2',
-  buildingLine: '#d6d0c6',
+  land: '#f1f3f4',
+  water: '#aadaff',
+  waterLabel: '#2f73c4',
+  park: '#ceeacb',
+  wood: '#c6e8c5',
+  grass: '#d9f0d5',
+  sand: '#f6f0de',
+  ice: '#f8fbfd',
+  residential: '#eceef1',
+  commercial: '#eeeef3',
+  industrial: '#e8eaed',
+  hospital: '#fce8e6',
+  school: '#e9edf6',
+  cemetery: '#d5ead2',
+  airport: '#e8e6f1',
+  building: '#e6e6e8',
+  buildingTop: '#efeff1',
+  buildingLine: '#d6d7da',
   road: '#ffffff',
-  roadCasing: '#d2ccc1',
+  roadCasing: '#dadce0',
+  majorCasing: '#c4c8ce',
   minorRoad: '#ffffff',
-  path: '#c9c2b5',
-  highway: '#f7cf6a',
-  highwayCasing: '#dda94b',
-  trunk: '#fbe39e',
-  trunkCasing: '#e2c070',
-  rail: '#b4b0aa',
-  boundary: '#9c8fb0',
-  label: '#2e3237',
-  labelMuted: '#6c7178',
-  roadLabel: '#4f545a',
+  path: '#c2c6cc',
+  highway: '#f9d26a',
+  highwayCasing: '#e8a33d',
+  trunk: '#fde293',
+  trunkCasing: '#eebd55',
+  rail: '#bdc1c6',
+  boundary: '#8f949a',
+  label: '#3c4043',
+  labelMuted: '#5f6368',
+  roadLabel: '#5f6368',
   halo: '#ffffff',
   shield: '#ffffff',
-  shieldText: '#33373c',
-  hillShadow: 'rgba(84, 70, 52, 0.20)',
-  hillHighlight: 'rgba(255, 255, 255, 0.18)',
+  shieldLine: '#bdc1c6',
+  shieldText: '#3c4043',
+  shieldMajorText: '#3b2a00',
+  peak: '#7a5a34',
+  oneway: '#80868b',
+  hillShadow: 'rgba(60, 64, 67, 0.18)',
+  hillHighlight: 'rgba(255, 255, 255, 0.2)',
 };
 
+/** Dark palette after Google's night map: charcoal land, deep navy water, muted labels. */
 export const DARK: Palette = {
-  land: '#1d2126',
-  water: '#16314d',
-  waterLabel: '#7fa9d1',
-  park: '#1f3326',
-  wood: '#1d3122',
-  grass: '#22342a',
-  sand: '#2c2a23',
-  ice: '#2a3036',
-  residential: '#21252b',
-  commercial: '#262429',
-  industrial: '#23262b',
-  hospital: '#2e2426',
-  school: '#2a2824',
-  cemetery: '#21302a',
-  airport: '#25262e',
-  building: '#2b3037',
-  buildingTop: '#323840',
-  buildingLine: '#383e46',
-  road: '#3b4149',
-  roadCasing: '#2a2e34',
-  minorRoad: '#353a41',
-  path: '#4a4f57',
-  highway: '#8a6d34',
-  highwayCasing: '#5e4a26',
-  trunk: '#6b5a35',
-  trunkCasing: '#4a3f27',
-  rail: '#555a62',
-  boundary: '#8a7fa3',
-  label: '#d9dde2',
-  labelMuted: '#9aa1aa',
-  roadLabel: '#b9bfc7',
-  halo: '#1d2126',
-  shield: '#3b4149',
-  shieldText: '#e6e9ed',
+  land: '#202124',
+  water: '#17263c',
+  waterLabel: '#6f9fd2',
+  park: '#1c3324',
+  wood: '#1b3022',
+  grass: '#1f3326',
+  sand: '#2b2a25',
+  ice: '#2a2d31',
+  residential: '#242528',
+  commercial: '#26262b',
+  industrial: '#252629',
+  hospital: '#33282a',
+  school: '#25272e',
+  cemetery: '#1f2c23',
+  airport: '#29283a',
+  building: '#2c2d31',
+  buildingTop: '#35363b',
+  buildingLine: '#3a3b40',
+  road: '#3c4043',
+  roadCasing: '#2a2b2e',
+  majorCasing: '#2a2b2e',
+  minorRoad: '#35373a',
+  path: '#4a4d52',
+  highway: '#7d6a3a',
+  highwayCasing: '#4e4227',
+  trunk: '#5f5435',
+  trunkCasing: '#3f3826',
+  rail: '#55585e',
+  boundary: '#7b7f86',
+  label: '#bdc1c6',
+  labelMuted: '#9aa0a6',
+  roadLabel: '#9aa0a6',
+  halo: '#202124',
+  shield: '#3c4043',
+  shieldLine: '#5f6368',
+  shieldText: '#e8eaed',
+  shieldMajorText: '#fde293',
+  peak: '#c9b393',
+  oneway: '#9aa0a6',
   hillShadow: 'rgba(0, 0, 0, 0.35)',
   hillHighlight: 'rgba(255, 255, 255, 0.04)',
 };
@@ -329,7 +351,7 @@ export function buildStyle(theme: 'light' | 'dark', src: BasemapSources, lang = 
     minzoom: 11,
     filter: ['all', ['==', ['geometry-type'], 'LineString'], cls('runway', 'taxiway')],
     paint: {
-      'line-color': theme === 'dark' ? '#3a3d48' : '#d9d8e2',
+      'line-color': theme === 'dark' ? '#3a3a4a' : '#d6d4e3',
       'line-width': [
         'interpolate', ['exponential', 1.5], ['zoom'],
         11, ['match', ['get', 'class'], 'runway', 3, 0.5],
@@ -474,6 +496,8 @@ export function buildStyle(theme: 'light' | 'dark', src: BasemapSources, lang = 
 
   // --- labels (bottom to top: water, roads, POIs, places) ---
   const halo = { 'text-halo-color': c.halo, 'text-halo-width': 1.4, 'text-halo-blur': 0.3 };
+  // Water names sit on water: a soft halo in the water colour reads cleaner than white.
+  const waterHalo = { 'text-halo-color': c.water, 'text-halo-width': 1.2, 'text-halo-blur': 0.5 };
 
   add({
     id: 'waterway-label',
@@ -483,7 +507,7 @@ export function buildStyle(theme: 'light' | 'dark', src: BasemapSources, lang = 
     minzoom: 12,
     filter: cls('river', 'canal', 'stream'),
     layout: { 'text-field': name, 'text-font': FONT.italic, 'text-size': 12, 'symbol-placement': 'line', 'text-letter-spacing': 0.05 },
-    paint: { 'text-color': c.waterLabel, ...halo },
+    paint: { 'text-color': c.waterLabel, ...waterHalo },
   });
   add({
     id: 'water-label',
@@ -498,7 +522,7 @@ export function buildStyle(theme: 'light' | 'dark', src: BasemapSources, lang = 
       'text-max-width': 6,
       'text-letter-spacing': 0.05,
     },
-    paint: { 'text-color': c.waterLabel, ...halo },
+    paint: { 'text-color': c.waterLabel, ...waterHalo },
   });
   add({
     id: 'water-label-line',
@@ -507,7 +531,7 @@ export function buildStyle(theme: 'light' | 'dark', src: BasemapSources, lang = 
     'source-layer': 'water_name',
     filter: ['==', ['geometry-type'], 'LineString'],
     layout: { 'text-field': name, 'text-font': FONT.italic, 'text-size': 13, 'symbol-placement': 'line' },
-    paint: { 'text-color': c.waterLabel, ...halo },
+    paint: { 'text-color': c.waterLabel, ...waterHalo },
   });
 
   add({
@@ -547,7 +571,7 @@ export function buildStyle(theme: 'light' | 'dark', src: BasemapSources, lang = 
       'text-rotation-alignment': 'viewport',
       'icon-rotation-alignment': 'viewport',
     },
-    paint: { 'text-color': ['match', ['get', 'class'], ['motorway', 'trunk'], '#3b2a00', c.shieldText] },
+    paint: { 'text-color': ['match', ['get', 'class'], ['motorway', 'trunk'], c.shieldMajorText, c.shieldText] },
   });
 
   add({
@@ -647,7 +671,7 @@ export function buildStyle(theme: 'light' | 'dark', src: BasemapSources, lang = 
       'text-optional': true,
       'symbol-sort-key': ['coalesce', ['get', 'rank'], 99],
     },
-    paint: { 'text-color': theme === 'dark' ? '#c9b393' : '#7a5a34', ...halo },
+    paint: { 'text-color': c.peak, ...halo },
   });
   add({
     id: 'airport-label',
@@ -809,8 +833,8 @@ function roadLayers(add: Add, c: Palette): void {
     { id: 'service', classes: ['service'], minzoom: 14, color: c.minorRoad, casing: c.roadCasing, w: [14, 1, 18, 7] },
     { id: 'minor', classes: ['minor'], minzoom: 12, color: c.minorRoad, casing: c.roadCasing, w: [12, 0.8, 14, 2.5, 18, 14] },
     { id: 'tertiary', classes: ['tertiary'], minzoom: 10, color: c.road, casing: c.roadCasing, w: [10, 0.8, 14, 4.5, 18, 20] },
-    { id: 'secondary', classes: ['secondary'], minzoom: 8, color: c.road, casing: c.roadCasing, w: [8, 0.8, 12, 2.5, 14, 6, 18, 26] },
-    { id: 'primary', classes: ['primary'], minzoom: 7, color: c.road, casing: c.roadCasing, w: [7, 0.8, 12, 3, 14, 7.5, 18, 30] },
+    { id: 'secondary', classes: ['secondary'], minzoom: 8, color: c.road, casing: c.majorCasing, w: [8, 0.8, 12, 2.5, 14, 6, 18, 26] },
+    { id: 'primary', classes: ['primary'], minzoom: 7, color: c.road, casing: c.majorCasing, w: [7, 0.8, 12, 3, 14, 7.5, 18, 30] },
     { id: 'trunk', classes: ['trunk'], minzoom: 5, color: c.trunk, casing: c.trunkCasing, w: [5, 0.8, 14, 7, 18, 28] },
     { id: 'motorway', classes: ['motorway'], minzoom: 4, color: c.highway, casing: c.highwayCasing, w: [4, 0.8, 14, 7, 18, 30] },
   ];

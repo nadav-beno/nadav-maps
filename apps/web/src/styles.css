@@ -4,26 +4,31 @@
  * category-coloured place badges, a bottom tab bar on phones and a side panel on desktop.
  */
 :root {
+  /* Google Material colours (light): blue primary, white / light grey surfaces, grey text. */
   --bg: #ffffff;
-  --bg-2: #f1f4f9;
-  --bg-3: #e1e6ee;
+  --bg-2: #f1f3f4;
+  --bg-3: #e8eaed;
   --surface: #ffffff;
-  --text: #1f1f1f;
-  --text-2: #5e6369;
-  --text-3: #80868b;
-  --border: #dde1e6;
+  --text: #202124;
+  --text-2: #5f6368;
+  --text-3: #70757a;
+  --border: #dadce0;
   --divider: #e8eaed;
-  --accent: #0b57d0;
+  --accent: #1a73e8;
   --accent-text: #ffffff;
-  --accent-soft: #d3e3fd;
-  --accent-soft-text: #0842a0;
-  --tonal: #e9eef6;
-  --danger: #c5221f;
+  --accent-soft: #e8f0fe;
+  --accent-soft-text: #1967d2;
+  --tonal: #f1f3f4;
+  --danger: #d93025;
   --ok: #188038;
-  --warn: #b06000;
-  --route: #1a73e8;
-  --route-alt: #9aa0a6;
-  --scrim: rgba(0, 0, 0, 0.32);
+  /* Google's #e37400 is 3:1 on white; this shade of it keeps small text at 4.5:1. */
+  --warn: #b75d00;
+  --route: #4285f4;
+  --route-casing: #1967d2;
+  --route-alt: #bdc1c6;
+  --route-alt-casing: #80868b;
+  --me: #4285f4;
+  --scrim: rgba(32, 33, 36, 0.32);
   --shadow-1: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
   --shadow-2: 0 1px 2px rgba(60, 64, 67, 0.3), 0 2px 6px 2px rgba(60, 64, 67, 0.15);
   --shadow-3: 0 4px 8px 3px rgba(60, 64, 67, 0.15), 0 1px 3px rgba(60, 64, 67, 0.3);
@@ -33,18 +38,22 @@
   --tabs-h: 0px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  /* Floating buttons keep clear of a landscape notch on either side. */
+  --safe-x: max(var(--safe-left), var(--safe-right));
   /* Place colour groups (same as the map). */
   --g-food: #e8710a;
-  --g-shop: #1a73e8;
+  --g-shop: #4285f4;
   --g-lodging: #d01884;
-  --g-health: #d93025;
-  --g-civic: #795548;
-  --g-money: #4e5fbf;
-  --g-transport: #2a6fdb;
-  --g-sights: #0b8a83;
-  --g-outdoor: #188038;
-  --g-worship: #5f6f7a;
-  --g-service: #5b6e8c;
+  --g-health: #ea4335;
+  --g-civic: #7b6f65;
+  --g-money: #5c6bc0;
+  --g-transport: #5677a6;
+  --g-sights: #12a4b8;
+  --g-outdoor: #34a853;
+  --g-worship: #70757a;
+  --g-service: #5f6368;
   --g-place: #5f6368;
   --g-address: #ea4335;
   color-scheme: light;
@@ -54,40 +63,44 @@
   -webkit-tap-highlight-color: transparent;
 }
 :root[data-theme='dark'] {
-  --bg: #1f1f1f;
-  --bg-2: #2a2b2e;
-  --bg-3: #3a3c40;
-  --surface: #28292c;
-  --text: #e3e3e3;
-  --text-2: #b4b8bd;
-  --text-3: #8e9297;
-  --border: #44474c;
-  --divider: #36383c;
-  --accent: #a8c7fa;
-  --accent-text: #062e6f;
-  --accent-soft: #0842a0;
-  --accent-soft-text: #d3e3fd;
-  --tonal: #33363b;
-  --danger: #f2b8b5;
-  --ok: #6dd58c;
+  /* Google's dark theme: charcoal surfaces, light blue primary. */
+  --bg: #202124;
+  --bg-2: #303134;
+  --bg-3: #3c4043;
+  --surface: #292a2d;
+  --text: #e8eaed;
+  --text-2: #bdc1c6;
+  --text-3: #9aa0a6;
+  --border: #5f6368;
+  --divider: #3c4043;
+  --accent: #8ab4f8;
+  --accent-text: #202124;
+  --accent-soft: #394457;
+  --accent-soft-text: #d2e3fc;
+  --tonal: #303134;
+  --danger: #f28b82;
+  --ok: #81c995;
   --warn: #fdd663;
-  --route: #8ab4f8;
+  --route: #669df6;
+  --route-casing: #1a57b8;
   --route-alt: #5f6368;
+  --route-alt-casing: #3c4043;
+  --me: #669df6;
   --scrim: rgba(0, 0, 0, 0.5);
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 3px 1px rgba(0, 0, 0, 0.3);
   --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.5), 0 2px 6px 2px rgba(0, 0, 0, 0.3);
   --shadow-3: 0 4px 8px 3px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.5);
-  --g-food: #f6a35c;
-  --g-shop: #78a9f5;
-  --g-lodging: #f07cbf;
+  --g-food: #fcad70;
+  --g-shop: #8ab4f8;
+  --g-lodging: #ff8bcb;
   --g-health: #f28b82;
-  --g-civic: #c2a493;
-  --g-money: #9aa6ec;
-  --g-transport: #7fa8ef;
-  --g-sights: #5ccbc3;
-  --g-outdoor: #6fcf8b;
-  --g-worship: #a8b6bf;
-  --g-service: #9fb0c9;
+  --g-civic: #bcaaa4;
+  --g-money: #a3acf0;
+  --g-transport: #9fb7d9;
+  --g-sights: #4ecde6;
+  --g-outdoor: #81c995;
+  --g-worship: #9aa0a6;
+  --g-service: #9aa0a6;
   --g-place: #9aa0a6;
   --g-address: #f28b82;
   color-scheme: dark;
@@ -96,6 +109,14 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); overscroll-behavior: none; }
 #map { position: fixed; inset: 0; }
+/* Installed on iOS the status bar is translucent (black-translucent) and its text is white:
+   a light shade under it keeps the clock readable over a light map. */
+@media (display-mode: standalone) {
+  body::before {
+    content: ''; position: fixed; z-index: 55; inset-inline: 0; top: 0; height: calc(var(--safe-top) + 6px);
+    background: linear-gradient(rgba(32, 33, 36, 0.38), rgba(32, 33, 36, 0.18) 70%, transparent); pointer-events: none;
+  }
+}
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 a { color: var(--accent); }
@@ -109,7 +130,7 @@ h1, h2, h3 { text-wrap: balance; }
 /* ---------- top bar: search pill + chips ---------- */
 .top-bar {
   position: fixed; z-index: 20; inset-inline: 0; top: 0;
-  padding: calc(var(--safe-top) + 8px) 12px 0;
+  padding: calc(var(--safe-top) + 8px) calc(12px + var(--safe-right)) 0 calc(12px + var(--safe-left));
   pointer-events: none;
   display: flex; flex-direction: column; gap: 10px;
 }
@@ -170,7 +191,7 @@ label.btn { cursor: pointer; }
 
 /* ---------- map controls ---------- */
 .map-controls {
-  position: fixed; z-index: 15; inset-inline-end: 12px; top: calc(var(--safe-top) + 112px);
+  position: fixed; z-index: 15; inset-inline-end: calc(12px + var(--safe-x)); top: calc(var(--safe-top) + 112px);
   display: flex; flex-direction: column; gap: 12px; align-items: center;
 }
 @media (min-width: 768px) { .map-controls { top: 12px; } }
@@ -180,7 +201,7 @@ label.btn { cursor: pointer; }
 }
 .ctrl:hover { color: var(--text); }
 .fabs {
-  position: fixed; z-index: 15; inset-inline-end: 12px;
+  position: fixed; z-index: 15; inset-inline-end: calc(12px + var(--safe-x));
   bottom: calc(var(--sheet-h) + var(--tabs-h) + 16px);
   display: flex; flex-direction: column-reverse; align-items: center; gap: 14px;
   transition: bottom 0.25s cubic-bezier(0.2, 0, 0, 1);
@@ -206,6 +227,7 @@ label.btn { cursor: pointer; }
   background: var(--surface); border-radius: var(--radius) var(--radius) 0 0; box-shadow: var(--shadow-3);
   display: flex; flex-direction: column; transition: height 0.25s cubic-bezier(0.2, 0, 0, 1), bottom 0.2s ease;
 }
+.sheet { padding-left: var(--safe-left); padding-right: var(--safe-right); }
 .sheet.no-tabs { padding-bottom: var(--safe-bottom); }
 .sheet.dragging { transition: none; }
 .sheet-handle { flex: none; height: 22px; display: grid; place-items: center; touch-action: none; cursor: grab; }
@@ -215,7 +237,7 @@ label.btn { cursor: pointer; }
 /* ---------- bottom tabs (phones) ---------- */
 .tabs {
   position: fixed; z-index: 12; inset-inline: 0; bottom: 0;
-  display: flex; justify-content: space-around; padding: 6px 8px calc(6px + var(--safe-bottom));
+  display: flex; justify-content: space-around; padding: 6px calc(8px + var(--safe-right)) calc(6px + var(--safe-bottom)) calc(8px + var(--safe-left));
   background: var(--surface); border-top: 1px solid var(--divider);
 }
 .tab {
@@ -258,7 +280,7 @@ label.btn { cursor: pointer; }
 
 /* Place badge: coloured circle with a white icon. */
 .place-badge { flex: none; display: grid; place-items: center; border-radius: 50%; color: #fff; background: var(--g-place); }
-:root[data-theme='dark'] .place-badge { color: #1f1f1f; }
+:root[data-theme='dark'] .place-badge { color: #202124; }
 .g-food { background: var(--g-food); } .g-shop { background: var(--g-shop); } .g-lodging { background: var(--g-lodging); }
 .g-health { background: var(--g-health); } .g-civic { background: var(--g-civic); } .g-money { background: var(--g-money); }
 .g-transport { background: var(--g-transport); } .g-sights { background: var(--g-sights); } .g-outdoor { background: var(--g-outdoor); }
@@ -312,9 +334,9 @@ label.btn { cursor: pointer; }
   position: fixed; z-index: 50; left: 50%; transform: translateX(-50%);
   bottom: calc(var(--sheet-h) + var(--tabs-h) + 24px); max-width: min(92vw, 480px);
   display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 8px;
-  background: #313033; color: #f4eff4; box-shadow: var(--shadow-3); font-size: 14px;
+  background: #323232; color: #f1f3f4; box-shadow: var(--shadow-3); font-size: 14px;
 }
-.toast-action { border: 0; background: none; color: #a8c7fa; font-weight: 600; }
+.toast-action { border: 0; background: none; color: #8ab4f8; font-weight: 600; }
 
 /* ---------- MapLibre chrome ---------- */
 .maplibregl-ctrl-attrib { font-size: 11px; }
@@ -560,7 +582,57 @@ a.detail-body { color: var(--text); }
 /* ---------- prose screens ---------- */
 .prose { line-height: 1.6; }
 .prose ul { padding-inline-start: 20px; }
-.install-steps { line-height: 1.7; padding-inline-start: 20px; }
+/* ---------- install as an app ---------- */
+.install-row .li-icon { background: var(--accent-soft); color: var(--accent-soft-text); }
+.install-guide { display: flex; flex-direction: column; gap: 12px; }
+.install-hero { display: flex; align-items: center; gap: 14px; padding: 4px 0; }
+.install-hero-title { font-size: 17px; font-weight: 500; margin-bottom: 2px; }
+.install-note { margin: 0; color: var(--text-2); }
+.install-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.install-step { display: flex; gap: 12px; align-items: flex-start; }
+.install-num {
+  flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent-soft-text); font-weight: 600; font-size: 14px;
+}
+.install-step-body { flex: 1; min-width: 0; }
+.install-step-body p { margin: 3px 0 6px; line-height: 1.45; }
+.install-step-body p .ill-glyph { display: inline-block; vertical-align: -4px; color: var(--accent); }
+.install-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.install-later { margin-top: 12px; }
+/* Drawings: simplified browser parts, in the UI colours. */
+.ill { border-radius: 14px; background: var(--bg-2); color: var(--text-2); padding: 8px 10px; font-size: 13px; }
+.ill-phone { display: flex; flex-direction: column; gap: 6px; }
+.ill-url { align-self: center; padding: 2px 14px; border-radius: 10px; background: var(--surface); color: var(--text-2); font-size: 12px; }
+.ill-url.wide { flex: 1; text-align: center; }
+.ill-toolbar { display: flex; align-items: center; justify-content: space-around; gap: 8px; }
+.ill-toolbar.top { justify-content: space-between; }
+.ill-hit { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; color: var(--accent); background: var(--surface); box-shadow: 0 0 0 3px var(--accent); }
+.ill-sheet { display: flex; flex-direction: column; gap: 4px; padding: 6px; }
+.ill-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 12px; border-radius: 10px; background: var(--surface); color: var(--text); }
+.ill-row.muted-row { color: var(--text-3); }
+.ill-hit-row { box-shadow: inset 0 0 0 2px var(--accent); font-weight: 500; }
+.ill-hit-row .ill-glyph { color: var(--accent); }
+.ill-nav { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px; color: var(--text); }
+.ill-hit-text { color: var(--accent); font-weight: 600; padding: 2px 8px; border-radius: 8px; box-shadow: 0 0 0 2px var(--accent); }
+.ill-app { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 10px; background: var(--surface); color: var(--text); }
+.ill-tile { flex: none; border-radius: 22%; box-shadow: var(--shadow-1); }
+/* The one-time hint: a modal bottom sheet on phones, a centred card on wide screens. */
+.install-layer { position: fixed; inset: 0; z-index: 45; display: flex; align-items: flex-end; justify-content: center; }
+.install-scrim { position: absolute; inset: 0; background: var(--scrim); animation: fade-in 0.2s ease; }
+.install-sheet {
+  position: relative; width: 100%; max-width: 520px; max-height: calc(100% - var(--safe-top) - 24px); overflow-y: auto;
+  background: var(--surface); border-radius: var(--radius) var(--radius) 0 0; box-shadow: var(--shadow-3);
+  padding: 8px 20px calc(16px + var(--safe-bottom)); animation: slide-up 0.28s cubic-bezier(0.2, 0, 0, 1);
+}
+.install-sheet:focus { outline: none; }
+.install-sheet > .view-header { position: sticky; top: -8px; z-index: 1; background: var(--surface); margin-inline: -8px; padding-inline: 8px 0; }
+@media (min-width: 768px) {
+  .install-layer { align-items: center; }
+  .install-sheet { border-radius: var(--radius); padding-bottom: 20px; }
+}
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes slide-up { from { transform: translateY(40px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .install-scrim, .install-sheet { animation: none; } }
 .contribute-card { display: flex; gap: 16px; align-items: flex-start; padding: 16px; border-radius: 16px; background: var(--bg-2); margin: 10px 0; text-decoration: none; color: inherit; }
 .contribute-card .icon { color: var(--accent); }
 .contribute-card strong { display: block; font-weight: 500; margin-bottom: 2px; }

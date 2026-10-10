@@ -5,6 +5,7 @@ import {
   back,
   currentView,
   defineFeature,
+  cssVar,
   ensureLayer,
   Icon,
   EMPTY,
@@ -332,8 +333,8 @@ export default defineFeature({
     ctx.registerSlot('overlay', Overlay, 10);
     ctx.onStyle((m) => {
       setGeoJSON(m, 'nav-route', EMPTY);
-      ensureLayer(m, { id: 'nav-route-casing', type: 'line', source: 'nav-route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#0d47a1', 'line-width': 14 } });
-      ensureLayer(m, { id: 'nav-route', type: 'line', source: 'nav-route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#4285f4', 'line-width': 10 } });
+      ensureLayer(m, { id: 'nav-route-casing', type: 'line', source: 'nav-route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': cssVar('--route-casing', '#1967d2'), 'line-width': 14 } });
+      ensureLayer(m, { id: 'nav-route', type: 'line', source: 'nav-route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': cssVar('--route', '#4285f4'), 'line-width': 10 } });
       const s = nav.peek();
       if (s) drawProgress(s);
     });
