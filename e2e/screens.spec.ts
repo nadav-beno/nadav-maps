@@ -1,6 +1,7 @@
 import { test } from '@playwright/test';
 import { stubNetwork } from './stubs.ts';
 import { adsbResponse, fakeGps, FLIGHT_FIXES } from './flight-fixture.ts';
+import { TAKEOUT_DAY, TAKEOUT_FIXTURE } from './timeline-fixture.ts';
 
 // Screenshots for visual review (not assertions). Run: SHOTS=dir pnpm e2e screens
 const dir = process.env.SHOTS;
@@ -193,4 +194,32 @@ test('flight', async ({ page }, info) => {
   await page.goto('./#4/34/30');
   await page.waitForTimeout(4000);
   await shot('6-offline-home');
+});
+
+test('timeline', async ({ page }, info) => {
+  await stubNetwork(page);
+  page.on('dialog', (d) => void d.accept());
+  const shot = (n: string) => page.screenshot({ path: `${dir}/${info.project.name}-timeline-${n}.png` });
+  await page.goto('./?panel=timeline#14/32.08/34.78');
+  await page.waitForTimeout(1200);
+  await shot('1-empty');
+  await page.getByRole('button', { name: 'הגדרות ציר הזמן' }).click();
+  await page.waitForTimeout(300);
+  await shot('2-settings');
+  await page.locator('#tl-import').setInputFiles({ name: '2019_MARCH.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(TAKEOUT_FIXTURE)) });
+  await page.getByRole('list', { name: 'המקומות והדרכים של היום' }).waitFor();
+  await page.waitForTimeout(1500);
+  await shot('3-day');
+  if (info.project.name !== 'desktop') {
+    await page.locator('.sheet-handle').click();
+    await page.waitForTimeout(600);
+    await shot('4-day-full');
+  }
+  await page.getByRole('button', { name: 'תיקון המקום: קפה לנדוור' }).click();
+  await page.waitForTimeout(3000);
+  await shot('5-this-was');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto(`./?panel=timeline&day=${TAKEOUT_DAY}`);
+  await page.waitForTimeout(1500);
+  await shot('6-dark');
 });

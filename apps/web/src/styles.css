@@ -667,3 +667,76 @@ kbd {
 .flight-error { color: var(--warn); }
 .flight-adsb { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; margin-top: 10px; padding: 10px 12px; border-radius: 16px; background: color-mix(in srgb, #e37400 10%, var(--surface)); }
 .flight-privacy { margin: 16px 0 0; }
+
+/* ---------- timeline (packages/features/timeline) ---------- */
+.m-walk { --mode: #1e8e3e; }
+.m-bike { --mode: #00897b; }
+.m-car { --mode: #1a73e8; }
+.m-bus { --mode: #e37400; }
+.m-train { --mode: #8e24aa; }
+.m-flight { --mode: #5f6368; }
+.m-boat { --mode: #0097a7; }
+.m-unknown { --mode: #80868b; }
+:root[data-theme='dark'] .m-walk { --mode: #6dd58c; }
+:root[data-theme='dark'] .m-bike { --mode: #4fd1c5; }
+:root[data-theme='dark'] .m-car { --mode: #8ab4f8; }
+:root[data-theme='dark'] .m-bus { --mode: #fcad70; }
+:root[data-theme='dark'] .m-train { --mode: #d7aefb; }
+:root[data-theme='dark'] .m-flight, :root[data-theme='dark'] .m-unknown { --mode: #9aa0a6; }
+:root[data-theme='dark'] .m-boat { --mode: #78d9ec; }
+.tl-rec { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 16px; background: var(--bg-2); margin: 4px 0 10px; }
+.tl-rec.on { background: color-mix(in srgb, var(--danger) 9%, var(--surface)); }
+.tl-rec-icon { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-soft-text); }
+.tl-rec-body { flex: 1; min-width: 0; }
+.tl-rec-title { font-weight: 500; }
+.tl-rec-dot { flex: none; width: 12px; height: 12px; margin-inline: 6px; border-radius: 50%; background: #d93025; animation: tl-pulse 1.6s infinite; }
+@keyframes tl-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(217, 48, 37, 0.5); }
+  70% { box-shadow: 0 0 0 10px rgba(217, 48, 37, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(217, 48, 37, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .tl-rec-dot { animation: none; } }
+.tl-daybar { display: flex; align-items: center; gap: 4px; margin: 4px -8px 10px; }
+.tl-daybar .icon-btn:disabled { opacity: 0.38; cursor: default; background: none; }
+.tl-date { position: relative; flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 4px 16px; border-radius: 24px; background: var(--tonal); color: var(--text); }
+.tl-date:hover { background: var(--bg-3); }
+.tl-date-text { display: flex; flex-direction: column; align-items: center; line-height: 1.25; min-width: 0; }
+.tl-date-title { font-weight: 500; }
+.tl-date-sub { font-size: 12px; color: var(--text-2); }
+.tl-date-input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; border: 0; opacity: 0; cursor: pointer; }
+.tl-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 8px; }
+.tl-summary > div { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 6px; border: 1px solid var(--border); border-radius: 16px; }
+.tl-summary strong { font-size: 16px; font-weight: 500; white-space: nowrap; }
+.tl-summary span { font-size: 12px; color: var(--text-2); }
+.tl-list { list-style: none; margin: 0; padding: 0; }
+.tl-item { display: flex; gap: 12px; align-items: stretch; }
+.tl-node { flex: none; width: 36px; display: flex; justify-content: center; }
+.tl-stay .tl-node { align-items: center; }
+.tl-card { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; }
+.tl-main { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 0; border: 0; background: none; text-align: start; }
+.tl-title { max-width: 100%; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-sub, .tl-addr { max-width: 100%; font-size: 13px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-time { unicode-bidi: isolate; font-variant-numeric: tabular-nums; }
+.tl-rail { width: 4px; margin: 2px 0; border-radius: 2px; background: var(--mode); }
+.tl-move.m-walk .tl-rail, .tl-move.m-flight .tl-rail { background: repeating-linear-gradient(to bottom, var(--mode) 0 5px, transparent 5px 10px); }
+.tl-move-body { flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 2px 8px; padding: 10px 0; border: 0; background: none; text-align: start; font-size: 13px; color: var(--text-2); }
+.tl-mode-icon { flex: none; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--mode) 16%, transparent); color: var(--mode); }
+.tl-move-label { font-size: 14px; font-weight: 500; color: var(--text); }
+.tl-move-meta { white-space: nowrap; }
+.tl-empty { padding: 20px 8px; text-align: center; color: var(--text-2); }
+.tl-empty .icon { margin: 0 auto 4px; opacity: 0.6; }
+.tl-empty p { margin: 6px 0; }
+.tl-day-actions { display: flex; justify-content: center; margin: 16px 0 4px; }
+.tl-note { margin-top: 12px; }
+.tl-switch-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; cursor: pointer; }
+.tl-switch-row .li-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tl-switch-row .li-title { font-weight: 500; }
+.tl-switch-row .li-sub { font-size: 13px; color: var(--text-2); }
+.tl-switch { appearance: none; position: relative; flex: none; width: 52px; height: 32px; margin: 0; border: 2px solid var(--text-2); border-radius: 16px; background: var(--bg-2); cursor: pointer; transition: background-color 0.15s, border-color 0.15s; }
+.tl-switch::before { content: ''; position: absolute; top: 50%; inset-inline-start: 6px; width: 16px; height: 16px; border-radius: 50%; background: var(--text-2); transform: translateY(-50%); transition: all 0.15s; }
+.tl-switch:checked { border-color: var(--accent); background: var(--accent); }
+.tl-switch:checked::before { inset-inline-start: 22px; width: 24px; height: 24px; background: var(--accent-text); }
+.tl-settings-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.tl-custom .input { flex: 1; min-width: 0; }
+.tl-home { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); text-align: start; }
+.tl-home-text { flex: 1; font-weight: 500; }

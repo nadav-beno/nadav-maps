@@ -28,6 +28,7 @@ mode_of_travel route alt_route tune event filter_list dark_mode light_mode langu
 keyboard undo
 traffic car_crash warning foggy rainy ac_unit air flood block
 speed height flight_land flight_takeoff radar timer
+timeline calendar_month upload_file delete_sweep
 `.trim().split(/\s+/);
 // Icons drawn filled (selected / solid look), as Google does for these.
 const FILLED = new Set(['navigation', 'location_on', 'bookmark', 'star', 'home', 'work', 'directions', 'trip_origin', 'explore', 'person', 'account_circle', 'bookmarks']);
