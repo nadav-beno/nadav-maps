@@ -67,3 +67,11 @@ export const immersive = signal(false);
 
 /** Bumped when a feature needs the user's location; the location feature starts GPS. */
 export const locationRequests = signal(0);
+
+/**
+ * Offline world map (bundled countries and cities). The shell sets `basemapOffline` when the
+ * vector tiles can't load; a feature sets `offlineMapOnly` to show the world map instead of
+ * the normal one (flight mode). Either one shows it.
+ */
+export const basemapOffline = signal(false);
+export const offlineMapOnly = signal(false);

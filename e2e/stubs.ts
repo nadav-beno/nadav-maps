@@ -132,6 +132,8 @@ export async function stubNetwork(page: Page): Promise<void> {
     if (url.host.endsWith('maps.hereapi.com')) return r.fulfill({ status: 204, body: '', headers: cors });
     return r.fulfill({ status: 404, body: '', headers: cors });
   });
+  // ADS-B flight lookup: nothing in the air unless a test routes its own answer.
+  await page.route('https://api.adsb.lol/**', (r) => r.fulfill({ json: { ac: [], total: 0 }, headers: { 'access-control-allow-origin': '*' } }));
   await page.route('https://overpass-api.de/api/interpreter', (r) => {
     const body = decodeURIComponent(r.request().postData() ?? '');
     if (body.includes('2002')) {

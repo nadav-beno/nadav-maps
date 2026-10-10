@@ -206,6 +206,12 @@ function AboutView(_: ViewProps) {
           תיאורי מקומות: <a href="https://www.wikipedia.org" target="_blank" rel="noopener noreferrer">ויקיפדיה</a> (CC BY-SA) ו-Wikidata
         </li>
         <li>
+          מפת העולם הלא מקוונת: <a href="https://www.naturalearthdata.com" target="_blank" rel="noopener noreferrer">Natural Earth</a> (נחלת הכלל), ערים מ-<a href="https://www.geonames.org" target="_blank" rel="noopener noreferrer">GeoNames</a> (CC BY 4.0), שדות תעופה מ-<a href="https://ourairports.com/data/" target="_blank" rel="noopener noreferrer">OurAirports</a> (נחלת הכלל)
+        </li>
+        <li>
+          מיקום טיסות לפי מספר: <a href="https://adsb.lol" target="_blank" rel="noopener noreferrer">adsb.lol</a> (ODbL)
+        </li>
+        <li>
           אייקונים: Material Symbols של Google (Apache 2.0) ו-Maki של Mapbox (CC0). גופן: Rubik (OFL)
         </li>
         <li>

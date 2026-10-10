@@ -15,3 +15,4 @@ export * from './map-link.ts';
 export * from './local-search.ts';
 export * from './tomtom.ts';
 export * from './here.ts';
+export * from './world.ts';

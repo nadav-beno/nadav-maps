@@ -36,6 +36,11 @@ export interface ProviderConfig {
    * traffic (Israel). Public in the browser build too; limit it with HERE's trusted domains.
    */
   hereKey: string;
+  /**
+   * Live aircraft positions by callsign (adsb.lol's readsb-style API, open data under ODbL),
+   * '' = no "find my flight". Only the flight number is sent, never the user's location.
+   */
+  flightsUrl: string;
   /** Identifies us to public servers, as their usage policies ask. */
   userAgent: string;
 }
@@ -53,6 +58,7 @@ export const DEFAULT_PROVIDERS: ProviderConfig = {
   transitUrl: 'https://api.transitous.org',
   tomtomKey: '',
   hereKey: '',
+  flightsUrl: 'https://api.adsb.lol',
   userAgent: 'NadavMaps/0.2 (+https://github.com/nadav-beno/nadav-maps)',
 };
 
@@ -70,6 +76,7 @@ export function providersFromEnv(env: Record<string, string | undefined>, prefix
     transitUrl: env[prefix + 'TRANSIT_URL'] ?? DEFAULT_PROVIDERS.transitUrl,
     tomtomKey: (env[prefix + 'TOMTOM_KEY'] ?? '').trim(),
     hereKey: (env[prefix + 'HERE_KEY'] ?? '').trim(),
+    flightsUrl: env[prefix + 'FLIGHTS_URL'] ?? DEFAULT_PROVIDERS.flightsUrl,
     userAgent: DEFAULT_PROVIDERS.userAgent,
   };
 }
