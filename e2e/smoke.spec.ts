@@ -510,3 +510,58 @@ test.describe('timeline with location', () => {
     await expect(page.getByText('הקלטת ציר זמן כבויה')).toBeVisible();
   });
 });
+
+test.describe('install as an app (iPhone Safari)', () => {
+  const SAFARI_IOS =
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1';
+  test.use({ userAgent: SAFARI_IOS });
+
+  test('the install guide shows once on the second visit, can be dismissed and stays away', async ({ page, context }) => {
+    const dialog = (p: typeof page) => p.getByRole('dialog', { name: 'התקנה כאפליקציה' });
+    // First visit: nothing pops up (a shared link should just show the map).
+    await page.goto('./');
+    await expect(page.locator('.maplibregl-canvas')).toBeVisible();
+    await page.waitForTimeout(3800);
+    await expect(dialog(page)).toHaveCount(0);
+
+    // Second visit (a new tab = a new session): the guide slides up after a moment.
+    const second = await context.newPage();
+    await stubNetwork(second);
+    await second.goto('./');
+    await expect(dialog(second)).toBeVisible({ timeout: 8000 });
+    await expect(dialog(second)).toContainText('הוספה למסך הבית');
+    await expect(dialog(second).locator('.install-step')).toHaveCount(3);
+    await dialog(second).getByRole('button', { name: 'לא עכשיו' }).click();
+    await expect(dialog(second)).toHaveCount(0);
+
+    // Third visit: shown once is enough.
+    const third = await context.newPage();
+    await stubNetwork(third);
+    await third.goto('./');
+    await expect(third.locator('.maplibregl-canvas')).toBeVisible();
+    await third.waitForTimeout(3800);
+    await expect(dialog(third)).toHaveCount(0);
+
+    // It is still in the menu.
+    await third.getByRole('button', { name: 'תפריט' }).click();
+    await third.getByRole('button', { name: 'התקנה כאפליקציה' }).click();
+    await expect(third.getByRole('heading', { name: 'התקנה כאפליקציה' })).toBeVisible();
+    await expect(third.getByText('בסרגל שבתחתית המסך')).toBeVisible();
+  });
+
+  test('inside an in-app browser the guide says to open the page in Safari', async ({ browser }) => {
+    const context = await browser.newContext({
+      userAgent:
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 326.0.3.30.91 (iPhone14,5; iOS 17_4; he_IL; he; scale=3.00; 1170x2532; 584123456)',
+      viewport: { width: 390, height: 844 },
+      locale: 'he-IL',
+      serviceWorkers: 'block',
+    });
+    const page = await context.newPage();
+    await stubNetwork(page);
+    await page.goto('./?panel=install');
+    await expect(page.getByText('אתם בתוך הדפדפן של אינסטגרם')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'העתקת הקישור' })).toBeVisible();
+    await context.close();
+  });
+});

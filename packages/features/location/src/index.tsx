@@ -206,11 +206,13 @@ export default defineFeature({
     ctx.onStyle((m) => {
       setGeoJSON(m, 'me-accuracy', EMPTY);
       setGeoJSON(m, 'me-dot', EMPTY);
-      const accent = cssVar('--accent', '#1a73e8');
-      ensureLayer(m, { id: 'me-accuracy-fill', type: 'fill', source: 'me-accuracy', paint: { 'fill-color': accent, 'fill-opacity': 0.12 } }, null);
-      ensureLayer(m, { id: 'me-accuracy-line', type: 'line', source: 'me-accuracy', paint: { 'line-color': accent, 'line-opacity': 0.35, 'line-width': 1 } }, null);
-      ensureLayer(m, { id: 'me-halo', type: 'circle', source: 'me-dot', paint: { 'circle-radius': 12, 'circle-color': '#ffffff', 'circle-pitch-alignment': 'map' } }, null);
-      ensureLayer(m, { id: 'me-dot', type: 'circle', source: 'me-dot', paint: { 'circle-radius': 8, 'circle-color': '#1a73e8', 'circle-pitch-alignment': 'map' } }, null);
+      // The familiar blue dot: blue disc, white ring, soft shadow, light blue accuracy circle.
+      const me = cssVar('--me', '#4285f4');
+      ensureLayer(m, { id: 'me-accuracy-fill', type: 'fill', source: 'me-accuracy', paint: { 'fill-color': me, 'fill-opacity': 0.16 } }, null);
+      ensureLayer(m, { id: 'me-accuracy-line', type: 'line', source: 'me-accuracy', paint: { 'line-color': me, 'line-opacity': 0.4, 'line-width': 1 } }, null);
+      ensureLayer(m, { id: 'me-shadow', type: 'circle', source: 'me-dot', paint: { 'circle-radius': 13, 'circle-color': '#000000', 'circle-opacity': 0.22, 'circle-blur': 0.6, 'circle-translate': [0, 1], 'circle-pitch-alignment': 'map' } }, null);
+      ensureLayer(m, { id: 'me-halo', type: 'circle', source: 'me-dot', paint: { 'circle-radius': 11, 'circle-color': '#ffffff', 'circle-pitch-alignment': 'map' } }, null);
+      ensureLayer(m, { id: 'me-dot', type: 'circle', source: 'me-dot', paint: { 'circle-radius': 8, 'circle-color': me, 'circle-pitch-alignment': 'map' } }, null);
       render();
     });
     userLocation.subscribe(() => render());

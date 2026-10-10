@@ -223,3 +223,37 @@ test('timeline', async ({ page }, info) => {
   await page.waitForTimeout(1500);
   await shot('6-dark');
 });
+
+test.describe(() => {
+  test.use({
+    userAgent:
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
+  });
+
+  test('install', async ({ page }, info) => {
+    await stubNetwork(page);
+    const shot = (n: string) => page.screenshot({ path: `${dir}/${info.project.name}-install-${n}.png` });
+    // Pretend this is the second visit, so the one-time guide comes up on its own.
+    await page.addInitScript(() => localStorage.setItem('nm:visits', '1'));
+    for (const scheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page
+        .evaluate(() => {
+          sessionStorage.clear();
+          localStorage.removeItem('nm:installHintShown');
+        })
+        .catch(() => {});
+      await page.goto('./#15/32.08/34.78');
+      await page.getByRole('dialog', { name: 'התקנה כאפליקציה' }).waitFor({ timeout: 10_000 });
+      await page.waitForTimeout(500);
+      await shot(`1-sheet-${scheme}`);
+      await page.getByRole('dialog').evaluate((el) => el.scrollTo(0, el.scrollHeight));
+      await page.waitForTimeout(200);
+      await shot(`2-sheet-end-${scheme}`);
+    }
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.goto('./?panel=install');
+    await page.waitForTimeout(800);
+    await shot('3-view');
+  });
+});

@@ -21,6 +21,7 @@ import {
   back,
   currentView,
   defineFeature,
+  cssVar,
   ensureLayer,
   EMPTY,
   elevationProfile,
@@ -810,10 +811,13 @@ export default defineFeature({
       setGeoJSON(m, 'transit-legs', EMPTY);
       setGeoJSON(m, 'transit-stops', EMPTY);
       const notActive = ['!', ['get', 'active']] as unknown as ['!', unknown];
-      ensureLayer(m, { id: 'route-alt-casing', type: 'line', source: 'routes', filter: notActive as never, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#6e7378', 'line-width': 9 } });
-      ensureLayer(m, { id: 'route-alt', type: 'line', source: 'routes', filter: notActive as never, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#bdc1c6', 'line-width': 6 } });
-      ensureLayer(m, { id: 'route-casing', type: 'line', source: 'routes', filter: ['get', 'active'] as never, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#0d47a1', 'line-width': 10 } });
-      ensureLayer(m, { id: 'route-line', type: 'line', source: 'routes', filter: ['get', 'active'] as never, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#1a73e8', 'line-width': 7 } });
+      // Google-style route: blue with a darker blue edge; alternatives grey with a grey edge.
+      const routeColor = cssVar('--route', '#4285f4');
+      const routeCasing = cssVar('--route-casing', '#1967d2');
+      ensureLayer(m, { id: 'route-alt-casing', type: 'line', source: 'routes', filter: notActive as never, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': cssVar('--route-alt-casing', '#80868b'), 'line-width': 9 } });
+      ensureLayer(m, { id: 'route-alt', type: 'line', source: 'routes', filter: notActive as never, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': cssVar('--route-alt', '#bdc1c6'), 'line-width': 6 } });
+      ensureLayer(m, { id: 'route-casing', type: 'line', source: 'routes', filter: ['get', 'active'] as never, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': routeCasing, 'line-width': 10 } });
+      ensureLayer(m, { id: 'route-line', type: 'line', source: 'routes', filter: ['get', 'active'] as never, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': routeColor, 'line-width': 7 } });
       // Transit: rides in the line's colour, walks as grey dots, stops as white rings.
       ensureLayer(m, { id: 'transit-ride-casing', type: 'line', source: 'transit-legs', filter: ['!', ['get', 'walk']] as never, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': 10 } });
       ensureLayer(m, { id: 'transit-ride', type: 'line', source: 'transit-legs', filter: ['!', ['get', 'walk']] as never, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'] as never, 'line-width': 7 } });
