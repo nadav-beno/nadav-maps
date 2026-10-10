@@ -29,6 +29,8 @@ jobs:
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
           VITE_SENTRY_DSN: ${{ vars.SENTRY_DSN }}
+          # Optional. Empty = no traffic layer. Set in Settings > Secrets and variables > Actions > Variables.
+          VITE_TOMTOM_KEY: ${{ vars.VITE_TOMTOM_KEY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: apps/web/dist

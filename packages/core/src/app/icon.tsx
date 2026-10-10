@@ -2,6 +2,8 @@ import { placeVisual } from '../place-visual.ts';
 import type { Place } from '../types.ts';
 import { ICONS } from './icon-paths.ts';
 
+export { ICONS };
+
 /** Icons that point "forward" or "back" and should mirror in right-to-left layouts. */
 const MIRROR = new Set(['arrow_back', 'arrow_forward', 'chevron_left', 'chevron_right', 'keyboard_arrow_left', 'keyboard_arrow_right', 'open_in_new']);
 

@@ -15,7 +15,10 @@ export interface Region {
   languages: string[];
   units: 'metric' | 'imperial';
   timeZone?: string;
-  /** Which features have data here. */
+  /**
+   * Which features have data here. traffic: live traffic from our traffic provider (TomTom lists
+   * ~73 markets, not Israel: docs.tomtom.com/traffic-api/documentation/tomtom-orbis-maps/product-information/market-coverage).
+   */
   coverage: { search: boolean; routing: boolean; transit: boolean; traffic: boolean };
 }
 
@@ -39,7 +42,7 @@ export const REGIONS: Region[] = [
     zoom: 3.5,
     languages: ['en'],
     units: 'imperial',
-    coverage: { search: true, routing: true, transit: false, traffic: false },
+    coverage: { search: true, routing: true, transit: false, traffic: true },
   },
   {
     id: 'gb',
@@ -50,7 +53,7 @@ export const REGIONS: Region[] = [
     languages: ['en'],
     units: 'imperial',
     timeZone: 'Europe/London',
-    coverage: { search: true, routing: true, transit: false, traffic: false },
+    coverage: { search: true, routing: true, transit: false, traffic: true },
   },
   {
     id: 'world',

@@ -4,6 +4,7 @@ import { CATEGORIES, categoryById } from '../categories.ts';
 import { defineTool } from '../define.ts';
 import { overpassCategory, overpassDetails, overpassIdentify } from '../providers/overpass.ts';
 import { photonReverse, photonSearch } from '../providers/photon.ts';
+import { tomtomIncidents, tomtomTrafficTime } from '../providers/tomtom.ts';
 import { transitDepartures, transitPlan } from '../providers/transitous.ts';
 import { valhallaRoute } from '../providers/valhalla.ts';
 import { wikipediaSummary } from '../providers/wikipedia.ts';
@@ -150,4 +151,28 @@ export const transitDeparturesTool = defineTool({
   run: (input, ctx) => transitDepartures(ctx, { stopId: input.stopId, center: input.near as LngLat | undefined, radiusM: input.radius }, input.limit, input.time),
 });
 
-export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, transitDirections, transitDeparturesTool, placeSummary];
+export const trafficIncidents = defineTool({
+  name: 'traffic_incidents',
+  title: 'אירועי תנועה',
+  description:
+    'Live traffic incidents (accidents, road works, closures, jams) inside a bounding box of at most 10,000 km², worst first: type, description, delay (s), length (m), from/to road names, road numbers and a [lng, lat] point. Data from TomTom; needs a configured key.',
+  input: z.object({
+    bbox: z.tuple([lng, lat, lng, lat]).describe('[west, south, east, north]'),
+    limit: z.number().int().min(1).max(100).default(50),
+  }),
+  run: (input, ctx) => tomtomIncidents(ctx, input.bbox as BBox, input.limit),
+});
+
+export const trafficTravelTime = defineTool({
+  name: 'traffic_travel_time',
+  title: 'זמן נסיעה עם תנועה',
+  description:
+    'Travel time by car with live traffic (TomTom) for a route: the time, the time without traffic and the delay, in seconds. Pass the route geometry from get_directions to time that exact route. Needs a configured key.',
+  input: z.object({
+    waypoints: z.array(point).min(2).max(10).describe('[[lng, lat], ...] origin first, destination last'),
+    geometry: z.array(point).max(5000).optional().describe('The route line to time, [[lng, lat], ...]'),
+  }),
+  run: (input, ctx) => tomtomTrafficTime(ctx, input.waypoints as LngLat[], input.geometry as LngLat[] | undefined),
+});
+
+export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, transitDirections, transitDeparturesTool, placeSummary, trafficIncidents, trafficTravelTime];

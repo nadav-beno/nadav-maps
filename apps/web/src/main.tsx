@@ -1,6 +1,6 @@
 import { render } from 'preact';
 import { effect } from '@preact/signals';
-import { parseUrl, providersFromEnv } from '@nm/core';
+import { parseUrl, providersFromEnv, withDevOverrides } from '@nm/core';
 import { applyUrlFlags, featureCatalog, isEnabled, providers, sheet, viewStack } from '@nm/core/app';
 import { createToolClient, setToolClient } from '@nm/tools';
 import { FEATURES } from './features.ts';
@@ -14,7 +14,8 @@ import './styles.css';
 
 initErrorReporting();
 
-const config = providersFromEnv(import.meta.env as Record<string, string | undefined>, 'VITE_');
+// On localhost, ?tomtom=<key> switches TomTom on without a rebuild (e2e tests, trying a key).
+const config = withDevOverrides(providersFromEnv(import.meta.env as Record<string, string | undefined>, 'VITE_'), location.href);
 setToolClient(createToolClient(config, 'he'));
 providers.value = config;
 

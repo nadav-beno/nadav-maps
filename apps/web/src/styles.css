@@ -556,6 +556,13 @@ a.detail-body { color: var(--text); }
 .thumb-transit { background: linear-gradient(160deg, transparent 45%, #1565c0 45% 52%, transparent 52%), linear-gradient(20deg, transparent 45%, #d32f2f 45% 52%, transparent 52%), #eef1f4; }
 .thumb-bike { background: linear-gradient(160deg, transparent 45%, #188038 45% 52%, transparent 52%), #eef1f4; }
 .thumb-3d { background: linear-gradient(180deg, #eef1f4 0 30%, #d8d4cc 30% 100%); }
+.thumb-traffic { background: linear-gradient(160deg, transparent 40%, #1ea362 40% 47%, transparent 47%), linear-gradient(20deg, transparent 50%, #f29900 50% 54%, #e8453c 54% 57%, #9e1c1a 57% 60%, transparent 60%), #eef1f4; }
+.traffic-badge { flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; color: #fff; }
+.traffic-incident { padding: 0 16px 16px; }
+.traffic-facts { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.route-traffic { display: inline-block; margin-inline-start: 8px; font-size: 13px; font-weight: 500; }
+.route-traffic.slow { color: var(--danger); }
+.route-traffic.ok { color: var(--ok); }
 
 /* ---------- prose screens ---------- */
 .prose { line-height: 1.6; }

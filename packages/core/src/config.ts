@@ -26,6 +26,11 @@ export interface ProviderConfig {
    * Transitous is a free community service for open-source, non-commercial apps.
    */
   transitUrl: string;
+  /**
+   * TomTom API key ('' = off): live traffic layer, incidents and traffic-aware travel times.
+   * In the browser build it is public by nature; restrict it to our domain in TomTom's dashboard.
+   */
+  tomtomKey: string;
   /** Identifies us to public servers, as their usage policies ask. */
   userAgent: string;
 }
@@ -41,6 +46,7 @@ export const DEFAULT_PROVIDERS: ProviderConfig = {
   // Sentinel-2 cloudless 2016 by EOX (CC BY 4.0). Later editions are non-commercial only.
   satellite: 'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg',
   transitUrl: 'https://api.transitous.org',
+  tomtomKey: '',
   userAgent: 'NadavMaps/0.2 (+https://github.com/nadav-beno/nadav-maps)',
 };
 
@@ -56,6 +62,23 @@ export function providersFromEnv(env: Record<string, string | undefined>, prefix
     places: env[prefix + 'PLACES_URL'] ?? DEFAULT_PROVIDERS.places,
     satellite: env[prefix + 'SATELLITE_URL'] ?? DEFAULT_PROVIDERS.satellite,
     transitUrl: env[prefix + 'TRANSIT_URL'] ?? DEFAULT_PROVIDERS.transitUrl,
+    tomtomKey: (env[prefix + 'TOMTOM_KEY'] ?? '').trim(),
     userAgent: DEFAULT_PROVIDERS.userAgent,
   };
+}
+
+/**
+ * Lets tests (and developers) switch on key-based sources without a build: `?tomtom=<key>`.
+ * Honoured only on localhost, so the public site can't be pointed at someone else's key.
+ */
+export function withDevOverrides(cfg: ProviderConfig, href: string): ProviderConfig {
+  let url: URL;
+  try {
+    url = new URL(href);
+  } catch {
+    return cfg;
+  }
+  if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) return cfg;
+  const key = url.searchParams.get('tomtom');
+  return key ? { ...cfg, tomtomKey: key } : cfg;
 }

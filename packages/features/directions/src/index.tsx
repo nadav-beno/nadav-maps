@@ -29,6 +29,7 @@ import {
   load,
   PlaceBadge,
   open,
+  providers,
   region,
   requestLocation,
   save,
@@ -37,7 +38,7 @@ import {
   userLocation,
   type ViewProps,
 } from '@nm/core/app';
-import { categoryLabel, getDirections, reverseGeocode, searchPlaces, tools, transitDirections } from '@nm/tools';
+import { categoryLabel, getDirections, reverseGeocode, searchPlaces, tools, trafficTravelTime, transitDirections } from '@nm/tools';
 
 type Endpoint = { kind: 'me' } | { kind: 'place'; place: Place } | null;
 
@@ -64,6 +65,25 @@ const haveLocation = computed(() => userLocation.value !== null);
 /** Travel time per mode for the tabs, like Google ("רכב 12 דק׳ · הליכה 45 דק׳"). */
 const modeTimes = signal<Partial<Record<DirectionsMode, number>>>({});
 const profile = signal<ElevationProfile | null>(null);
+/**
+ * Car only, when a TomTom key is set: the travel time with live traffic for a route we show.
+ * Valhalla stays the route source; TomTom only times that same line. Failures are silent.
+ */
+const trafficTimes = signal<Map<Route, number>>(new Map());
+
+async function loadTrafficTime(r: Route) {
+  if (!providers.peek().tomtomKey || r.mode !== 'car' || trafficTimes.peek().has(r) || r.geometry.length < 2) return;
+  const seq = requestSeq;
+  try {
+    const t = await tools().call(trafficTravelTime, { waypoints: [r.geometry[0], ...viaCoords(), r.geometry[r.geometry.length - 1]], geometry: r.geometry });
+    // Where TomTom has no live traffic (Israel, for now) its time is only a historic estimate:
+    // show it only when it reports an actual delay.
+    const live = region.peek().coverage.traffic || (t?.delayS ?? 0) >= 60;
+    if (t && live && seq === requestSeq) trafficTimes.value = new Map(trafficTimes.peek()).set(r, t.durationS);
+  } catch {
+    /* traffic is a bonus; the Valhalla time stands */
+  }
+}
 
 let map: MapLibreMap;
 
@@ -143,12 +163,14 @@ async function compute() {
       if (seq !== requestSeq) return;
       batch(() => {
         routes.value = rs;
+        trafficTimes.value = new Map();
         itineraries.value = [];
         active.value = 0;
         if (!rs.length) error.value = 'לא מצאנו מסלול בין הנקודות האלה.';
         modeTimes.value = rs[0] ? { [m]: rs[0].durationS } : {};
       });
       if (rs[0] && m !== 'car') void loadProfile(rs[0], seq);
+      if (rs[0] && m === 'car') void loadTrafficTime(rs[0]);
     }
     drawRoutes();
     fitRoutes();
@@ -680,9 +702,15 @@ function DirectionsView(_: ViewProps) {
                   profile.value = null;
                   drawRoutes();
                   if (mode.value !== 'car') void loadProfile(x, requestSeq);
+                  else void loadTrafficTime(x);
                 }}
               >
-                <span class="route-time">{formatDuration(x.durationS)}</span>
+                <span class="route-time">
+                  {formatDuration(x.durationS)}
+                  {trafficTimes.value.has(x) && (
+                    <span class={`route-traffic ${trafficTimes.value.get(x)! > x.durationS * 1.15 ? 'slow' : 'ok'}`}>עם תנועה: {formatDuration(trafficTimes.value.get(x)!)}</span>
+                  )}
+                </span>
                 <span class="route-dist">{formatDistance(x.distanceM, units.value)}</span>
                 <span class="route-sub muted small">
                   {x.summary ? `דרך ${x.summary} · ` : ''}הגעה ב-{formatArrival(x.durationS, Date.now(), region.value.timeZone)}

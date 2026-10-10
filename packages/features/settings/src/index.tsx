@@ -8,6 +8,7 @@ import {
   flagOverrides,
   isEnabled,
   open,
+  providers,
   theme,
   unitsPref,
   type ThemePref,
@@ -177,7 +178,7 @@ function AboutView(_: ViewProps) {
           מסלולים: <a href="https://valhalla.github.io/valhalla/" target="_blank" rel="noopener noreferrer">Valhalla</a> (שרת FOSSGIS)
         </li>
         <li>
-          תחבורה ציבורית: <a href="https://transitous.org" target="_blank" rel="noopener noreferrer">Transitous</a> (MOTIS), לוחות זמנים פתוחים מהמפעילים
+          תחבורה ציבורית: <a href="https://transitous.org" target="_blank" rel="noopener noreferrer">Transitous</a> (MOTIS), <a href="https://transitous.org/sources/" target="_blank" rel="noopener noreferrer">לוחות זמנים פתוחים מהמפעילים</a>
         </li>
         <li>
           פרטי מקומות: <a href="https://overpass-api.de" target="_blank" rel="noopener noreferrer">Overpass API</a>
@@ -188,6 +189,11 @@ function AboutView(_: ViewProps) {
         <li>
           תצלומי לוויין: <a href="https://s2maps.eu" target="_blank" rel="noopener noreferrer">Sentinel-2 cloudless</a> של EOX, מבוסס על נתוני Copernicus Sentinel (CC BY 4.0)
         </li>
+        {providers.value.tomtomKey && (
+          <li>
+            תנועה בזמן אמת ואירועי תנועה: <a href="https://www.tomtom.com" target="_blank" rel="noopener noreferrer">© TomTom</a>
+          </li>
+        )}
         <li>
           תבליט וקווי גובה: נתוני גובה של Mapzen Terrain Tiles (AWS Open Data)
         </li>

@@ -1,5 +1,6 @@
 import { signal } from '@preact/signals';
-import { back, defineFeature, Icon, mapLayers, mapType, open, type FeatureContext, type MapLayers, type MapTypePref, type ViewProps } from '@nm/core/app';
+import { back, defineFeature, Icon, mapLayers, mapType, open, region, type FeatureContext, type MapLayers, type MapTypePref, type ViewProps } from '@nm/core/app';
+import { hasTraffic, onTrafficClick, syncTraffic, TrafficIncidentView, trafficOn, TrafficToggle } from './traffic.tsx';
 
 let map: FeatureContext['map'];
 const bearing = signal(0);
@@ -50,7 +51,21 @@ function LayersView(_: ViewProps) {
             {d.label}
           </button>
         ))}
+        {hasTraffic() && (
+          <TrafficToggle
+            onToggle={() => {
+              trafficOn.value = !trafficOn.value;
+              syncTraffic(map);
+            }}
+          />
+        )}
       </div>
+      {hasTraffic() && trafficOn.value && (
+        <p class="muted small">
+          תנועה בזמן אמת מ-TomTom: ירוק זורם, כתום ואדום איטי, אדום כהה פקק. הקישו על סמל של אירוע לפרטים.
+          {region.value.bbox && !region.value.coverage.traffic && ` ל-TomTom אין עדיין נתוני תנועה בזמן אמת ב${region.value.name}, אז ייתכן שלא יופיע כאן כלום.`}
+        </p>
+      )}
       {mapType.value === 'satellite' && (
         <p class="muted small">
           תצלומי לוויין Sentinel-2 (רזולוציה של 10 מטר לפיקסל): מתאימים למבט על אזורים, לא לזיהוי בתים. תצלומים מפורטים יותר דורשים רישיון בתשלום.
@@ -85,13 +100,18 @@ function Compass() {
 export default defineFeature({
   id: 'layers',
   title: 'שכבות',
-  description: 'סוג מפה (לוויין, פני שטח) ושכבות: תחבורה ציבורית, אופניים, תלת־ממד',
+  description: 'סוג מפה (לוויין, פני שטח) ושכבות: תחבורה ציבורית, אופניים, תלת־ממד ותנועה',
   enabledByDefault: true,
   setup(ctx) {
     map = ctx.map;
     ctx.registerView('layers', LayersView);
     ctx.registerSlot('controls', LayersButton, 0);
     ctx.registerSlot('controls', Compass, 10);
+    if (hasTraffic()) {
+      ctx.registerView('traffic-incident', TrafficIncidentView);
+      ctx.onStyle(syncTraffic);
+      ctx.onMapClick((_e, features) => onTrafficClick(ctx.map, features as never), 60);
+    }
     const sync = () => {
       bearing.value = ctx.map.getBearing();
       pitch.value = ctx.map.getPitch();

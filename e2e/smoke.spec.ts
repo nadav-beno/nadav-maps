@@ -83,6 +83,51 @@ test('layers: satellite map type and transit lines are remembered', async ({ pag
   await expect(page.getByRole('button', { name: 'תחבורה ציבורית' })).toHaveAttribute('aria-pressed', 'true');
 });
 
+test('traffic: no TomTom key, no traffic toggle and no TomTom requests', async ({ page }) => {
+  const tomtom: string[] = [];
+  page.on('request', (r) => r.url().startsWith('https://api.tomtom.com/') && tomtom.push(r.url()));
+  await page.goto('./#14/32.08/34.79');
+  await page.getByRole('button', { name: 'שכבות' }).click();
+  await expect(page.getByRole('button', { name: 'תחבורה ציבורית' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'תנועה', exact: true })).toHaveCount(0);
+  await page.goto('./?route=34.7741,32.0787;34.7918,32.0745&mode=car');
+  await expect(page.locator('.route-option .route-time').first()).toContainText('4 דק׳');
+  await expect(page.locator('.route-traffic')).toHaveCount(0);
+  expect(tomtom).toEqual([]);
+});
+
+test('traffic (TomTom key): live traffic layer with credits, incident details and traffic-aware car time', async ({ page }) => {
+  test.slow(); // three screens and two page loads
+  const tomtom: string[] = [];
+  page.on('request', (r) => r.url().startsWith('https://api.tomtom.com/') && tomtom.push(new URL(r.url()).pathname));
+  // ?tomtom= works on localhost only; the stubs answer for the key "test".
+  await page.goto('./?tomtom=test#15/32.08/34.792');
+  await page.getByRole('button', { name: 'שכבות' }).click();
+  const toggle = page.getByRole('button', { name: 'תנועה', exact: true });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => tomtom.some((p) => p.startsWith('/traffic/map/4/tile/flow/relative/'))).toBe(true);
+  await expect.poll(() => tomtom.some((p) => p.startsWith('/traffic/map/4/tile/incidents/'))).toBe(true);
+  await expect(page.locator('.maplibregl-ctrl-attrib-inner')).toContainText('TomTom');
+  await page.getByRole('region', { name: 'לוח מידע' }).getByLabel('חזרה').click();
+
+  // Tap the accident icon.
+  type W = { map: { queryRenderedFeatures(o: { layers: string[] }): unknown[]; project(p: [number, number]): { x: number; y: number } } };
+  await page.waitForFunction(() => (window as unknown as W).map.queryRenderedFeatures({ layers: ['traffic-incidents'] }).length > 0);
+  const at = await page.evaluate(() => (window as unknown as W).map.project([34.792, 32.08]));
+  const box = (await page.locator('.maplibregl-canvas').boundingBox())!;
+  await page.mouse.click(box.x + at.x, box.y + at.y);
+  await expect(page.getByRole('heading', { name: 'תאונה' })).toBeVisible();
+  await expect(page.getByText('תאונה בנתיב השמאלי')).toBeVisible();
+  await expect(page.getByText('כביש 20 · ממחלף השלום עד מחלף ארלוזורוב')).toBeVisible();
+  await expect(page.getByText('עיכוב: 7 דק׳')).toBeVisible();
+
+  // Traffic-aware time next to Valhalla's.
+  await page.goto('./?tomtom=test&route=34.7741,32.0787;34.7918,32.0745&mode=car');
+  await expect(page.locator('.route-option .route-traffic').first()).toHaveText('עם תנועה: 7 דק׳');
+  expect(tomtom.some((p) => p.startsWith('/routing/1/calculateRoute/'))).toBe(true);
+});
+
 test('public transport directions show lines, live times and steps', async ({ page }) => {
   await page.goto('./?route=34.7741,32.0787;34.7918,32.0745&mode=transit');
   await expect(page.locator('.transit-option')).toHaveCount(2);

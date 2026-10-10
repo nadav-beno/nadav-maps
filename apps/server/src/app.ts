@@ -100,7 +100,7 @@ export function createApp(opts: ServerOptions = {}): Hono {
 export function buildMcpServer(ctx: (signal?: AbortSignal) => ToolContext): McpServer {
   const server = new McpServer(
     { name: 'nadav-maps', version: '0.2.0' },
-    { instructions: 'Maps tools: search places worldwide (Hebrew-aware), place details, nearby by category, and routes by car, foot or bike with Hebrew turn-by-turn. Coordinates are [lng, lat].' },
+    { instructions: 'Maps tools: search places worldwide (Hebrew-aware), place details, nearby by category, and routes by car, foot or bike with Hebrew turn-by-turn, public transport, and (when the server has a TomTom key) live traffic incidents and traffic-aware car times. Coordinates are [lng, lat].' },
   );
   for (const tool of TOOLS as Tool[]) {
     server.registerTool(

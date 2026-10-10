@@ -3,6 +3,7 @@ import { encodePolyline } from '../packages/core/src/polyline.ts';
 import { sceneTile, TILEJSON } from './basemap-scene.ts';
 import { PLACES_LISTING, PLACES_PMTILES, PLACES_RELEASE } from './places-scene.ts';
 import { motisPlan, motisStoptimes } from './transit-fixture.ts';
+import { flowTile, incidentTile, INCIDENT_DETAILS, TRAFFIC_ROUTE } from './traffic-scene.ts';
 
 /**
  * Tests never hit the real map servers: tiles, search, routing and place details
@@ -101,6 +102,20 @@ export async function stubNetwork(page: Page): Promise<void> {
     if (path.endsWith('/plan')) return r.fulfill({ json: motisPlan(), headers: { 'access-control-allow-origin': '*' } });
     if (path.endsWith('/stoptimes')) return r.fulfill({ json: motisStoptimes(), headers: { 'access-control-allow-origin': '*' } });
     return r.fulfill({ status: 404, body: '' });
+  });
+  // TomTom (only used when a test opens the app with ?tomtom=test). Requests without that key fail.
+  await page.route('https://api.tomtom.com/**', (r) => {
+    const url = new URL(r.request().url());
+    const cors = { 'access-control-allow-origin': '*' };
+    if (url.searchParams.get('key') !== 'test') return r.fulfill({ status: 403, body: '', headers: cors });
+    const tile = /^\/traffic\/map\/4\/tile\/(flow\/relative|incidents)\/(\d+)\/(\d+)\/(\d+)\.pbf$/.exec(url.pathname);
+    if (tile) {
+      const [z, x, y] = [+tile[2], +tile[3], +tile[4]];
+      return r.fulfill({ body: tile[1] === 'incidents' ? incidentTile(z, x, y) : flowTile(z, x, y), contentType: 'application/x-protobuf', headers: cors });
+    }
+    if (url.pathname === '/traffic/services/5/incidentDetails') return r.fulfill({ json: INCIDENT_DETAILS, headers: cors });
+    if (url.pathname.startsWith('/routing/1/calculateRoute/')) return r.fulfill({ json: TRAFFIC_ROUTE, headers: cors });
+    return r.fulfill({ status: 404, body: '', headers: cors });
   });
   await page.route('https://overpass-api.de/api/interpreter', (r) => {
     const body = decodeURIComponent(r.request().postData() ?? '');
