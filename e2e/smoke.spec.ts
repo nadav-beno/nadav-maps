@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { stubNetwork } from './stubs.ts';
+import { adsbResponse, fakeGps, FLIGHT_FIXES } from './flight-fixture.ts';
 
 test.beforeEach(async ({ page }) => {
   await stubNetwork(page);
@@ -276,4 +277,106 @@ test('keyboard shortcuts on desktop: ? opens the help, Escape closes it, M measu
   await page.getByRole('searchbox', { name: 'חיפוש מקום או כתובת' }).fill('m?');
   await expect(page.getByRole('heading', { name: 'קיצורי מקלדת' })).toBeHidden();
   await expect(page.locator('.measure-value')).toBeHidden();
+});
+
+/** The bits of the MapLibre map (window.map) the flight tests read. */
+type MapLike = {
+  getLayer(id: string): unknown;
+  getLayoutProperty(id: string, name: string): unknown;
+  queryRenderedFeatures(o: { layers: string[] }): { properties: Record<string, unknown> }[];
+};
+
+test.describe('flight mode', () => {
+  // These wait on the map rendering; give a loaded machine room.
+  test.setTimeout(90_000);
+  const worldVisible = (page: import('@playwright/test').Page) =>
+    page.evaluate(() => {
+      const map = (window as unknown as { map: MapLike }).map;
+      return !!map.getLayer('world-land') && map.getLayoutProperty('world-land', 'visibility') === 'visible';
+    });
+  const renderedCities = (page: import('@playwright/test').Page) =>
+    page.evaluate(() => {
+      const map = (window as unknown as { map: MapLike }).map;
+      return map.queryRenderedFeatures({ layers: ['world-city-label'] }).map((f) => String(f.properties.name));
+    });
+
+  test('flight: live readouts, what is below, a destination with ETA, the plane on the map', async ({ page }) => {
+    await fakeGps(page, FLIGHT_FIXES);
+    await page.goto('./#8/32.08/34.78');
+    await page.getByRole('button', { name: 'תפריט' }).click();
+    await page.getByRole('button', { name: 'מצב טיסה' }).click();
+    await expect(page).toHaveURL(/panel=flight/);
+    await expect(page.locator('.flight-gps')).toHaveText('GPS פעיל');
+    const stat = (label: string) => page.locator('.flight-stat').filter({ hasText: label });
+    await expect(stat('מהירות קרקע')).toContainText('864');
+    await expect(stat('מהירות קרקע')).toContainText('467 קשר');
+    await expect(stat('גובה')).toContainText('11,000');
+    await expect(stat('גובה')).toContainText('36,089 רגל');
+    await expect(stat('כיוון')).toContainText('285°');
+    await expect(stat('כיוון')).toContainText('מערב');
+    await expect(page.locator('.flight-above-title')).toHaveText('יוון');
+    await expect(stat('מרחק שעברתם')).not.toContainText(/^מרחק שעברתם0/);
+    // Destination from the bundled airports, offline-capable.
+    await page.getByRole('button', { name: 'בחירת יעד' }).click();
+    await page.getByRole('searchbox', { name: 'חיפוש יעד' }).fill('TLV');
+    await page.getByRole('button', { name: /Ben Gurion/ }).click();
+    await expect(page.locator('.flight-dest-line')).toContainText(/נשארו \d[\d,]* ק״מ/);
+    await expect(page.locator('.flight-dest-line')).toContainText(/נחיתה משוערת \d{2}:\d{2}/);
+    // The plane, its track and the great circle toward the destination are on the map.
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const map = (window as unknown as { map: MapLike }).map;
+          return ['flight-plane', 'flight-track', 'flight-route'].map((id) => map.queryRenderedFeatures({ layers: [id] }).length > 0);
+        }),
+        { timeout: 15_000 },
+      )
+      .toEqual([true, true, true]);
+    // Flight mode shows the bundled world map instead of the normal one.
+    expect(await worldVisible(page)).toBe(true);
+    await page.getByRole('button', { name: 'יציאה ממצב טיסה' }).click();
+    await expect(page.locator('.flight')).toBeHidden();
+    expect(await worldVisible(page)).toBe(false);
+  });
+
+  test('flight: before the first GPS fix it explains what to do', async ({ page }) => {
+    await fakeGps(page, []);
+    await page.goto('./?panel=flight');
+    await expect(page.getByText('מחפשים אות GPS…')).toBeVisible();
+    await expect(page.getByText(/שבו ליד החלון/)).toBeVisible();
+    await expect(page.locator('.flight-stat').filter({ hasText: 'גובה' })).toContainText('—');
+  });
+
+  test('flight offline: tiles fail and the bundled world map still renders', async ({ page }) => {
+    // No network for the map: the tile index, tiles and fonts all fail.
+    await page.route('https://tiles.openfreemap.org/**', (r) => r.abort('internetdisconnected'));
+    await page.goto('./#5.5/32/34.8');
+    await expect.poll(() => worldVisible(page), { timeout: 15_000 }).toBe(true);
+    await expect.poll(() => renderedCities(page), { timeout: 15_000 }).toContain('ירושלים');
+    // And in flight mode, with GPS over Greece.
+    await fakeGps(page, FLIGHT_FIXES);
+    await page.goto('./?panel=flight#5/38/23');
+    await expect(page.locator('.flight-above-title')).toHaveText('יוון');
+    await expect.poll(() => renderedCities(page), { timeout: 15_000 }).toContain('אתונה');
+  });
+
+  test('flight: find my flight by number when there is no GPS (ADS-B)', async ({ page }) => {
+    await fakeGps(page, []);
+    const asked: string[] = [];
+    await page.route('https://api.adsb.lol/**', (r) => {
+      const cs = r.request().url().split('/').pop()!;
+      asked.push(cs);
+      return r.fulfill({ json: cs === 'ELY001' ? adsbResponse() : { ac: [], total: 0 }, headers: { 'access-control-allow-origin': '*' } });
+    });
+    await page.goto('./?panel=flight');
+    await page.getByRole('textbox', { name: 'מספר טיסה' }).fill('ly001');
+    await page.getByRole('button', { name: 'חיפוש', exact: true }).click();
+    await expect(page.locator('.flight-adsb')).toContainText('ELY001');
+    await expect(page.locator('.flight-adsb')).toContainText('B789');
+    await expect(page.locator('.flight-gps')).toHaveText('לפי ADS-B');
+    await expect(page.locator('.flight-stat').filter({ hasText: 'גובה' })).toContainText('11,476');
+    await expect(page.locator('.flight-stat').filter({ hasText: 'מהירות קרקע' })).toContainText('893');
+    // Only the flight number left the device.
+    expect(asked).toEqual(['ELY1', 'ELY001']);
+  });
 });

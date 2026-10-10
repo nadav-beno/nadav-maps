@@ -8,3 +8,4 @@ export { elementToDetails, commonsThumb } from './providers/overpass.ts';
 export * from './client.ts';
 export { parseWikipediaTag, type PlaceSummary } from './providers/wikipedia.ts';
 export { motisItinerary, motisDeparture, transitMode } from './providers/transitous.ts';
+export { parseAdsb, callsignCandidates, type AircraftPosition, type FlightLookup } from './providers/adsb.ts';

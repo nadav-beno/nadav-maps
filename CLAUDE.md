@@ -11,7 +11,7 @@ region with full coverage). The full product spec lives in a Claude Doc; this fi
 | `apps/server` | Hono server: `POST /api/tools/<name>` (REST) and `/mcp` (Model Context Protocol, stateless). Same tools as the web app. |
 | `packages/core` | Pure helpers (geo, polyline, Hebrew search text, URL state, formatting, regions, provider config, opening hours, `map-link.ts` for pasted Google/Waze/Apple links, `local-search.ts`). `@nm/core/app` holds app state (signals, incl. `providers`), the feature API and shared UI (`LineChip` for transit lines, `elevationProfile` read from the terrain tiles). |
 | `packages/tools` | Every data operation as a typed tool (`defineTool` + Zod schema): search, reverse geocode, details, nearby, directions. One schema drives web calls, REST and MCP. Providers: Photon, Valhalla, Overpass, Wikipedia/Wikidata, Transitous (MOTIS API, public transit plans and departures). |
-| `packages/features/*` | One package per feature (search, place, location, directions, navigation, transit, measure, layers, saved, contribute, photos, settings). |
+| `packages/features/*` | One package per feature (search, place, location, directions, navigation, transit, measure, layers, flight, saved, contribute, photos, settings). |
 | `e2e` | Playwright tests with all network stubbed (`e2e/stubs.ts`). |
 
 ## Rules

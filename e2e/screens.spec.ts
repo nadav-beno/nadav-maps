@@ -1,5 +1,6 @@
 import { test } from '@playwright/test';
 import { stubNetwork } from './stubs.ts';
+import { adsbResponse, fakeGps, FLIGHT_FIXES } from './flight-fixture.ts';
 
 // Screenshots for visual review (not assertions). Run: SHOTS=dir pnpm e2e screens
 const dir = process.env.SHOTS;
@@ -123,4 +124,48 @@ test('basemap', async ({ page }, info) => {
   await page.goto('./?t=3d#16.5/32.081/34.786/30/55');
   await page.waitForTimeout(1500);
   await shot('light-3d');
+});
+
+test('flight', async ({ page }, info) => {
+  test.setTimeout(300_000);
+  await stubNetwork(page);
+  await page.route('https://api.adsb.lol/**', (r) => r.fulfill({ json: adsbResponse(), headers: { 'access-control-allow-origin': '*' } }));
+  const shot = (n: string) => page.screenshot({ path: `${dir}/${info.project.name}-flight-${n}.png` });
+  // Before the GPS locks on.
+  await fakeGps(page, []);
+  await page.goto('./?panel=flight#5/38/23');
+  await page.waitForTimeout(2500);
+  await shot('1-searching');
+  // Flying west over Greece with a destination.
+  await fakeGps(page, FLIGHT_FIXES);
+  // A real reload (the same URL would only be a hash change).
+  await page.goto('about:blank');
+  await page.goto('./?panel=flight#5/38/23');
+  await page.locator('.flight-gps.gps-ok').waitFor();
+  await page.getByRole('button', { name: 'בחירת יעד' }).click();
+  await page.getByRole('searchbox', { name: 'חיפוש יעד' }).fill('לונ');
+  await page.waitForTimeout(400);
+  await shot('2-picker');
+  await page.getByRole('button', { name: /לונדון/ }).first().click();
+  await page.waitForTimeout(4000);
+  await shot('3-live');
+  await page.getByRole('textbox', { name: 'מספר טיסה' }).fill('LY001');
+  await page.getByRole('button', { name: 'חיפוש', exact: true }).click();
+  await page.locator('.flight-adsb').waitFor();
+  await page.locator('.flight-find').scrollIntoViewIfNeeded();
+  await page.waitForTimeout(800);
+  await shot('4-adsb');
+  // Offline: the vector tiles fail, the bundled world map is drawn, light and dark.
+  await page.route('https://tiles.openfreemap.org/**', (r) => r.abort('internetdisconnected'));
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.goto(`./?panel=flight&t=${scheme}#5/38/23`);
+    await page.locator('.flight-gps.gps-ok').waitFor();
+    await page.waitForTimeout(4000);
+    await shot(`5-offline-${scheme}`);
+  }
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto('./#4/34/30');
+  await page.waitForTimeout(4000);
+  await shot('6-offline-home');
 });

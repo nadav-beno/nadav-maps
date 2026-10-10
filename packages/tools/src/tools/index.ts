@@ -2,6 +2,7 @@ import { normalizeQuery, parsePlaceId, queryVariants, type BBox, type LngLat } f
 import { z } from 'zod';
 import { CATEGORIES, categoryById } from '../categories.ts';
 import { defineTool } from '../define.ts';
+import { findFlight } from '../providers/adsb.ts';
 import { overpassCategory, overpassDetails, overpassIdentify } from '../providers/overpass.ts';
 import { photonReverse, photonSearch } from '../providers/photon.ts';
 import { transitDepartures, transitPlan } from '../providers/transitous.ts';
@@ -150,4 +151,13 @@ export const transitDeparturesTool = defineTool({
   run: (input, ctx) => transitDepartures(ctx, { stopId: input.stopId, center: input.near as LngLat | undefined, radiusM: input.radius }, input.limit, input.time),
 });
 
-export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, transitDirections, transitDeparturesTool, placeSummary];
+export const flightPosition = defineTool({
+  name: 'flight_position',
+  title: 'איפה הטיסה',
+  description:
+    'Live position of an aircraft by flight number or callsign ("LY001", "ELY001", "BAW123"), from public ADS-B data (adsb.lol, ODbL). Returns position, altitude (m), ground speed (km/h), track and how old the position is; empty when the aircraft is not being received.',
+  input: z.object({ callsign: z.string().trim().min(2).max(10).regex(/^[A-Za-z0-9 -]+$/, 'letters and digits only') }),
+  run: (input, ctx) => findFlight(ctx, input.callsign),
+});
+
+export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, transitDirections, transitDeparturesTool, placeSummary, flightPosition];

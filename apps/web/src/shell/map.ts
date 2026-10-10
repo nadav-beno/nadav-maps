@@ -4,11 +4,12 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { effect } from '@preact/signals';
 import { regionAt, type ProviderConfig, type UrlState } from '@nm/core';
 import mlcontour from 'maplibre-contour';
-import { isDark, mapLayers, mapType, region, toast } from '@nm/core/app';
+import { basemapOffline, isDark, mapLayers, mapType, region, toast, worldUrl } from '@nm/core/app';
 import { dispatchClick, dispatchLongPress, runStyleHooks } from './registry.ts';
 import { addBasemapImages, addMissingImage } from './basemap/images.ts';
 import { buildStyle } from './basemap/style.ts';
 import { placesSourceUrl } from './basemap/places-source.ts';
+import { setupOfflineWorld } from './basemap/offline.ts';
 
 // MapLibre 6 ships its web worker as a separate file; let Vite serve it.
 maplibregl.setWorkerUrl(workerUrl);
@@ -66,15 +67,41 @@ export function createMap(container: HTMLElement, cfg: ProviderConfig, initial: 
   // Only the tile index (TileJSON) failing means no map at all; single tiles failing is routine.
   const tileIndex = new RegExp(`${cfg.vectorTiles.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![/\\w])`);
   let shownOffline = false;
+  const retry = () => {
+    shownOffline = false;
+    map.setStyle(style(), { diff: false });
+  };
+  // Tiles failing (no network on a plane) switch on the bundled world map underneath.
+  let tileFailures = 0;
+  const online = () => typeof navigator === 'undefined' || navigator.onLine !== false;
+  basemapOffline.value = !online();
   map.on('error', (e) => {
     const msg = String((e.error as Error | undefined)?.message ?? '');
-    if (tileIndex.test(msg) && !shownOffline) {
-      shownOffline = true;
-      toast('המפה לא נטענה. בדקו את החיבור לאינטרנט.', { label: 'ניסיון חוזר', run: () => { shownOffline = false; map.setStyle(style(), { diff: false }); } }, 15000);
+    if (tileIndex.test(msg)) {
+      basemapOffline.value = true;
+      if (!shownOffline) {
+        shownOffline = true;
+        toast('אין חיבור למפה. מוצגת מפת עולם בסיסית.', { label: 'ניסיון חוזר', run: retry }, 15000);
+      }
+    } else if ((e as { sourceId?: string }).sourceId === 'omt' && ++tileFailures >= 2) basemapOffline.value = true;
+  });
+  map.on('sourcedata', (e) => {
+    if (e.sourceId === 'omt' && e.tile && online()) {
+      tileFailures = 0;
+      basemapOffline.value = false;
     }
   });
+  addEventListener('offline', () => (basemapOffline.value = true));
+  addEventListener('online', () => {
+    tileFailures = 0;
+    basemapOffline.value = false;
+    if (shownOffline) retry();
+  });
+  worldUrl.value = `${import.meta.env.BASE_URL}offline/world-1.json`;
+  const addWorld = setupOfflineWorld(map, () => (mapType.value === 'satellite' ? 'dark' : theme()));
   map.on('style.load', () => {
     addBasemapImages(map, imageTheme());
+    addWorld(map);
     runStyleHooks(map);
   });
   // Satellite always uses the dark-palette images (light labels over the photo).
