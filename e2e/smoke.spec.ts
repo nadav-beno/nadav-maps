@@ -150,8 +150,8 @@ test('moving the map offers "search this area" and runs the search again', async
   const [x0, x1] = desktop ? [80, 480] : [40, 330];
   await page.mouse.move(x0, y);
   await page.mouse.down();
-  await page.mouse.move((x0 + x1) / 2, y, { steps: 5 });
-  await page.mouse.move(x1, y, { steps: 5 });
+  // Few steps: each pointer move re-renders the map, which is slow with software WebGL in CI.
+  await page.mouse.move(x1, y, { steps: 3 });
   await page.mouse.up();
   await expect(pill).toBeVisible();
   const again = page.waitForRequest((r) => r.url().includes('overpass') && decodeURIComponent(r.postData() ?? '').includes('"amenity"="cafe"'));
