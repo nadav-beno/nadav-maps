@@ -3,9 +3,12 @@ const VERSION = 'v2';
 const SHELL = `shell-${VERSION}`;
 const TILES = `tiles-${VERSION}`;
 const MAX_TILES = 2000;
+// The bundled world map (countries, cities): the map is never blank on a plane.
+// Its name carries a version; bump it with the file (see packages/features/flight/scripts/gen-world.mjs).
+const PRECACHE = ['./', 'manifest.webmanifest', 'favicon.svg', 'offline/world-1.json'];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(SHELL).then((c) => c.addAll(['./', 'manifest.webmanifest', 'favicon.svg'])));
+  event.waitUntil(caches.open(SHELL).then((c) => c.addAll(PRECACHE)));
   self.skipWaiting();
 });
 

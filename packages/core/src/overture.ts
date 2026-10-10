@@ -10,7 +10,9 @@ export const OVERTURE_SOURCE = 'overture';
 
 /**
  * Colour groups shared by the base map and the UI. Same families Google Maps uses:
- * orange food, blue shops, pink hotels, red health, green outdoors, teal culture.
+ * orange food, blue shops, pink hotels, red health (vets too), green parks and sports
+ * (gyms too), teal culture and attractions, blue-grey transport, grey services and worship.
+ * The colours themselves live in the web app (`basemap/poi.ts`, `--g-*` in styles.css).
  */
 export type PoiGroupId =
   | 'food' | 'shop' | 'lodging' | 'health' | 'civic' | 'money' | 'transport' | 'sights' | 'outdoor' | 'worship' | 'service';
@@ -156,7 +158,7 @@ export const OVERTURE_CATEGORIES: Record<string, Row> = {
   mountain: ['outdoor', 'mountain', 'הר'],
   lake: ['outdoor', 'water', 'אגם'],
   river: ['outdoor', 'water', 'נחל'],
-  amusement_park: ['outdoor', 'amusement-park', 'פארק שעשועים'],
+  amusement_park: ['sights', 'amusement-park', 'פארק שעשועים'],
   zoo: ['outdoor', 'zoo', 'גן חיות'],
   animal_attraction: ['outdoor', 'zoo', 'פינת חי'],
   playground: ['outdoor', 'playground', 'גן שעשועים'],
@@ -187,8 +189,8 @@ export const OVERTURE_CATEGORIES: Record<string, Row> = {
   vehicle_service: ['transport', 'car-repair', 'שירותי רכב'],
   car_rental: ['transport', 'car-rental', 'השכרת רכב'],
 
-  gym: ['service', 'fitness-centre', 'חדר כושר'],
-  fitness_studio: ['service', 'fitness-centre', 'סטודיו לכושר'],
+  gym: ['outdoor', 'fitness-centre', 'חדר כושר'],
+  fitness_studio: ['outdoor', 'fitness-centre', 'סטודיו לכושר'],
   personal_or_beauty_service: ['service', 'hairdresser', 'יופי וטיפוח'],
   hair_salon: ['service', 'hairdresser', 'מספרה'],
   wellness_service: ['service', 'heart', 'בריאות ורווחה'],
@@ -197,7 +199,7 @@ export const OVERTURE_CATEGORIES: Record<string, Row> = {
   rental_service: ['service', 'shop', 'השכרה'],
   recreational_equipment_rental: ['service', 'bicycle', 'השכרת ציוד'],
   animal_or_pet_service: ['service', 'veterinary', 'שירותים לבעלי חיים'],
-  veterinarian: ['service', 'veterinary', 'וטרינר'],
+  veterinarian: ['health', 'veterinary', 'וטרינר'],
   real_estate_service: ['service', 'building', 'נדל״ן'],
   attorney_or_law_firm: ['service', 'building', 'משרד עורכי דין'],
   legal_service: ['service', 'building', 'שירותים משפטיים'],

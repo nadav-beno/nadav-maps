@@ -8,3 +8,5 @@ export * from './extensions.ts';
 export * from './icon.tsx';
 export * from './transit-ui.tsx';
 export * from './elevation.ts';
+export * from './world.ts';
+export { ICONS } from './icon-paths.ts';

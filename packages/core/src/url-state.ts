@@ -7,6 +7,7 @@ import type { DirectionsMode, LngLat } from './types.ts';
  *   ?q=פיצה                         search
  *   ?route=lng,lat;lng,lat&mode=walk  directions (first = origin, last = destination)
  *   ?list=<base64 GeoJSON>          shared list (no account needed)
+ *   ?panel=timeline&day=2026-10-10  a screen by name, and the day it shows
  */
 export interface UrlState {
   view?: { zoom: number; center: LngLat; bearing?: number; pitch?: number };
@@ -22,6 +23,8 @@ export interface UrlState {
   mode?: DirectionsMode;
   list?: string;
   panel?: string;
+  /** A calendar day for screens that show one (timeline), "YYYY-MM-DD". */
+  day?: string;
 }
 
 const MODES: DirectionsMode[] = ['car', 'walk', 'bike', 'transit'];
@@ -67,6 +70,8 @@ export function parseUrl(href: string): UrlState {
   if (list) out.list = list;
   const panel = p.get('panel');
   if (panel) out.panel = panel;
+  const day = p.get('day');
+  if (day && /^\d{4}-\d{2}-\d{2}$/.test(day)) out.day = day;
   return out;
 }
 
@@ -96,6 +101,7 @@ export function buildUrl(base: string, s: UrlState): string {
   if (s.mode && s.mode !== 'car') p.set('mode', s.mode);
   if (s.list) p.set('list', s.list);
   if (s.panel) p.set('panel', s.panel);
+  if (s.day) p.set('day', s.day);
   url.hash = s.view ? viewHash(s.view.zoom, s.view.center, s.view.bearing, s.view.pitch) : url.hash;
   // URLSearchParams encodes ';' and ','; keep them readable.
   return url.toString().replace(/%3B/g, ';').replace(/%2C/g, ',').replace(/%3A/g, ':');

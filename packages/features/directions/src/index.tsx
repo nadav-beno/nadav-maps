@@ -14,11 +14,14 @@ import {
   type Place,
   type Route,
   type TransitItinerary,
+  regionAt,
+  trafficProvider,
 } from '@nm/core';
 import {
   back,
   currentView,
   defineFeature,
+  cssVar,
   ensureLayer,
   EMPTY,
   elevationProfile,
@@ -29,6 +32,7 @@ import {
   load,
   PlaceBadge,
   open,
+  providers,
   region,
   requestLocation,
   save,
@@ -37,7 +41,7 @@ import {
   userLocation,
   type ViewProps,
 } from '@nm/core/app';
-import { categoryLabel, getDirections, reverseGeocode, searchPlaces, tools, transitDirections } from '@nm/tools';
+import { categoryLabel, getDirections, reverseGeocode, searchPlaces, tools, trafficTravelTime, transitDirections } from '@nm/tools';
 
 type Endpoint = { kind: 'me' } | { kind: 'place'; place: Place } | null;
 
@@ -64,6 +68,27 @@ const haveLocation = computed(() => userLocation.value !== null);
 /** Travel time per mode for the tabs, like Google ("רכב 12 דק׳ · הליכה 45 דק׳"). */
 const modeTimes = signal<Partial<Record<DirectionsMode, number>>>({});
 const profile = signal<ElevationProfile | null>(null);
+/**
+ * Car only, when a traffic key is set (HERE or TomTom, by region): the travel time with live
+ * traffic for a route we show. Valhalla stays the route source; the traffic provider only times
+ * that same line. Failures are silent.
+ */
+const trafficTimes = signal<Map<Route, number>>(new Map());
+
+async function loadTrafficTime(r: Route) {
+  const choice = trafficProvider(regionAt(r.geometry[0] ?? [0, 0]), providers.peek());
+  if (!choice || r.mode !== 'car' || trafficTimes.peek().has(r) || r.geometry.length < 2) return;
+  const seq = requestSeq;
+  try {
+    const t = await tools().call(trafficTravelTime, { waypoints: [r.geometry[0], ...viaCoords(), r.geometry[r.geometry.length - 1]], geometry: r.geometry });
+    // Where the provider has no live traffic (TomTom in Israel) its time is only a historic
+    // estimate: show it only when it reports an actual delay.
+    const live = choice.live || (t?.delayS ?? 0) >= 60;
+    if (t && live && seq === requestSeq) trafficTimes.value = new Map(trafficTimes.peek()).set(r, t.durationS);
+  } catch {
+    /* traffic is a bonus; the Valhalla time stands */
+  }
+}
 
 let map: MapLibreMap;
 
@@ -143,12 +168,14 @@ async function compute() {
       if (seq !== requestSeq) return;
       batch(() => {
         routes.value = rs;
+        trafficTimes.value = new Map();
         itineraries.value = [];
         active.value = 0;
         if (!rs.length) error.value = 'לא מצאנו מסלול בין הנקודות האלה.';
         modeTimes.value = rs[0] ? { [m]: rs[0].durationS } : {};
       });
       if (rs[0] && m !== 'car') void loadProfile(rs[0], seq);
+      if (rs[0] && m === 'car') void loadTrafficTime(rs[0]);
     }
     drawRoutes();
     fitRoutes();
@@ -680,9 +707,18 @@ function DirectionsView(_: ViewProps) {
                   profile.value = null;
                   drawRoutes();
                   if (mode.value !== 'car') void loadProfile(x, requestSeq);
+                  else void loadTrafficTime(x);
                 }}
               >
-                <span class="route-time">{formatDuration(x.durationS)}</span>
+                <span class="route-time">
+                  {formatDuration(x.durationS)}
+                  {trafficTimes.value.has(x) && (
+                    <span
+                      class={`route-traffic ${trafficTimes.value.get(x)! > x.durationS * 1.15 ? 'slow' : 'ok'}`}
+                      title={`תנועה © ${trafficProvider(regionAt(x.geometry[0]), providers.value)?.id === 'here' ? 'HERE' : 'TomTom'}`}
+                    >עם תנועה: {formatDuration(trafficTimes.value.get(x)!)}</span>
+                  )}
+                </span>
                 <span class="route-dist">{formatDistance(x.distanceM, units.value)}</span>
                 <span class="route-sub muted small">
                   {x.summary ? `דרך ${x.summary} · ` : ''}הגעה ב-{formatArrival(x.durationS, Date.now(), region.value.timeZone)}
@@ -775,10 +811,13 @@ export default defineFeature({
       setGeoJSON(m, 'transit-legs', EMPTY);
       setGeoJSON(m, 'transit-stops', EMPTY);
       const notActive = ['!', ['get', 'active']] as unknown as ['!', unknown];
-      ensureLayer(m, { id: 'route-alt-casing', type: 'line', source: 'routes', filter: notActive as never, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#6e7378', 'line-width': 9 } });
-      ensureLayer(m, { id: 'route-alt', type: 'line', source: 'routes', filter: notActive as never, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#bdc1c6', 'line-width': 6 } });
-      ensureLayer(m, { id: 'route-casing', type: 'line', source: 'routes', filter: ['get', 'active'] as never, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#0d47a1', 'line-width': 10 } });
-      ensureLayer(m, { id: 'route-line', type: 'line', source: 'routes', filter: ['get', 'active'] as never, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#1a73e8', 'line-width': 7 } });
+      // Google-style route: blue with a darker blue edge; alternatives grey with a grey edge.
+      const routeColor = cssVar('--route', '#4285f4');
+      const routeCasing = cssVar('--route-casing', '#1967d2');
+      ensureLayer(m, { id: 'route-alt-casing', type: 'line', source: 'routes', filter: notActive as never, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': cssVar('--route-alt-casing', '#80868b'), 'line-width': 9 } });
+      ensureLayer(m, { id: 'route-alt', type: 'line', source: 'routes', filter: notActive as never, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': cssVar('--route-alt', '#bdc1c6'), 'line-width': 6 } });
+      ensureLayer(m, { id: 'route-casing', type: 'line', source: 'routes', filter: ['get', 'active'] as never, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': routeCasing, 'line-width': 10 } });
+      ensureLayer(m, { id: 'route-line', type: 'line', source: 'routes', filter: ['get', 'active'] as never, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': routeColor, 'line-width': 7 } });
       // Transit: rides in the line's colour, walks as grey dots, stops as white rings.
       ensureLayer(m, { id: 'transit-ride-casing', type: 'line', source: 'transit-legs', filter: ['!', ['get', 'walk']] as never, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': 10 } });
       ensureLayer(m, { id: 'transit-ride', type: 'line', source: 'transit-legs', filter: ['!', ['get', 'walk']] as never, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'] as never, 'line-width': 7 } });

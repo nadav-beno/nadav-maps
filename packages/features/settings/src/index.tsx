@@ -8,26 +8,16 @@ import {
   flagOverrides,
   isEnabled,
   open,
+  providers,
   theme,
   unitsPref,
   type ThemePref,
   type ViewProps,
 } from '@nm/core/app';
+import { InstallGuide, InstallSheet, installInfo, scheduleInstallHint } from './install.tsx';
 
 let map: MapLibreMap;
 const reloadNeeded = signal(false);
-
-/** Android/desktop Chrome lets us show our own install button. */
-let installPrompt: (Event & { prompt(): Promise<void> }) | null = null;
-const canInstall = signal(false);
-addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  installPrompt = e as typeof installPrompt;
-  canInstall.value = true;
-});
-
-const isStandalone = () => matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
-const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 function Header({ title }: { title: string }) {
   return (
@@ -49,6 +39,17 @@ function SettingsView(_: ViewProps) {
   return (
     <div class="view">
       <Header title="הגדרות" />
+      {installInfo().method !== 'installed' && (
+        <button class="list-item install-row" onClick={() => open({ kind: 'install' })}>
+          <span class="li-icon">
+            <Icon name="mobile_arrow_down" size={20} />
+          </span>
+          <span class="li-body">
+            <div class="li-title">התקנה כאפליקציה</div>
+            <div class="li-sub">אייקון במסך הבית ומסך מלא, בלי App Store</div>
+          </span>
+        </button>
+      )}
       <h3 class="section-title">מראה</h3>
       <div class="segmented" role="group" aria-label="ערכת צבעים">
         {themes.map((t) => (
@@ -105,35 +106,8 @@ function SettingsView(_: ViewProps) {
 function InstallView(_: ViewProps) {
   return (
     <div class="view">
-      <Header title="התקנה במסך הבית" />
-      {isStandalone() ? (
-        <p>האפליקציה כבר מותקנת. 🎉</p>
-      ) : isIOS() ? (
-        <ol class="install-steps">
-          <li>
-            פתחו את האתר ב-<strong>Safari</strong>.
-          </li>
-          <li>
-            לחצו על כפתור השיתוף <span aria-hidden="true">⬆︎</span> בתחתית המסך.
-          </li>
-          <li>
-            גללו ובחרו <strong>"הוספה למסך הבית"</strong>, ואז <strong>"הוספה"</strong>.
-          </li>
-          <li>פתחו את האפליקציה מהאייקון החדש. מהאייקון היא נפתחת על מסך מלא ויכולה להשאיר את המסך דלוק בזמן ניווט.</li>
-        </ol>
-      ) : canInstall.value ? (
-        <button
-          class="btn primary"
-          onClick={async () => {
-            await installPrompt?.prompt();
-            canInstall.value = false;
-          }}
-        >
-          התקנת האפליקציה
-        </button>
-      ) : (
-        <p>בתפריט הדפדפן בחרו "התקנת האפליקציה" או "הוספה למסך הבית".</p>
-      )}
+      <Header title="התקנה כאפליקציה" />
+      <InstallGuide info={installInfo()} />
     </div>
   );
 }
@@ -150,6 +124,7 @@ function PrivacyView(_: ViewProps) {
         <li>כשמחפשים או מחשבים מסלול, הטקסט והנקודות נשלחים לשירותי המפה (Photon, Valhalla, Overpass, ויקיפדיה) כדי לקבל תשובה. לא נשלח שום מזהה שלך.</li>
         <li>שמורים, רשימות והיסטוריה נשמרים במכשיר שלך בלבד. אפשר למחוק את ההיסטוריה במסך השמורים.</li>
         <li>מפת התמונות לא מעלה תמונות לשום מקום. היא שומרת תמונה מוקטנת, תאריך ומיקום במכשיר בלבד.</li>
+        <li>ציר הזמן (כשמפעילים אותו) נשמר במכשיר בלבד, וגם קבצים שמייבאים מגוגל נקראים בדפדפן ולא עולים לשום מקום. כדי לתת שם למקום שביקרת בו נשלחת רק הנקודה לשירות החיפוש, כמו בלחיצה על המפה, ואפשר לכבות את זה. מוחקים יום או הכול מהגדרות ציר הזמן.</li>
         <li>אין פרסומות ואין מעקב שיווקי. דיווח קריסות (אם יופעל) כולל רק את השגיאה, בלי מיקום ובלי כתובת המפה.</li>
         <li>כשיתווספו חשבונות משתמש, תוכלו לייצא את כל המידע ולמחוק את החשבון בכל רגע.</li>
       </ul>
@@ -177,7 +152,7 @@ function AboutView(_: ViewProps) {
           מסלולים: <a href="https://valhalla.github.io/valhalla/" target="_blank" rel="noopener noreferrer">Valhalla</a> (שרת FOSSGIS)
         </li>
         <li>
-          תחבורה ציבורית: <a href="https://transitous.org" target="_blank" rel="noopener noreferrer">Transitous</a> (MOTIS), לוחות זמנים פתוחים מהמפעילים
+          תחבורה ציבורית: <a href="https://transitous.org" target="_blank" rel="noopener noreferrer">Transitous</a> (MOTIS), <a href="https://transitous.org/sources/" target="_blank" rel="noopener noreferrer">לוחות זמנים פתוחים מהמפעילים</a>
         </li>
         <li>
           פרטי מקומות: <a href="https://overpass-api.de" target="_blank" rel="noopener noreferrer">Overpass API</a>
@@ -188,11 +163,27 @@ function AboutView(_: ViewProps) {
         <li>
           תצלומי לוויין: <a href="https://s2maps.eu" target="_blank" rel="noopener noreferrer">Sentinel-2 cloudless</a> של EOX, מבוסס על נתוני Copernicus Sentinel (CC BY 4.0)
         </li>
+        {providers.value.tomtomKey && (
+          <li>
+            תנועה בזמן אמת ואירועי תנועה: <a href="https://www.tomtom.com" target="_blank" rel="noopener noreferrer">© TomTom</a>
+          </li>
+        )}
+        {providers.value.hereKey && (
+          <li>
+            תנועה בזמן אמת ואירועי תנועה: <a href="https://www.here.com" target="_blank" rel="noopener noreferrer">© {new Date().getFullYear()} HERE</a>
+          </li>
+        )}
         <li>
           תבליט וקווי גובה: נתוני גובה של Mapzen Terrain Tiles (AWS Open Data)
         </li>
         <li>
           תיאורי מקומות: <a href="https://www.wikipedia.org" target="_blank" rel="noopener noreferrer">ויקיפדיה</a> (CC BY-SA) ו-Wikidata
+        </li>
+        <li>
+          מפת העולם הלא מקוונת: <a href="https://www.naturalearthdata.com" target="_blank" rel="noopener noreferrer">Natural Earth</a> (נחלת הכלל), ערים מ-<a href="https://www.geonames.org" target="_blank" rel="noopener noreferrer">GeoNames</a> (CC BY 4.0), שדות תעופה מ-<a href="https://ourairports.com/data/" target="_blank" rel="noopener noreferrer">OurAirports</a> (נחלת הכלל)
+        </li>
+        <li>
+          מיקום טיסות לפי מספר: <a href="https://adsb.lol" target="_blank" rel="noopener noreferrer">adsb.lol</a> (ODbL)
         </li>
         <li>
           אייקונים: Material Symbols של Google (Apache 2.0) ו-Maki של Mapbox (CC0). גופן: Rubik (OFL)
@@ -219,7 +210,12 @@ export default defineFeature({
     ctx.registerView('privacy', PrivacyView);
     ctx.registerView('about', AboutView);
     ctx.registerMenuItem({ id: 'settings', label: 'הגדרות', icon: 'settings', order: 80, run: () => open({ kind: 'settings' }) });
-    if (!isStandalone()) ctx.registerMenuItem({ id: 'install', label: 'התקנה במסך הבית', icon: 'mobile_arrow_down', order: 85, run: () => open({ kind: 'install' }) });
+    ctx.registerSlot('overlay', InstallSheet, 40);
+    if (installInfo().method !== 'installed') {
+      ctx.registerMenuItem({ id: 'install', label: 'התקנה כאפליקציה', icon: 'mobile_arrow_down', order: 85, run: () => open({ kind: 'install' }) });
+      // Opened on a specific screen (e.g. ?panel=install): no hint on top of it this time.
+      if (!ctx.initialUrl.panel) scheduleInstallHint();
+    }
     ctx.registerMenuItem({
       id: 'report',
       label: 'דיווח על טעות במפה',

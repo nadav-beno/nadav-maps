@@ -3,6 +3,7 @@ import { encodePolyline } from '../packages/core/src/polyline.ts';
 import { sceneTile, TILEJSON } from './basemap-scene.ts';
 import { PLACES_LISTING, PLACES_PMTILES, PLACES_RELEASE } from './places-scene.ts';
 import { motisPlan, motisStoptimes } from './transit-fixture.ts';
+import { flowTile, HERE_INCIDENTS, HERE_ROUTE, hereTrafficTile, incidentTile, INCIDENT_DETAILS, TRAFFIC_ROUTE } from './traffic-scene.ts';
 
 /**
  * Tests never hit the real map servers: tiles, search, routing and place details
@@ -102,6 +103,37 @@ export async function stubNetwork(page: Page): Promise<void> {
     if (path.endsWith('/stoptimes')) return r.fulfill({ json: motisStoptimes(), headers: { 'access-control-allow-origin': '*' } });
     return r.fulfill({ status: 404, body: '' });
   });
+  // TomTom (only used when a test opens the app with ?tomtom=test). Requests without that key fail.
+  await page.route('https://api.tomtom.com/**', (r) => {
+    const url = new URL(r.request().url());
+    const cors = { 'access-control-allow-origin': '*' };
+    if (url.searchParams.get('key') !== 'test') return r.fulfill({ status: 403, body: '', headers: cors });
+    const tile = /^\/traffic\/map\/4\/tile\/(flow\/relative|incidents)\/(\d+)\/(\d+)\/(\d+)\.pbf$/.exec(url.pathname);
+    if (tile) {
+      const [z, x, y] = [+tile[2], +tile[3], +tile[4]];
+      return r.fulfill({ body: tile[1] === 'incidents' ? incidentTile(z, x, y) : flowTile(z, x, y), contentType: 'application/x-protobuf', headers: cors });
+    }
+    if (url.pathname === '/traffic/services/5/incidentDetails') return r.fulfill({ json: INCIDENT_DETAILS, headers: cors });
+    if (url.pathname.startsWith('/routing/1/calculateRoute/')) return r.fulfill({ json: TRAFFIC_ROUTE, headers: cors });
+    return r.fulfill({ status: 404, body: '', headers: cors });
+  });
+  // HERE (only with ?here=test): traffic vector tiles, raster tiles (not used, answered empty),
+  // Traffic API v7 incidents and Routing v8. Other keys fail like HERE does (401).
+  await page.route(/^https:\/\/[a-z.]*hereapi\.com\//, (r) => {
+    const url = new URL(r.request().url());
+    const cors = { 'access-control-allow-origin': '*' };
+    if ((url.searchParams.get('apiKey') ?? url.searchParams.get('apikey')) !== 'test') return r.fulfill({ status: 401, body: '', headers: cors });
+    const tile = /^\/v2\/traffictiles\/traffic\/mc\/(\d+)\/(\d+)\/(\d+)\/omv$/.exec(url.pathname);
+    if (url.host === 'traffic.vector.hereapi.com' && tile) {
+      return r.fulfill({ body: hereTrafficTile(+tile[1], +tile[2], +tile[3]), contentType: 'application/x-protobuf', headers: cors });
+    }
+    if (url.host === 'data.traffic.hereapi.com' && url.pathname === '/v7/incidents') return r.fulfill({ json: HERE_INCIDENTS, headers: cors });
+    if (url.host === 'router.hereapi.com' && url.pathname === '/v8/routes') return r.fulfill({ json: HERE_ROUTE, headers: cors });
+    if (url.host.endsWith('maps.hereapi.com')) return r.fulfill({ status: 204, body: '', headers: cors });
+    return r.fulfill({ status: 404, body: '', headers: cors });
+  });
+  // ADS-B flight lookup: nothing in the air unless a test routes its own answer.
+  await page.route('https://api.adsb.lol/**', (r) => r.fulfill({ json: { ac: [], total: 0 }, headers: { 'access-control-allow-origin': '*' } }));
   await page.route('https://overpass-api.de/api/interpreter', (r) => {
     const body = decodeURIComponent(r.request().postData() ?? '');
     if (body.includes('2002')) {

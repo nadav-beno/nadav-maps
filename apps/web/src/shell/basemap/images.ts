@@ -1,6 +1,7 @@
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { MAKI } from './maki-paths.ts';
 import { poiImageList } from './poi.ts';
+import { DARK, LIGHT } from './style.ts';
 
 /**
  * Map icons are drawn at runtime from Maki path data (no sprite server needed):
@@ -103,14 +104,15 @@ function imagesFor(theme: 'light' | 'dark'): Map<string, { img: Img; opts?: obje
   let set = cache.get(theme);
   if (set) return set;
   set = new Map();
-  const ring = theme === 'dark' ? '#1d2126' : '#ffffff';
+  const c = theme === 'dark' ? DARK : LIGHT;
+  const ring = theme === 'dark' ? c.land : '#ffffff';
   for (const p of poiImageList(theme)) set.set(p.id, { img: poiDisc(p.color, p.icon, ring) });
-  const minor = shield(theme === 'dark' ? '#3b4149' : '#ffffff', theme === 'dark' ? '#5a616b' : '#b9b3a8');
-  const major = shield(theme === 'dark' ? '#8a6d34' : '#f7cf6a', theme === 'dark' ? '#b08a42' : '#d29f3c');
+  const minor = shield(c.shield, c.shieldLine);
+  const major = shield(c.highway, c.highwayCasing);
   set.set('nm-shield', { img: minor.img, opts: minor.stretch });
   set.set('nm-shield-major', { img: major.img, opts: major.stretch });
-  set.set('nm-oneway', { img: oneway(theme === 'dark' ? '#c9ced5' : '#6b7178') });
-  set.set('nm-peak', { img: peak(theme === 'dark' ? '#c9b393' : '#8a6a42') });
+  set.set('nm-oneway', { img: oneway(c.oneway) });
+  set.set('nm-peak', { img: peak(c.peak) });
   cache.set(theme, set);
   return set;
 }
