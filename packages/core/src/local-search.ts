@@ -4,6 +4,7 @@
  * from a result list to offer "search this area".
  */
 import { distance } from './geo.ts';
+import { fuzzyScore, makeIndex, prepareQuery, searchIndex, type NameIndex, type PreparedQuery } from './fuzzy.ts';
 import { isHebrew, normalizeQuery, queryVariants } from './hebrew.ts';
 import { overturePlace } from './overture.ts';
 import type { LngLat, Place } from './types.ts';
@@ -17,19 +18,45 @@ export function matchText(s: string): string {
     .trim();
 }
 
-/** Does `name` match the typed query? Every query word must start a word of the name (or the name contains the whole query). */
-export function nameMatches(name: string, query: string): boolean {
-  const n = matchText(name);
-  if (!n) return false;
-  const tryOne = (q: string) => {
-    const qq = matchText(q);
-    if (qq.length < 2) return false;
-    if (n.includes(qq)) return true;
+const nameTexts = new Map<string, { n: string; words: string[] }>();
+function nameText(name: string) {
+  let t = nameTexts.get(name);
+  if (!t) {
+    if (nameTexts.size > 20000) nameTexts.clear();
+    const n = matchText(name);
     // Name words also count without a glued Hebrew article/preposition ("הכרמל" ~ "כרמל").
     const words = n.split(' ').flatMap((w) => (w.length > 3 && 'הובלמשכ'.includes(w[0]) ? [w, w.slice(1)] : [w]));
-    return qq.split(' ').every((w) => words.some((x) => x.startsWith(w)));
+    nameTexts.set(name, (t = { n, words }));
+  }
+  return t;
+}
+
+/** A test for "every query word starts a word of the name, or the name contains the whole query". */
+function exactMatcher(query: string): (name: string) => boolean {
+  const qs = [query, ...(isHebrew(query) ? queryVariants(query) : [])].map(matchText).filter((q) => q.length >= 2);
+  const parts = qs.map((q) => q.split(' '));
+  return (name) => {
+    const t = nameText(name);
+    if (!t.n) return false;
+    return qs.some((q, i) => t.n.includes(q) || parts[i].every((w) => t.words.some((x) => x.startsWith(w))));
   };
-  return tryOne(query) || (isHebrew(query) && queryVariants(query).some(tryOne));
+}
+
+/** Does `name` match the typed query exactly: every query word starts a word of the name (or the name contains the whole query)? */
+export function nameMatchesExactly(name: string, query: string): boolean {
+  return exactMatcher(query)(name);
+}
+
+/** Fuzzy matches need this score (0..1): a typo or two, another script, a layout slip. */
+export const FUZZY_NAME_SCORE = 0.76;
+
+/**
+ * Does `name` match the typed query? Exactly (see nameMatchesExactly), or with typos once
+ * three letters are typed ("ביסטרי" finds "ביסטרו הכרמל", "bistro" finds "ביסטרו").
+ */
+export function nameMatches(name: string, query: string, prepared?: PreparedQuery): boolean {
+  if (nameMatchesExactly(name, query)) return true;
+  return matchText(query).replace(/ /g, '').length >= 3 && fuzzyScore(prepared ?? prepareQuery(query), name) >= FUZZY_NAME_SCORE;
 }
 
 /** A feature from the Overture tiles: its properties and position. */
@@ -54,7 +81,14 @@ export function samePlace(a: Pick<Place, 'name' | 'lng' | 'lat'>, b: Pick<Place,
 export function matchLocalPlaces(features: LocalFeature[], query: string, center: LngLat, existing: Place[] = [], limit = 3): Place[] {
   if (matchText(query).length < 2) return [];
   const seen = new Set<string>();
-  const out: { place: Place; d: number }[] = [];
+  const exactly = exactMatcher(query);
+  // Typo matches come from an index of the names on the map (rebuilt when they change).
+  const fuzzy = new Map<string, number>();
+  if (matchText(query).replace(/ /g, '').length >= 3) {
+    const pq = prepareQuery(query);
+    for (const m of searchIndex(localIndex(features), pq, { limit: 40, minScore: FUZZY_NAME_SCORE })) fuzzy.set(m.entry.n, m.score);
+  }
+  const out: { place: Place; d: number; exact: boolean; score: number }[] = [];
   for (const f of features) {
     const pr = f.properties;
     const id = String(pr.id ?? '');
@@ -63,15 +97,26 @@ export function matchLocalPlaces(features: LocalFeature[], query: string, center
     seen.add(id);
     if (pr.operating_status === 'permanently_closed') continue;
     if (typeof pr.confidence === 'number' && pr.confidence < 0.5) continue;
-    if (!nameMatches(name, query)) continue;
+    const exact = exactly(name);
+    const score = exact ? 1 : fuzzy.get(name) ?? 0;
+    if (!exact && score < FUZZY_NAME_SCORE) continue;
     const place = overturePlace(pr, f.lng, f.lat);
     if (existing.some((e) => samePlace(e, place))) continue;
-    out.push({ place, d: distance(center, [f.lng, f.lat]) });
+    out.push({ place, d: distance(center, [f.lng, f.lat]), exact, score });
   }
+  // Exact matches nearest first, then typo matches best first.
   return out
-    .sort((a, b) => a.d - b.d)
+    .sort((a, b) => (a.exact !== b.exact ? (a.exact ? -1 : 1) : a.exact ? a.d - b.d : b.score - a.score || a.d - b.d))
     .slice(0, limit)
     .map((x) => x.place);
+}
+
+let local: { names: string[]; index: NameIndex } | null = null;
+function localIndex(features: LocalFeature[]): NameIndex {
+  const names = [...new Set(features.map((f) => String(f.properties['@name'] ?? '')).filter(Boolean))].sort();
+  if (local && local.names.length === names.length && local.names.every((n, i) => n === names[i])) return local.index;
+  local = { names, index: makeIndex(names) };
+  return local.index;
 }
 
 /**

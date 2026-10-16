@@ -51,7 +51,7 @@ export function isHebrew(s: string): boolean {
 
 /** Canonical form: no niqqud, unified quotes, collapsed whitespace, expanded abbreviations. */
 export function normalizeQuery(input: string): string {
-  let s = input.normalize('NFC').replace(NIQQUD, '').replace(GERESH, "'").replace(GERSHAYIM, '"');
+  let s = input.normalize('NFC').replace(/\u05BE/g, '-').replace(NIQQUD, '').replace(GERESH, "'").replace(GERSHAYIM, '"');
   s = s.replace(/\s+/g, ' ').trim();
   if (!isHebrew(s)) return s;
   const tokens = s.split(' ').map((t) => {

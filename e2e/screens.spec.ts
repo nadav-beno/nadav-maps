@@ -110,6 +110,29 @@ test('search results', async ({ page }, info) => {
   await shot('14-short-link');
 });
 
+test('search typos', async ({ page }, info) => {
+  await stubNetwork(page);
+  const shot = (n: string) => page.screenshot({ path: `${dir}/${info.project.name}-${n}.png` });
+  await page.goto('./#15/32.08/34.78');
+  await page.waitForTimeout(1200);
+  const box = page.getByRole('searchbox');
+  await box.fill('עזראלי');
+  await page.getByRole('option').filter({ hasText: 'קניון עזריאלי' }).waitFor();
+  await shot('15-typo-suggest');
+  await box.fill('קפע');
+  await box.press('Enter');
+  await page.locator('.did-you-mean').waitFor();
+  await page.waitForTimeout(800);
+  await shot('16-typo-results');
+  await page.goto('./#13/32.1/34.85');
+  await page.waitForTimeout(1000);
+  await box.fill('בתי קפה ליד עזראלי');
+  await box.press('Enter');
+  await page.locator('.near-line').waitFor();
+  await page.waitForTimeout(1200);
+  await shot('17-category-near');
+});
+
 test('basemap', async ({ page }, info) => {
   await stubNetwork(page);
   const shot = (n: string) => page.screenshot({ path: `${dir}/${info.project.name}-map-${n}.png` });
@@ -256,4 +279,45 @@ test.describe(() => {
     await page.waitForTimeout(800);
     await shot('3-view');
   });
+});
+
+test('place card google', async ({ page }, info) => {
+  await stubNetwork(page);
+  const shot = (n: string) => page.screenshot({ path: `${dir}/${info.project.name}-gcard-${n}.png` });
+  const phone = info.project.name !== 'desktop';
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.goto(`./?t=${scheme}&place=ovt:aaaaaaaa-0000-4000-8000-000000000001#16.5/32.0801/34.7792`);
+    await page.getByRole('heading', { name: 'ביסטרו הכרמל' }).waitFor({ timeout: 15_000 });
+    await page.getByText('לאכול במקום').waitFor();
+    await page.waitForTimeout(1200);
+    if (phone) await page.locator('.sheet-handle').click();
+    await page.waitForTimeout(600);
+    await shot(`1-overview-${scheme}`);
+    await page.getByText('אנשים מחפשים גם').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+    await shot(`2-similar-${scheme}`);
+    await page.getByRole('tab', { name: 'מידע כללי' }).click();
+    await page.waitForTimeout(300);
+    await shot(`3-about-${scheme}`);
+  }
+  await page.emulateMedia({ colorScheme: 'light' });
+  // A real reload (the same URL but the hash would only move the map).
+  await page.goto('about:blank');
+  await page.goto('./?place=ovt:aaaaaaaa-0000-4000-8000-000000000001#16.5/32.0801/34.7792');
+  await page.getByText('לאכול במקום').waitFor({ timeout: 15_000 });
+  await page.getByRole('button', { name: 'שליחה לטלפון' }).click();
+  await page.getByRole('img', { name: 'קוד QR של הקישור' }).waitFor();
+  await page.waitForTimeout(300);
+  await shot('4-phone');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'באזור' }).click();
+  await page.waitForTimeout(300);
+  await shot('5-nearby');
+  await page.goto('./?route=34.7741,32.0787;34.7918,32.0745&mode=car');
+  await page.locator('.route-badge').waitFor();
+  await page.waitForTimeout(1200);
+  if (phone) await page.locator('.sheet-handle').click();
+  await page.waitForTimeout(600);
+  await shot('6-directions');
 });

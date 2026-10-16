@@ -1,10 +1,11 @@
-import { normalizeQuery, parsePlaceId, queryVariants, regionAt, trafficProvider, type BBox, type LngLat } from '@nm/core';
+import { distance, fuzzyScore, nameIndex, namesFileIndex, namesFileIndexNow, normalizeQuery, parsePlaceId, prepareQuery, queryVariants, regionAt, suggestCorrections, trafficProvider, type BBox, type Correction, type LngLat, type Place, type PreparedQuery } from '@nm/core';
 import { z } from 'zod';
 import { CATEGORIES, categoryById } from '../categories.ts';
 import { defineTool, ProviderError, type ToolContext } from '../define.ts';
 import { findFlight } from '../providers/adsb.ts';
 import { overpassCategory, overpassDetails, overpassIdentify } from '../providers/overpass.ts';
 import { photonReverse, photonSearch } from '../providers/photon.ts';
+import { localgeoDetails, localgeoIdentify, localgeoNamesUrl, localgeoReverse, localgeoSearch, mergePlaces } from '../providers/localgeo.ts';
 import { hereIncidents, hereTrafficTime } from '../providers/here.ts';
 import { NO_KEY_MESSAGE, tomtomIncidents, tomtomTrafficTime } from '../providers/tomtom.ts';
 import { transitDepartures, transitPlan } from '../providers/transitous.ts';
@@ -26,30 +27,141 @@ export const searchPlaces = defineTool({
     zoom: z.number().min(0).max(22).optional().describe('How local the bias is (map zoom)'),
     limit: z.number().int().min(1).max(20).default(8),
     bbox: z.tuple([lng, lat, lng, lat]).optional().describe('[west, south, east, north] to search only inside (e.g. "search this area")'),
+    exact: z.boolean().default(false).describe('Search the text as typed, without correcting spelling mistakes'),
   }),
   async run(input, ctx) {
-    const q = normalizeQuery(input.query);
     const opts = { near: input.near as LngLat | undefined, zoom: input.zoom, limit: input.limit, bbox: input.bbox as BBox | undefined };
-    let results = await photonSearch(ctx, q, opts);
+    const first = await searchText(ctx, input.query, opts);
+    if (first.strong) return first.places.slice(0, input.limit);
+    let results = first.places;
+    // Nothing that looks like what was typed: probably a typo. Ask again with the likeliest
+    // corrections (at most two more searches), like Google's "showing results for".
+    if (!input.exact && !hasStrongMatch(results, input.query)) {
+      const corrections = await correctionsFor(ctx, input.query, opts);
+      let extra = 0;
+      outer: for (const c of corrections) {
+        for (const text of [c.text, c.alt]) {
+          if (!text || extra >= 2) continue;
+          extra++;
+          const more = (await searchText(ctx, text, opts)).places;
+          if (more.length && (hasStrongMatch(more, text) || !results.length)) {
+            const ids = new Set(more.map((m) => m.id));
+            results = [...more.map((m) => ({ ...m, correctedQuery: c.text })), ...results.filter((r) => !ids.has(r.id))];
+            break outer;
+          }
+        }
+      }
+    }
+    return rankResults(results, input.query, opts.near).slice(0, input.limit);
+  },
+});
+
+type SearchOpts = { near?: LngLat; zoom?: number; limit?: number; bbox?: BBox };
+
+/** One search: our own OSM data first (regions with geodata, e.g. Israel), then Photon when that has no good answer. */
+async function searchText(ctx: ToolContext, text: string, opts: SearchOpts): Promise<{ places: Place[]; strong: boolean }> {
+  const local = await localgeoSearch(ctx, text, opts);
+  if (local?.strong) return { places: local.places, strong: true };
+  let results: Place[];
+  try {
+    results = await photonSearch(ctx, normalizeQuery(text), opts);
     // Hebrew prefixes and connector words hurt recall; retry with variants when thin.
     if (results.length < 3) {
-      for (const v of queryVariants(input.query)) {
+      for (const v of queryVariants(text)) {
         const more = await photonSearch(ctx, v, opts);
         const ids = new Set(results.map((r) => r.id));
         results = [...results, ...more.filter((m) => !ids.has(m.id))];
         if (results.length >= 3) break;
       }
     }
-    return results.slice(0, input.limit);
-  },
-});
+  } catch (e) {
+    if (local?.places.length) return { places: local.places, strong: false };
+    throw e;
+  }
+  // Settlements and exact names stay on top; the rest come after Photon's.
+  if (local?.places.length) results = mergePlaces(mergePlaces(local.top, results), local.places);
+  return { places: results, strong: false };
+}
+
+/** How long a weak search may wait for the region's full names list the first time it is needed. */
+const NAMES_WAIT_MS = 4000;
+
+/**
+ * Corrections for a query that found nothing good. Where the region has our geodata, from its
+ * full names list (it includes the built-in names), loaded on this first need and then kept
+ * in memory; if it is slow to arrive, or missing, from the small built-in dictionary.
+ */
+async function correctionsFor(ctx: ToolContext, query: string, opts: SearchOpts): Promise<Correction[]> {
+  const url = await localgeoNamesUrl(ctx, opts).catch(() => null);
+  let idx = url ? namesFileIndexNow(url) : null;
+  if (url && !idx) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<null>((r) => (timer = setTimeout(() => r(null), NAMES_WAIT_MS)));
+    idx = await Promise.race([namesFileIndex(url, ctx.fetch), timeout]);
+    clearTimeout(timer);
+  }
+  return suggestCorrections(query, idx ?? (await nameIndex()), { limit: 2 });
+}
+
+/** Does any result's name look like the query (typos, other script and text still being typed allowed)? */
+export function hasStrongMatch(places: Place[], query: string): boolean {
+  const pq = prepareQuery(query);
+  return places.some((p) => resultScore(pq, p) >= 0.78);
+}
+
+function resultScore(pq: PreparedQuery, p: Place): number {
+  const s = fuzzyScore(pq, p.name);
+  if (s >= 0.95 || !p.address) return s;
+  // "דיזנגוף תל אביב" also matches the street "דיזנגוף" in "תל אביב-יפו".
+  const parts = p.address.split(',').map((s) => s.trim());
+  const city = parts.length > 1 ? parts[parts.length - 2] : parts[0];
+  return Math.max(s, fuzzyScore(pq, `${p.name} ${city}`) * 0.98);
+}
+
+/**
+ * Re-rank search results: how well the name matches (the corrected query for corrected
+ * results), the engine's own order (importance), and closeness to the map.
+ */
+export function rankResults(places: Place[], query: string, near?: LngLat): Place[] {
+  if (places.length < 2) return places;
+  const prepared = new Map<string, PreparedQuery>();
+  const pqFor = (t: string) => prepared.get(t) ?? (prepared.set(t, prepareQuery(t)), prepared.get(t)!);
+  const n = places.length;
+  const scored = places.map((p, i) => {
+    const match = resultScore(pqFor(p.correctedQuery ?? query), p);
+    const near_ = near ? Math.exp(-distance(near, [p.lng, p.lat]) / 20000) : 0;
+    // Weak matches all look the same (category searches: "פיצה"); only clear matches move up.
+    return { p, s: 0.5 * (match >= 0.7 ? match : 0) + 0.3 * (1 - i / n) + 0.2 * near_ };
+  });
+  return scored.sort((a, b) => b.s - a.s).map((x) => x.p);
+}
+
+/**
+ * The result search should open right away instead of a list, like Google does for
+ * "דיזנגוב תל אביב": a clear match on a street, city or landmark, well ahead of the rest.
+ */
+export function confidentResult(places: Place[], query: string): Place | null {
+  const first = places[0];
+  if (!first) return null;
+  const pq = prepareQuery(first.correctedQuery ?? query);
+  const s0 = resultScore(pq, first);
+  const kind = first.category?.key ?? '';
+  const landmark = ['highway', 'place', 'boundary', 'tourism', 'historic', 'aeroway', 'railway', 'leisure', 'natural'].includes(kind) || ['mall', 'hospital', 'university', 'college', 'stadium'].includes(first.category?.value ?? '');
+  if (!landmark || s0 < 0.86) return null;
+  // The same street in pieces does not count as a rival; the same name in another town does.
+  const rest = places.slice(1).filter((p) => !(p.name === first.name && distance([p.lng, p.lat], [first.lng, first.lat]) < 3000));
+  const s1 = rest.length ? Math.max(...rest.map((p) => resultScore(pq, p))) : 0;
+  return s1 <= s0 - 0.12 ? first : null;
+}
 
 export const reverseGeocode = defineTool({
   name: 'reverse_geocode',
   title: 'מה יש בנקודה',
   description: 'Find the address or place at a coordinate.',
   input: z.object({ lng, lat }),
-  run: (input, ctx) => photonReverse(ctx, input.lng, input.lat),
+  async run(input, ctx) {
+    return (await localgeoReverse(ctx, input.lng, input.lat)) ?? photonReverse(ctx, input.lng, input.lat);
+  },
 });
 
 export const placeDetails = defineTool({
@@ -60,7 +172,7 @@ export const placeDetails = defineTool({
   async run(input, ctx) {
     const { osm } = parsePlaceId(input.id);
     if (!osm) return null;
-    return overpassDetails(ctx, osm.type, osm.id);
+    return (await localgeoDetails(ctx, osm.type, osm.id)) ?? overpassDetails(ctx, osm.type, osm.id);
   },
 });
 
@@ -69,7 +181,10 @@ export const identifyPlace = defineTool({
   title: 'זיהוי מקום לפי שם ומיקום',
   description: 'Find the OSM place with this name near a coordinate (e.g. a label tapped on the map) and return its details.',
   input: z.object({ name: z.string().min(1).max(200), lng, lat }),
-  run: (input, ctx) => overpassIdentify(ctx, input.name, input.lng, input.lat),
+  async run(input, ctx) {
+    const local = await localgeoIdentify(ctx, input.name, input.lng, input.lat);
+    return local !== undefined ? local : overpassIdentify(ctx, input.name, input.lng, input.lat);
+  },
 });
 
 export const searchNearby = defineTool({
@@ -198,3 +313,13 @@ export const flightPosition = defineTool({
 });
 
 export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, transitDirections, transitDeparturesTool, placeSummary, trafficIncidents, trafficTravelTime, flightPosition];
+
+/**
+ * Start loading the region's full names list (typo dictionary) in the background, e.g. in
+ * idle time after a first search, so later corrections need not wait for it.
+ */
+export function prefetchSearchNames(ctx: ToolContext, near?: LngLat): void {
+  void localgeoNamesUrl(ctx, { near })
+    .then((url) => (url ? namesFileIndex(url, ctx.fetch) : null))
+    .catch(() => {});
+}

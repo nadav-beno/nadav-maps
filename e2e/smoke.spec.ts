@@ -1,5 +1,6 @@
-import { expect, test } from '@playwright/test';
-import { stubNetwork } from './stubs.ts';
+import { expect, test, type Page } from '@playwright/test';
+import { stubGeodata, stubNetwork } from './stubs.ts';
+import { encodePlusCode } from '../packages/core/src/plus-code.ts';
 import { adsbResponse, fakeGps, FLIGHT_FIXES } from './flight-fixture.ts';
 import { TAKEOUT_DAY, TAKEOUT_FIXTURE } from './timeline-fixture.ts';
 
@@ -62,6 +63,68 @@ test('a business from Overture opens with its phone, website and socials', async
   await expect(page.getByText(/03-?523-?6058/)).toBeVisible();
   await expect(page.getByText('bistro.example', { exact: true })).toBeVisible();
   await expect(page.getByText('פייסבוק')).toBeVisible();
+});
+
+test('place card like Google: service options, kosher, Plus Code, about tab, similar places', async ({ page }) => {
+  test.slow();
+  await page.goto('./?place=ovt:aaaaaaaa-0000-4000-8000-000000000001#16.5/32.0801/34.7792');
+  await expect(page.getByRole('heading', { name: 'ביסטרו הכרמל' })).toBeVisible({ timeout: 15_000 });
+  const services = page.getByRole('list', { name: 'אפשרויות שירות' });
+  await expect(services).toContainText('לאכול במקום');
+  await expect(services).toContainText('איסוף עצמי');
+  await expect(services).toContainText('אין משלוחים');
+  await expect(page.getByText('Bistro HaCarmel')).toBeVisible();
+  await expect(page.locator('.kosher-badge')).toHaveText('כשר');
+  await expect(page.getByText('ביסטרו ים-תיכוני קטן ליד שוק הכרמל')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'תפריט' })).toHaveAttribute('href', 'https://bistro.example/menu');
+  const code = encodePlusCode(32.0801, 34.7792);
+  await expect(page.getByRole('button', { name: `Plus Code ${code.slice(4)} תל אביב - יפו, העתקה` })).toBeVisible();
+  await page.getByRole('tab', { name: 'מידע כללי' }).click();
+  await expect(page.getByText('Wi-Fi חינם')).toBeVisible();
+  await expect(page.getByText('כרטיסי אשראי')).toBeVisible();
+  await expect(page.getByText('העישון אסור')).toBeVisible();
+  await page.getByRole('tab', { name: 'סקירה כללית' }).click();
+  const similar = page.locator('.similar');
+  await expect(similar.getByRole('heading', { name: 'אנשים מחפשים גם' })).toBeVisible({ timeout: 15_000 });
+  // Same kind of place nearby; the permanently closed restaurant is left out.
+  await expect(similar.getByRole('button', { name: /מסעדת הגפן/ })).toBeVisible();
+  await expect(similar.getByRole('button', { name: /סגור לצמיתות/ })).toHaveCount(0);
+  await similar.getByRole('button', { name: /מסעדת הגפן/ }).click();
+  await expect(page.getByRole('heading', { name: 'מסעדת הגפן' })).toBeVisible();
+  await expect(page).toHaveURL(/place=ovt:aaaaaaaa-0000-4000-8000-000000000009/);
+});
+
+test('send to phone shows a QR code of the link; nearby chips search around the place', async ({ page }) => {
+  await page.goto('./?place=ovt:aaaaaaaa-0000-4000-8000-000000000001#16.5/32.0801/34.7792');
+  await expect(page.getByRole('heading', { name: 'ביסטרו הכרמל' })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('button', { name: 'שליחה לטלפון' }).click();
+  const dialog = page.getByRole('dialog', { name: 'שליחה לטלפון' });
+  await expect(dialog.getByRole('img', { name: 'קוד QR של הקישור' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  // Escape closed only the sheet, not the card under it.
+  await expect(page.getByRole('heading', { name: 'ביסטרו הכרמל' })).toBeVisible();
+  await page.getByRole('button', { name: 'באזור' }).click();
+  await page.getByRole('toolbar', { name: 'חיפוש באזור ביסטרו הכרמל' }).getByRole('button', { name: 'בתי קפה' }).click();
+  await expect(page.getByRole('heading', { name: 'בתי קפה ליד ביסטרו הכרמל' })).toBeVisible();
+  await expect(page.locator('.list').getByText('קפה לנדוור')).toBeVisible();
+});
+
+test('directions: fastest route badge, send to phone, and what is around the destination', async ({ page }) => {
+  await page.goto('./?route=34.7741,32.0787;34.7918,32.0745&mode=car');
+  await expect(page.locator('.route-option')).toHaveCount(2);
+  await expect(page.locator('.route-option').first().locator('.route-badge')).toHaveText('המסלול הכי מהיר');
+  await expect(page.locator('.route-badge')).toHaveCount(1);
+  await page.getByRole('button', { name: 'שליחת המסלול לטלפון' }).click();
+  await expect(page.getByRole('dialog', { name: 'שליחה לטלפון' }).getByRole('img', { name: 'קוד QR של הקישור' })).toBeVisible();
+  await page.getByRole('dialog').getByRole('button', { name: 'סגירה' }).click();
+  const around = page.locator('.around-dest');
+  await expect(around.getByRole('heading', { name: /^מה יש באזור/ })).toBeVisible();
+  await around.getByRole('button', { name: 'בתי קפה' }).click();
+  await expect(page.locator('.list').getByText('קפה תמיד')).toBeVisible();
+  // Back returns to the route.
+  await page.getByRole('button', { name: 'חזרה' }).first().click();
+  await expect(page.locator('.route-option')).toHaveCount(2);
 });
 
 test('tapping a business on the map opens its card', async ({ page }, info) => {
@@ -203,6 +266,66 @@ test('a stop on the way is kept in the link', async ({ page }) => {
   await expect(page.locator('.route-option').first()).toBeVisible();
   await page.getByRole('button', { name: 'הסרת עצירה 1' }).click();
   await expect(page).toHaveURL(/route=34\.7741,32\.0787;34\.7918,32\.0745/);
+});
+
+test('typos: shows results for the corrected query, and can search as typed instead', async ({ page }) => {
+  const asked: string[] = [];
+  page.on('request', (r) => r.url().startsWith('https://photon.komoot.io/api') && asked.push(new URL(r.url()).searchParams.get('q') ?? ''));
+  await page.goto('./#15/32.08/34.78');
+  const box = page.getByRole('searchbox', { name: 'חיפוש מקום או כתובת' });
+  // The fixture's Photon knows "קפה", not "קפע".
+  await box.fill('קפע');
+  await box.press('Enter');
+  const note = page.locator('.did-you-mean');
+  await expect(note).toContainText('מציג תוצאות עבור');
+  await expect(note.locator('b')).toHaveText('קפה');
+  await expect(page.locator('.list').getByText('קניון עזריאלי')).toBeVisible();
+  await expect(page).toHaveURL(/q=%D7%A7%D7%A4%D7%A2/);
+  expect(asked).toContain('קפה');
+  await note.getByRole('button', { name: /חפש במקום זאת/ }).click();
+  await expect(page.getByText('לא מצאנו תוצאות.')).toBeVisible();
+  await expect(page.locator('.did-you-mean')).toBeHidden();
+});
+
+test('typos: suggestions show the corrected place with the typed part in bold', async ({ page }) => {
+  await page.goto('./');
+  await page.getByRole('searchbox', { name: 'חיפוש מקום או כתובת' }).fill('עזראלי');
+  const option = page.getByRole('option').filter({ hasText: 'קניון עזריאלי' });
+  await expect(option).toBeVisible();
+  await expect(option.locator('.li-title b')).toHaveText('עזריאלי');
+  await option.click();
+  await expect(page.getByRole('heading', { name: 'קניון עזריאלי' })).toBeVisible();
+});
+
+test('typos: a misspelled street with its city, or typed on the English layout, opens the place card', async ({ page }) => {
+  await page.goto('./');
+  const box = page.getByRole('searchbox', { name: 'חיפוש מקום או כתובת' });
+  await box.fill('דיזנגוב תל אביב');
+  await box.press('Enter');
+  await expect(page.getByRole('heading', { name: 'דיזנגוף' })).toBeVisible();
+  await expect(page).toHaveURL(/place=osm:w1001/);
+  await page.goto('./');
+  await box.fill('shzbdu;');
+  await box.press('Enter');
+  await expect(page.getByRole('heading', { name: 'דיזנגוף' })).toBeVisible();
+});
+
+test('category near a place: "בתי קפה ליד עזראלי" lists cafes around Azrieli', async ({ page }) => {
+  await page.goto('./#13/32.1/34.85');
+  const overpass = page.waitForRequest((r) => r.url().includes('overpass') && decodeURIComponent(r.postData() ?? '').includes('"amenity"="cafe"'));
+  const box = page.getByRole('searchbox', { name: 'חיפוש מקום או כתובת' });
+  await box.fill('בתי קפה ליד עזראלי');
+  await box.press('Enter');
+  const body = decodeURIComponent((await overpass).postData() ?? '');
+  // The box is around Azrieli (32.0745, 34.7918), not the map centre.
+  const box4 = /\((-?[\d.]+),(-?[\d.]+),(-?[\d.]+),(-?[\d.]+)\)/.exec(body)!.slice(1).map(Number);
+  expect(box4[0]).toBeLessThan(32.0745);
+  expect(box4[2]).toBeGreaterThan(32.0745);
+  expect(box4[1]).toBeLessThan(34.7918);
+  expect(box4[3]).toBeGreaterThan(34.7918);
+  await expect(page.locator('.list').getByText('קפה לנדוור')).toBeVisible();
+  await expect(page.locator('.near-line')).toHaveText('בתי קפה ליד קניון עזריאלי');
+  await expect(page).toHaveURL(/q=/);
 });
 
 test('category chip finds nearby cafes', async ({ page }) => {
@@ -568,5 +691,58 @@ test.describe('install as an app (iPhone Safari)', () => {
     await expect(page.getByText('אתם בתוך הדפדפן של אינסטגרם')).toBeVisible();
     await expect(page.getByRole('button', { name: 'העתקת הקישור' })).toBeVisible();
     await context.close();
+  });
+});
+
+test.describe('our own map data (geodata)', () => {
+  /** Requests that left for Photon or Overpass: with local data there should be none. */
+  /** Public search, reverse and details lookups (a category search for "people also search" is not one). */
+  function publicLookups(page: Page) {
+    const urls: string[] = [];
+    page.on('request', (r) => {
+      if (/photon\.komoot\.io/.test(r.url())) urls.push(r.url());
+      if (/overpass-api\.de/.test(r.url())) {
+        const q = decodeURIComponent((r.postData() ?? '').replace(/^data=/, '').replace(/\+/g, ' '));
+        if (/\b(node|way|relation)\(\d+\)|around:/.test(q)) urls.push(r.url());
+      }
+    });
+    return urls;
+  }
+
+  test.beforeEach(async ({ page }) => {
+    await stubGeodata(page);
+  });
+
+  test('geodata: an address and a business only in our data are found and opened', async ({ page }) => {
+    const external = publicLookups(page);
+    await page.goto('./#15/32.08/34.78');
+    const box = page.getByRole('searchbox', { name: 'חיפוש מקום או כתובת' });
+    await box.fill('אבן גבירול 71 תל אביב');
+    await page.getByRole('option').filter({ hasText: 'אבן גבירול 71' }).first().click();
+    await expect(page.getByRole('heading', { name: 'אבן גבירול 71' })).toBeVisible();
+    await expect(page).toHaveURL(/place=pt:34\.7819\d,32\.0818\d/);
+
+    await page.goBack();
+    await box.fill('מאפיית אורנה');
+    await page.getByRole('option').filter({ hasText: 'מאפיית אורנה' }).first().click();
+    await expect(page.getByRole('heading', { name: 'מאפיית אורנה' })).toBeVisible();
+    await expect(page).toHaveURL(/place=osm:n7000001/);
+    // Details (wheelchair access) come from our own shards, not Overpass.
+    await expect(page.getByText('נגיש לכיסאות גלגלים')).toBeVisible();
+    expect(external).toEqual([]);
+  });
+
+  test('geodata: a long-press names the address from our data', async ({ page }) => {
+    const external = publicLookups(page);
+    await page.goto('./#18/32.0818/34.78196');
+    await page.waitForFunction(() => (window as unknown as { map?: { loaded(): boolean } }).map?.loaded());
+    // The map's long press is its contextmenu event (a right click on desktop, a hold on touch).
+    await page.evaluate(() => {
+      const m = (window as unknown as { map: { fire(type: string, e: unknown): void } }).map;
+      m.fire('contextmenu', { lngLat: { lng: 34.78196, lat: 32.08182 }, point: { x: 0, y: 0 }, originalEvent: new MouseEvent('contextmenu') });
+    });
+    await expect(page.getByRole('heading', { name: 'אבן גבירול 71' })).toBeVisible();
+    await expect(page.getByText('תל אביב-יפו').first()).toBeVisible();
+    expect(external).toEqual([]);
   });
 });

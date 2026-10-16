@@ -146,6 +146,20 @@ describe('local business search', () => {
     // Same name far away is a different branch.
     expect(matchLocalPlaces([f('a', 'ביסטרו הכרמל', 34.79, 32.09)], 'ביסטרו', center, [photon])).toHaveLength(1);
   });
+  it('matches business names with typos, in the other script and typed on the wrong layout', () => {
+    expect(nameMatches('ביסטרו הכרמל', 'ביסטרי')).toBe(true);
+    expect(nameMatches('ביסטרו הכרמל', 'ביסטרו כרמך')).toBe(true);
+    expect(nameMatches('קפה לנדוור', 'לנדור')).toBe(true);
+    expect(nameMatches('Landwer Cafe', 'landwr')).toBe(true);
+    expect(nameMatches('ביסטרו הכרמל', 'bistro')).toBe(true);
+    expect(nameMatches('ביסטרו הכרמל', 'chxyru')).toBe(true);
+    expect(nameMatches('קפה רוטשילד', 'מספרה')).toBe(false);
+    expect(nameMatches('קפה', 'קפ')).toBe(true);
+  });
+  it('lists exact matches first, then typo matches', () => {
+    const features = [f('typo', 'ביסטרו הכרמל', 34.7801, 32.0801), f('exact', 'ביסטרי שלום', 34.79, 32.09)];
+    expect(matchLocalPlaces(features, 'ביסטרי', center).map((p) => p.id)).toEqual(['ovt:exact', 'ovt:typo']);
+  });
   it('limits to 3 and ignores one-letter queries', () => {
     const many = Array.from({ length: 6 }, (_, i) => f(`id${i}`, `פיצה ${i}`, 34.78 + i / 1000, 32.08));
     expect(matchLocalPlaces(many, 'פיצה', center)).toHaveLength(3);

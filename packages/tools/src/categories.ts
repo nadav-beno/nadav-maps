@@ -1,4 +1,4 @@
-import { overtureCategory, type Place } from '@nm/core';
+import { lightKey, makeIndex, normalizeQuery, overtureCategory, searchIndex, type NameIndex, type Place } from '@nm/core';
 
 /** Category search ("cafes near here"). Shared by the web chips and the MCP tool. */
 export interface Category {
@@ -117,5 +117,88 @@ export function placeIcon(p: Pick<Place, 'category'>): string {
   if (k === 'shop') return '🛍️';
   if (k === 'place') return '📍';
   return '📍';
+}
+
+/** Words people type for each category (Hebrew and English, singular and plural). */
+const CATEGORY_WORDS: Record<string, string[]> = {
+  restaurant: ['מסעדה', 'מסעדות', 'אוכל', 'מזון מהיר', 'פיצה', 'פיצריה', 'פיצריות', 'המבורגר', 'סושי', 'שווארמה', 'פלאפל', 'חומוס', 'restaurant', 'restaurants', 'food', 'pizza', 'burger', 'sushi', 'falafel', 'hummus'],
+  cafe: ['קפה', 'בית קפה', 'בתי קפה', 'cafe', 'cafes', 'coffee', 'coffee shop'],
+  supermarket: ['סופר', 'סופרמרקט', 'סופרמרקטים', 'מכולת', 'מכולות', 'supermarket', 'supermarkets', 'grocery', 'groceries'],
+  fuel: ['דלק', 'תחנת דלק', 'תחנות דלק', 'gas', 'gas station', 'fuel', 'petrol'],
+  charging: ['טעינה', 'עמדת טעינה', 'עמדות טעינה', 'טעינה לרכב', 'charging', 'charging station', 'ev charging'],
+  pharmacy: ['בית מרקחת', 'בתי מרקחת', 'מרקחת', 'pharmacy', 'pharmacies', 'drugstore'],
+  atm: ['כספומט', 'כספומטים', 'בנק', 'בנקים', 'atm', 'atms', 'bank', 'cash'],
+  parking: ['חניה', 'חנייה', 'חניון', 'חניונים', 'parking', 'car park', 'parking lot'],
+  hotel: ['מלון', 'מלונות', 'בית מלון', 'בתי מלון', 'אכסניה', 'הוסטל', 'צימר', 'hotel', 'hotels', 'hostel', 'lodging'],
+  attraction: ['אטרקציה', 'אטרקציות', 'מוזיאון', 'מוזיאונים', 'תצפית', 'attraction', 'attractions', 'museum', 'museums', 'things to do'],
+  park: ['פארק', 'פארקים', 'גן ציבורי', 'גינה', 'park', 'parks'],
+  hospital: ['בית חולים', 'בתי חולים', 'מרפאה', 'מרפאות', 'קופת חולים', 'hospital', 'hospitals', 'clinic'],
+};
+
+/** Place words that start with ב themselves (used when no name dictionary is at hand). */
+const B_WORDS = new Set(['בית', 'בני', 'באר', 'בת', 'בנימינה', 'בקעה', 'בבלי', 'בלפור', 'בר', 'בורסה', 'בניאס', 'ביתר', 'בוגרשוב', 'בגין', 'בלומפילד', 'ברזילי', 'בילינסון']);
+
+/** "near", "in", ... between the category and the place, longest first. "ל" may be glued to the place. */
+const CONNECTORS = ['בסביבה של', 'בסביבת', 'קרוב ל', 'סמוך ל', 'קרוב', 'ליד', 'באזור', 'close to', 'nearby', 'near', 'around', 'in', 'at', 'by'];
+
+let categoryIndex: NameIndex | null = null;
+function categoryWords(): NameIndex {
+  categoryIndex ??= makeIndex(Object.entries(CATEGORY_WORDS).flatMap(([id, words]) => words.map((n) => ({ n, k: id }))));
+  return categoryIndex;
+}
+
+/** The category a phrase names ("מסעדות", "מסעדוט", "pizza"), typos allowed. */
+export function categoryFromText(text: string): Category | undefined {
+  const t = text.trim();
+  const len = lightKey(t).replace(/ /g, '').length;
+  if (len < 2) return undefined;
+  const m = searchIndex(categoryWords(), t, { limit: 1, prefix: false, minScore: len <= 4 ? 0.9 : 0.8 })[0];
+  return m ? categoryById(m.entry.k!) : undefined;
+}
+
+export interface CategoryQuery {
+  category: Category;
+  /** The place to search around, as typed ("דיזנגוף סנטר"). */
+  anchor: string;
+}
+
+/**
+ * "<category> (ליד|קרוב ל|ב|באזור|near|in) <place>": "מסעדות ליד דיזנגוף סנטר",
+ * "קפה בפלורנטין", "חניה קרוב לעזריאלי", "pizza near azrieli". Null for anything else.
+ */
+export function parseCategoryQuery(input: string, isName: (word: string) => boolean = (w) => B_WORDS.has(w)): CategoryQuery | null {
+  const words = normalizeQuery(input).replace(/[,?!]/g, ' ').replace(/\s+/g, ' ').trim().split(' ');
+  if (words.length < 2) return null;
+  const lower = words.map((w) => w.toLowerCase());
+  const tryAt = (i: number, rest: string[]): CategoryQuery | null => {
+    if (!rest.length || !rest.join('')) return null;
+    const category = categoryFromText(words.slice(0, i).join(' '));
+    return category ? { category, anchor: rest.join(' ') } : null;
+  };
+  // An explicit connector: "מסעדות ליד X", "קרוב לX", "near X".
+  for (let i = 1; i < words.length; i++) {
+    for (const c of CONNECTORS) {
+      const cw = c.split(' ');
+      let found: CategoryQuery | null = null;
+      if (lower.slice(i, i + cw.length).join(' ') === c) found = tryAt(i, words.slice(i + cw.length));
+      else if (cw.at(-1) === 'ל') {
+        const head = cw.slice(0, -1);
+        const glued = words[i + head.length];
+        if (lower.slice(i, i + head.length).join(' ') === head.join(' ') && glued?.startsWith('ל') && glued.length > 2) {
+          found = tryAt(i, [glued.slice(1), ...words.slice(i + head.length + 1)]);
+        }
+      }
+      if (found) return found;
+    }
+  }
+  // A glued "ב" on the place: "קפה בפלורנטין".
+  for (let i = 1; i < words.length; i++) {
+    const w = words[i];
+    if (!/^ב[א-ת]{2,}/.test(w)) continue;
+    // A place word that itself starts with ב ("מסעדות בית שמש") keeps it.
+    const found = tryAt(i, isName(w) ? words.slice(i) : [w.slice(1), ...words.slice(i + 1)]);
+    if (found) return found;
+  }
+  return null;
 }
 

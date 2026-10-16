@@ -812,3 +812,83 @@ kbd {
 .tl-custom .input { flex: 1; min-width: 0; }
 .tl-home { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); text-align: start; }
 .tl-home-text { flex: 1; font-weight: 500; }
+
+/* ---------- place card: Google-style details (service options, about tab, Plus Code, similar places, send to phone) ---------- */
+.place-names { flex: 1; min-width: 0; }
+.place-alt { margin: 0 0 2px; color: var(--text-2); font-size: 14px; }
+.place-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.kosher-badge {
+  display: inline-flex; align-items: center; gap: 3px; height: 22px; padding: 0 8px; border-radius: 11px;
+  background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); font-size: 12px; font-weight: 500;
+}
+.place .place-tabs { margin: 6px -16px 12px; }
+.place .place-tabs button { font-size: 14px; cursor: pointer; }
+/* Round actions: an icon in a tonal circle with the label under it (Google's place card). */
+.action-row.round { gap: 4px; padding: 4px 12px 10px; margin: 0 -16px; justify-content: flex-start; }
+.action-row.round .action {
+  flex-direction: column; gap: 6px; height: auto; min-width: 64px; padding: 0 2px; background: none;
+  color: var(--accent-soft-text); font-size: 12px; font-weight: 500; cursor: pointer;
+}
+.action-row.round .action .icon {
+  box-sizing: content-box; width: 20px; height: 20px; padding: 10px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent-soft-text); transition: filter 0.15s;
+}
+.action-row.round .action:hover .icon { filter: brightness(0.96); }
+.action-row.round .action.primary .icon,
+.action-row.round .action[aria-pressed='true'] .icon { background: var(--accent); color: var(--accent-text); }
+.action-row.round .action.primary, .action-row.round .action[aria-pressed='true'] { background: none; color: var(--accent-soft-text); }
+.nearby-chips { margin-bottom: 8px; }
+.place-summary { padding: 4px 0 12px; border-bottom: 1px solid var(--divider); }
+.place-desc { margin: 0 0 8px; font-size: 14px; line-height: 1.5; color: var(--text); }
+.service-options { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 14px; color: var(--text); }
+.service-options li { display: inline-flex; align-items: center; gap: 4px; }
+.service-options .icon { color: var(--text-2); }
+.service-options li.no { color: var(--text-2); }
+.plus-code { font-weight: 500; letter-spacing: 0.02em; }
+.detail-row .row-end { flex: none; color: var(--text-3); }
+.attributes { padding: 4px 0 8px; }
+.attr-group { padding: 12px 0; border-bottom: 1px solid var(--divider); }
+.attr-group h3 { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; font-size: 15px; font-weight: 500; }
+.attr-group h3 .icon { color: var(--text-2); }
+.attr-group ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 12px; font-size: 14px; }
+.attr-group li { display: flex; align-items: flex-start; gap: 6px; line-height: 1.35; }
+.attr-group li .icon { flex: none; color: var(--ok); }
+.attr-group li.no { color: var(--text-2); }
+.attr-group li.no .icon { color: var(--text-3); }
+.similar { padding: 16px 0 4px; border-top: 1px solid var(--divider); margin-top: 4px; }
+.similar h3, .around-dest h3 { margin: 0 0 10px; font-size: 16px; font-weight: 500; }
+.similar-row { list-style: none; display: flex; gap: 10px; overflow-x: auto; margin: 0 -16px; padding: 0 16px 6px; scrollbar-width: none; }
+.similar-row::-webkit-scrollbar { display: none; }
+.similar-card {
+  width: 136px; flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding: 0 0 8px;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); text-align: start; overflow: hidden; cursor: pointer;
+}
+.similar-card:hover { background: var(--bg-2); }
+.similar-tile { height: 76px; display: grid; place-items: center; color: #fff; margin-bottom: 6px; opacity: 0.92; }
+:root[data-theme='dark'] .similar-tile { color: #202124; }
+.similar-name { padding: 0 10px; font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.similar-sub { padding: 0 10px; font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Directions: the fastest option's badge and "what's around the destination". */
+.route-badge {
+  grid-column: 1 / -1; justify-self: start; margin-top: 4px; padding: 2px 10px; border-radius: 10px;
+  background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); font-size: 12px; font-weight: 500;
+}
+.around-dest { padding: 14px 0 6px; border-top: 1px solid var(--divider); margin-top: 6px; }
+/* Send to phone: the QR code stays black on white in dark mode, so cameras read it. */
+.phone-sheet { max-width: 400px; text-align: center; }
+.phone-sheet .view-header { text-align: start; }
+.phone-name { margin: 0 0 12px; font-weight: 500; }
+.qr-box { display: grid; place-items: center; margin: 0 auto 12px; }
+.qr { width: 220px; height: 220px; border-radius: 12px; background: #fff; }
+.phone-help { margin: 0 0 14px; }
+.send-phone { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; margin: 0 0 12px; }
+
+/* ---- Search: typo corrections ("showing results for"), bold matches, category near a place ---- */
+.suggestion .li-title b { font-weight: 700; }
+.suggestion .li-title { font-weight: 400; }
+.did-you-mean { margin: 0 0 10px; padding: 10px 12px; border-radius: 12px; background: var(--bg-2); font-size: 14px; line-height: 1.5; }
+.did-you-mean b { font-weight: 600; }
+.link-btn { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; text-align: start; }
+.link-btn:hover { text-decoration: underline; }
+.did-you-mean-q { font-style: italic; }
+.near-line { display: flex; align-items: center; gap: 4px; margin: 0 0 8px; }

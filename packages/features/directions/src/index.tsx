@@ -28,6 +28,9 @@ import {
   Icon,
   LineChip,
   lineColors,
+  NEARBY_CHIPS,
+  openNearbyResults,
+  SendToPhone,
   type ElevationProfile,
   load,
   PlaceBadge,
@@ -41,7 +44,7 @@ import {
   userLocation,
   type ViewProps,
 } from '@nm/core/app';
-import { categoryLabel, getDirections, reverseGeocode, searchPlaces, tools, trafficTravelTime, transitDirections } from '@nm/tools';
+import { categoryLabel, getDirections, reverseGeocode, searchNearby, searchPlaces, tools, trafficTravelTime, transitDirections } from '@nm/tools';
 
 type Endpoint = { kind: 'me' } | { kind: 'place'; place: Place } | null;
 
@@ -569,9 +572,50 @@ function OtherApps({ dest }: { dest: LngLat }) {
   );
 }
 
+/** Google's "מה יש באזור <יעד>": category searches around the destination. */
+function AroundDestination({ dest }: { dest: LngLat }) {
+  const t = to.value;
+  const name = t?.kind === 'place' && !t.place.id.startsWith('pt:') ? t.place.name : null;
+  return (
+    <section class="around-dest" aria-labelledby="around-title">
+      <h3 id="around-title">{name ? `מה יש באזור ${name}` : 'מה יש באזור היעד'}</h3>
+      <div class="chips">
+        {NEARBY_CHIPS.slice(0, 5).map((c) => (
+          <button
+            key={c.id}
+            class="chip"
+            onClick={() =>
+              void openNearbyResults({
+                title: `${c.label} ליד ${name ?? 'היעד'}`,
+                category: c.id,
+                center: dest,
+                map,
+                fetch: (bbox) => tools().call(searchNearby, { category: c.id as never, bbox, limit: 60 }),
+              })
+            }
+          >
+            <Icon name={c.icon} size={18} />
+            {c.label}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** Index of the quickest option, by traffic-aware time where we have one. */
+function fastestIndex(rs: Route[], traffic: Map<Route, number>): number {
+  let best = 0;
+  rs.forEach((x, i) => {
+    if ((traffic.get(x) ?? x.durationS) < (traffic.get(rs[best]) ?? rs[best].durationS)) best = i;
+  });
+  return best;
+}
+
 function DirectionsView(_: ViewProps) {
   const showSteps = useSignal(false);
   const showOptions = useSignal(false);
+  const phoneOpen = useSignal(false);
   const transit = mode.value === 'transit';
   const rs = routes.value;
   const r = transit ? undefined : rs[active.value];
@@ -579,6 +623,7 @@ function DirectionsView(_: ViewProps) {
   const it = transit ? its[active.value] : undefined;
   const startable = from.value?.kind === 'me' && !!r;
   const dest = coordOf(to.value);
+  const fastest = fastestIndex(rs, trafficTimes.value);
 
   const reroute = () => {
     open({ kind: 'directions', props: { url: urlFor() } }, { replace: true });
@@ -722,8 +767,8 @@ function DirectionsView(_: ViewProps) {
                 <span class="route-dist">{formatDistance(x.distanceM, units.value)}</span>
                 <span class="route-sub muted small">
                   {x.summary ? `דרך ${x.summary} · ` : ''}הגעה ב-{formatArrival(x.durationS, Date.now(), region.value.timeZone)}
-                  {i === 0 && rs.length > 1 ? ' · המהיר ביותר' : ''}
                 </span>
+                {rs.length > 1 && i === fastest && <span class="route-badge">המסלול הכי מהיר</span>}
               </button>
             </li>
           ))}
@@ -761,10 +806,24 @@ function DirectionsView(_: ViewProps) {
           </button>
         </div>
       )}
+      {(r || it) && (
+        <button class="link-like small send-phone" onClick={() => (phoneOpen.value = true)}>
+          <Icon name="mobile_arrow_right" size={18} />
+          שליחת המסלול לטלפון
+        </button>
+      )}
+      {phoneOpen.value && (
+        <SendToPhone
+          title={to.value?.kind === 'place' ? `מסלול אל ${to.value.place.name}` : 'המסלול'}
+          url={location.href}
+          onClose={() => (phoneOpen.value = false)}
+        />
+      )}
       {r && showSteps.value && <Steps route={r} />}
       {it && showSteps.value && <TransitSteps it={it} />}
       {transit && its.length > 0 && <p class="muted tiny">לוחות זמנים וזמני אמת: Transitous ומשרד התחבורה. כדאי לוודא בתחנה.</p>}
       {(mode.value === 'walk' || mode.value === 'bike') && r && <p class="muted small">מסלולי הליכה ואופניים בשלב ניסיוני. שימו לב לשילוט בדרך.</p>}
+      {dest && (r || it) && <AroundDestination dest={dest} />}
       {dest && (r || it) && <OtherApps dest={dest} />}
     </div>
   );

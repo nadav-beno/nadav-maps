@@ -35,6 +35,9 @@ export const OVERTURE_FIXTURE = [
   place('aaaaaaaa-0000-4000-8000-000000000005', 34.7735, 32.0832, 'פארם השכונה', 'pharmacy_and_drug_store', 0.8),
   place('aaaaaaaa-0000-4000-8000-000000000006', 34.7858, 32.0771, 'גלריה לאמנות', 'art_gallery', 0.7),
   place('aaaaaaaa-0000-4000-8000-000000000007', 34.7802, 32.0822, 'מספרת יוסי', 'personal_or_beauty_service', 0.75),
+  // Two more restaurants a few streets away, for "אנשים מחפשים גם" on the bistro's card.
+  place('aaaaaaaa-0000-4000-8000-000000000009', 34.7806, 32.0790, 'מסעדת הגפן', 'restaurant', 0.9),
+  place('aaaaaaaa-0000-4000-8000-00000000000a', 34.7774, 32.0815, 'אוכל של אמא', 'casual_eatery', 0.85),
   place('aaaaaaaa-0000-4000-8000-000000000008', 34.7825, 32.0757, 'סגור לצמיתות', 'restaurant', 0.9, { operating_status: 'permanently_closed' }),
 ];
 

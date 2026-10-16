@@ -8,6 +8,9 @@ import type { Place } from './types.ts';
 /** Map style source id for Overture places; features use it to recognise taps on them. */
 export const OVERTURE_SOURCE = 'overture';
 
+/** Map style source id of the base map vector tiles (OpenMapTiles schema); search reads its labels. */
+export const BASEMAP_SOURCE = 'omt';
+
 /**
  * Colour groups shared by the base map and the UI. Same families Google Maps uses:
  * orange food, blue shops, pink hotels, red health (vets too), green parks and sports

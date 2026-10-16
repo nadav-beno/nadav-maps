@@ -41,6 +41,13 @@ export interface ProviderConfig {
    * '' = no "find my flight". Only the flight number is sent, never the user's location.
    */
   flightsUrl: string;
+  /**
+   * Our own static geodata built from OpenStreetMap (scripts/geodata), '' = off. Folder URL ending
+   * in "/", may be relative to the page (the web build defaults to the site's own `<base>data/`).
+   * Regions with `geodata` in region.ts are answered from `<geodataUrl><region>/` first; Photon and
+   * Overpass remain the fallback.
+   */
+  geodataUrl: string;
   /** Identifies us to public servers, as their usage policies ask. */
   userAgent: string;
 }
@@ -59,6 +66,8 @@ export const DEFAULT_PROVIDERS: ProviderConfig = {
   tomtomKey: '',
   hereKey: '',
   flightsUrl: 'https://api.adsb.lol',
+  // Off unless configured: the web build sets it to its own <base>data/ (providersFromEnv).
+  geodataUrl: '',
   userAgent: 'NadavMaps/0.2 (+https://github.com/nadav-beno/nadav-maps)',
 };
 
@@ -77,8 +86,15 @@ export function providersFromEnv(env: Record<string, string | undefined>, prefix
     tomtomKey: (env[prefix + 'TOMTOM_KEY'] ?? '').trim(),
     hereKey: (env[prefix + 'HERE_KEY'] ?? '').trim(),
     flightsUrl: env[prefix + 'FLIGHTS_URL'] ?? DEFAULT_PROVIDERS.flightsUrl,
+    // Vite's BASE_URL is set in the browser build: default to the data published with the site.
+    geodataUrl: withSlash(env[prefix + 'GEODATA_URL'] ?? (env.BASE_URL !== undefined ? `${env.BASE_URL}data/` : DEFAULT_PROVIDERS.geodataUrl)),
     userAgent: DEFAULT_PROVIDERS.userAgent,
   };
+}
+
+function withSlash(u: string): string {
+  const t = u.trim();
+  return t && !t.endsWith('/') ? `${t}/` : t;
 }
 
 /**
