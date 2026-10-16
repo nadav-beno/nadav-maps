@@ -696,10 +696,15 @@ test.describe('install as an app (iPhone Safari)', () => {
 
 test.describe('our own map data (geodata)', () => {
   /** Requests that left for Photon or Overpass: with local data there should be none. */
+  /** Public search, reverse and details lookups (a category search for "people also search" is not one). */
   function publicLookups(page: Page) {
     const urls: string[] = [];
     page.on('request', (r) => {
-      if (/photon\.komoot\.io|overpass-api\.de/.test(r.url())) urls.push(r.url());
+      if (/photon\.komoot\.io/.test(r.url())) urls.push(r.url());
+      if (/overpass-api\.de/.test(r.url())) {
+        const q = decodeURIComponent((r.postData() ?? '').replace(/^data=/, '').replace(/\+/g, ' '));
+        if (/\b(node|way|relation)\(\d+\)|around:/.test(q)) urls.push(r.url());
+      }
     });
     return urls;
   }
