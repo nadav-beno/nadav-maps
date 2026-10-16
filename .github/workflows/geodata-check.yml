@@ -1,0 +1,40 @@
+name: Geodata check
+
+# Builds the real OpenStreetMap geodata on pull requests that change the builder, so the
+# pipeline is proven before it reaches the deploy workflow. Nothing is deployed or cached.
+on:
+  pull_request:
+    paths:
+      - 'scripts/geodata/**'
+      - 'packages/core/src/geoindex.ts'
+      - 'packages/core/src/region.ts'
+      - '.github/workflows/geodata-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  geodata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build geodata from OpenStreetMap
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq osmium-tool
+          bash scripts/geodata/build-all.sh "$RUNNER_TEMP/geodata"
+      - name: Probe the result
+        run: |
+          du -sh "$RUNNER_TEMP"/geodata/*
+          find "$RUNNER_TEMP/geodata" -type f -size +20M | sed 's/^/too big: /'
+          for d in "$RUNNER_TEMP"/geodata/*/; do node --experimental-strip-types scripts/geodata/probe.ts "$d"; done
