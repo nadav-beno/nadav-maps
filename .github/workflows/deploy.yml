@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # Weekly refresh of our own OpenStreetMap geodata (Mondays 03:17 UTC; Geofabrik updates daily).
+  schedule:
+    - cron: '17 3 * * 1'
 
 permissions:
   contents: read
@@ -25,14 +28,63 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build
+
+      # Our own search / address / reverse-geocoding / place-details data, built from the
+      # OpenStreetMap extract of every region with `geodata` in packages/core/src/region.ts
+      # (scripts/geodata). Rebuilt once per ISO week or when the builder changes; otherwise the
+      # cached copy is used, so ordinary deploys stay fast.
+      - name: Geodata cache key
+        id: geokey
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+      - name: Restore geodata
+        id: geocache
+        uses: actions/cache/restore@v4
+        with:
+          path: geodata-out
+          key: geodata-v1-${{ steps.geokey.outputs.week }}-${{ hashFiles('scripts/geodata/*.ts', 'scripts/geodata/*.sh', 'packages/core/src/geoindex.ts', 'packages/core/src/hebrew.ts', 'packages/core/src/region.ts') }}
+          # A miss still restores the newest older build: if this week's build fails, we deploy that one.
+          restore-keys: geodata-v1-
+      - name: Build geodata from OpenStreetMap
+        id: geobuild
+        if: steps.geocache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        timeout-minutes: 60
         env:
-          BASE_PATH: /${{ github.event.repository.name }}/
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq osmium-tool
+          osmium --version
+          bash scripts/geodata/build-all.sh "$RUNNER_TEMP/geodata-new"
+          rm -rf geodata-out
+          mv "$RUNNER_TEMP/geodata-new" geodata-out
+      - name: Save geodata
+        if: steps.geocache.outputs.cache-hit != 'true' && steps.geobuild.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: geodata-out
+          key: ${{ steps.geocache.outputs.cache-primary-key }}
+
+      # The site lives at /<repository name>/ (from GITHUB_REPOSITORY, which scheduled runs have too).
+      - run: BASE_PATH="/${GITHUB_REPOSITORY#*/}/" pnpm build
+        env:
           VITE_SENTRY_DSN: ${{ vars.SENTRY_DSN }}
           # Optional. Empty = no traffic layer. Set in Settings > Secrets and variables > Actions > Variables.
           VITE_TOMTOM_KEY: ${{ vars.VITE_TOMTOM_KEY }}
           # Optional. Empty = no HERE traffic (HERE covers Israel). Same place as above.
           VITE_HERE_KEY: ${{ vars.VITE_HERE_KEY }}
+      - name: Add geodata to the site
+        run: |
+          if ls geodata-out/*/manifest.json >/dev/null 2>&1; then
+            mkdir -p apps/web/dist/data
+            cp -R geodata-out/. apps/web/dist/data/
+            du -sh apps/web/dist/data/*
+            # Each file stays under 20 MB by construction (Pages allows 100 MB per file, 1 GB per site).
+            big="$(find apps/web/dist/data -type f -size +20M)"
+            if [ -n "$big" ]; then echo "::error::geodata files over 20 MB: $big"; exit 1; fi
+          else
+            echo "::warning::No geodata built or cached: the site falls back to Photon and Overpass."
+          fi
       - uses: actions/upload-pages-artifact@v3
         with:
           path: apps/web/dist

@@ -1,10 +1,11 @@
-import { normalizeQuery, parsePlaceId, queryVariants, regionAt, trafficProvider, type BBox, type LngLat } from '@nm/core';
+import { normalizeQuery, parsePlaceId, queryVariants, regionAt, trafficProvider, type BBox, type LngLat, type Place } from '@nm/core';
 import { z } from 'zod';
 import { CATEGORIES, categoryById } from '../categories.ts';
 import { defineTool, ProviderError, type ToolContext } from '../define.ts';
 import { findFlight } from '../providers/adsb.ts';
 import { overpassCategory, overpassDetails, overpassIdentify } from '../providers/overpass.ts';
 import { photonReverse, photonSearch } from '../providers/photon.ts';
+import { localgeoDetails, localgeoIdentify, localgeoReverse, localgeoSearch, mergePlaces } from '../providers/localgeo.ts';
 import { hereIncidents, hereTrafficTime } from '../providers/here.ts';
 import { NO_KEY_MESSAGE, tomtomIncidents, tomtomTrafficTime } from '../providers/tomtom.ts';
 import { transitDepartures, transitPlan } from '../providers/transitous.ts';
@@ -30,15 +31,28 @@ export const searchPlaces = defineTool({
   async run(input, ctx) {
     const q = normalizeQuery(input.query);
     const opts = { near: input.near as LngLat | undefined, zoom: input.zoom, limit: input.limit, bbox: input.bbox as BBox | undefined };
-    let results = await photonSearch(ctx, q, opts);
-    // Hebrew prefixes and connector words hurt recall; retry with variants when thin.
-    if (results.length < 3) {
-      for (const v of queryVariants(input.query)) {
-        const more = await photonSearch(ctx, v, opts);
-        const ids = new Set(results.map((r) => r.id));
-        results = [...results, ...more.filter((m) => !ids.has(m.id))];
-        if (results.length >= 3) break;
+    // Our own OSM data first (regions with geodata, e.g. Israel); Photon only when it has no good answer.
+    const local = await localgeoSearch(ctx, input.query, opts);
+    if (local?.strong) return local.places.slice(0, input.limit);
+    let results: Place[];
+    try {
+      results = await photonSearch(ctx, q, opts);
+      // Hebrew prefixes and connector words hurt recall; retry with variants when thin.
+      if (results.length < 3) {
+        for (const v of queryVariants(input.query)) {
+          const more = await photonSearch(ctx, v, opts);
+          const ids = new Set(results.map((r) => r.id));
+          results = [...results, ...more.filter((m) => !ids.has(m.id))];
+          if (results.length >= 3) break;
+        }
       }
+    } catch (e) {
+      if (local?.places.length) return local.places.slice(0, input.limit);
+      throw e;
+    }
+    if (local?.places.length) {
+      // Settlements and exact names stay on top; the rest come after Photon's.
+      results = mergePlaces(mergePlaces(local.top, results), local.places);
     }
     return results.slice(0, input.limit);
   },
@@ -49,7 +63,9 @@ export const reverseGeocode = defineTool({
   title: 'מה יש בנקודה',
   description: 'Find the address or place at a coordinate.',
   input: z.object({ lng, lat }),
-  run: (input, ctx) => photonReverse(ctx, input.lng, input.lat),
+  async run(input, ctx) {
+    return (await localgeoReverse(ctx, input.lng, input.lat)) ?? photonReverse(ctx, input.lng, input.lat);
+  },
 });
 
 export const placeDetails = defineTool({
@@ -60,7 +76,7 @@ export const placeDetails = defineTool({
   async run(input, ctx) {
     const { osm } = parsePlaceId(input.id);
     if (!osm) return null;
-    return overpassDetails(ctx, osm.type, osm.id);
+    return (await localgeoDetails(ctx, osm.type, osm.id)) ?? overpassDetails(ctx, osm.type, osm.id);
   },
 });
 
@@ -69,7 +85,10 @@ export const identifyPlace = defineTool({
   title: 'זיהוי מקום לפי שם ומיקום',
   description: 'Find the OSM place with this name near a coordinate (e.g. a label tapped on the map) and return its details.',
   input: z.object({ name: z.string().min(1).max(200), lng, lat }),
-  run: (input, ctx) => overpassIdentify(ctx, input.name, input.lng, input.lat),
+  async run(input, ctx) {
+    const local = await localgeoIdentify(ctx, input.name, input.lng, input.lat);
+    return local !== undefined ? local : overpassIdentify(ctx, input.name, input.lng, input.lat);
+  },
 });
 
 export const searchNearby = defineTool({

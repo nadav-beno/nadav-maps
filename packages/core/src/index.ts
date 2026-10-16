@@ -19,3 +19,4 @@ export * from './tomtom.ts';
 export * from './here.ts';
 export * from './world.ts';
 export * from './install.ts';
+export * from './geoindex.ts';
