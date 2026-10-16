@@ -25,6 +25,25 @@ export interface Region {
    * HERE lists Israel with flow and incidents (docs.here.com/traffic-api/docs/here-traffic-api-v7-coverage-information).
    */
   coverage: { search: boolean; routing: boolean; transit: boolean; traffic: TrafficProviderId[] };
+  /**
+   * Our own static geodata for this region (search, addresses, reverse geocoding, place details),
+   * built weekly in CI from an OpenStreetMap extract by scripts/geodata and served at
+   * `<GEODATA_URL><id>/`. Absent = the region uses the public providers (Photon, Overpass) only.
+   */
+  geodata?: RegionGeodata;
+}
+
+export interface RegionGeodata {
+  /** Folder name under GEODATA_URL. */
+  id: string;
+  /** The .osm.pbf extract the builder downloads (Geofabrik, ODbL). */
+  extract: string;
+  /** ISO country code given to places from this dataset. */
+  country: string;
+  /** admin_level values of municipalities, used to give streets and POIs their city. */
+  cityAdminLevels: string[];
+  /** Boundaries with these name prefixes are not cities (e.g. regional councils): use the nearest settlement instead. */
+  notCityPrefixes?: string[];
 }
 
 export const REGIONS: Region[] = [
@@ -38,6 +57,13 @@ export const REGIONS: Region[] = [
     units: 'metric',
     timeZone: 'Asia/Jerusalem',
     coverage: { search: true, routing: true, transit: false, traffic: ['here'] },
+    geodata: {
+      id: 'il',
+      extract: 'https://download.geofabrik.de/asia/israel-and-palestine-latest.osm.pbf',
+      country: 'il',
+      cityAdminLevels: ['8'],
+      notCityPrefixes: ['מועצה אזורית'],
+    },
   },
   {
     id: 'us',
@@ -108,4 +134,10 @@ export function trafficProvider(region: Pick<Region, 'coverage'>, keys: { tomtom
   if (covered) return { id: covered, live: true };
   const any = (['tomtom', 'here'] as const).find(has);
   return any ? { id: any, live: false } : null;
+}
+
+/** The region whose own geodata covers this point, if any. */
+export function geodataRegionAt(p: LngLat): (Region & { geodata: RegionGeodata }) | null {
+  const r = regionAt(p);
+  return r.geodata ? (r as Region & { geodata: RegionGeodata }) : null;
 }

@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
-import { stubNetwork } from './stubs.ts';
+import { expect, test, type Page } from '@playwright/test';
+import { stubGeodata, stubNetwork } from './stubs.ts';
 import { adsbResponse, fakeGps, FLIGHT_FIXES } from './flight-fixture.ts';
 import { TAKEOUT_DAY, TAKEOUT_FIXTURE } from './timeline-fixture.ts';
 
@@ -568,5 +568,53 @@ test.describe('install as an app (iPhone Safari)', () => {
     await expect(page.getByText('אתם בתוך הדפדפן של אינסטגרם')).toBeVisible();
     await expect(page.getByRole('button', { name: 'העתקת הקישור' })).toBeVisible();
     await context.close();
+  });
+});
+
+test.describe('our own map data (geodata)', () => {
+  /** Requests that left for Photon or Overpass: with local data there should be none. */
+  function publicLookups(page: Page) {
+    const urls: string[] = [];
+    page.on('request', (r) => {
+      if (/photon\.komoot\.io|overpass-api\.de/.test(r.url())) urls.push(r.url());
+    });
+    return urls;
+  }
+
+  test.beforeEach(async ({ page }) => {
+    await stubGeodata(page);
+  });
+
+  test('geodata: an address and a business only in our data are found and opened', async ({ page }) => {
+    const external = publicLookups(page);
+    await page.goto('./#15/32.08/34.78');
+    const box = page.getByRole('searchbox', { name: 'חיפוש מקום או כתובת' });
+    await box.fill('אבן גבירול 71 תל אביב');
+    await page.getByRole('option').filter({ hasText: 'אבן גבירול 71' }).first().click();
+    await expect(page.getByRole('heading', { name: 'אבן גבירול 71' })).toBeVisible();
+    await expect(page).toHaveURL(/place=pt:34\.7819\d,32\.0818\d/);
+
+    await page.goBack();
+    await box.fill('מאפיית אורנה');
+    await page.getByRole('option').filter({ hasText: 'מאפיית אורנה' }).first().click();
+    await expect(page.getByRole('heading', { name: 'מאפיית אורנה' })).toBeVisible();
+    await expect(page).toHaveURL(/place=osm:n7000001/);
+    // Details (wheelchair access) come from our own shards, not Overpass.
+    await expect(page.getByText('נגיש לכיסאות גלגלים')).toBeVisible();
+    expect(external).toEqual([]);
+  });
+
+  test('geodata: a long-press names the address from our data', async ({ page }) => {
+    const external = publicLookups(page);
+    await page.goto('./#18/32.0818/34.78196');
+    await page.waitForFunction(() => (window as unknown as { map?: { loaded(): boolean } }).map?.loaded());
+    // The map's long press is its contextmenu event (a right click on desktop, a hold on touch).
+    await page.evaluate(() => {
+      const m = (window as unknown as { map: { fire(type: string, e: unknown): void } }).map;
+      m.fire('contextmenu', { lngLat: { lng: 34.78196, lat: 32.08182 }, point: { x: 0, y: 0 }, originalEvent: new MouseEvent('contextmenu') });
+    });
+    await expect(page.getByRole('heading', { name: 'אבן גבירול 71' })).toBeVisible();
+    await expect(page.getByText('תל אביב-יפו').first()).toBeVisible();
+    expect(external).toEqual([]);
   });
 });

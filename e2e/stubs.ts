@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Page, Route } from '@playwright/test';
 import { encodePolyline } from '../packages/core/src/polyline.ts';
 import { sceneTile, TILEJSON } from './basemap-scene.ts';
@@ -50,9 +52,30 @@ function valhallaTrip(line: [number, number][], seconds: number) {
   };
 }
 
+/** Our own geodata (`<base>data/<region>/…`), served by the site itself. */
+const GEODATA = /^http:\/\/localhost:\d+\/data\//;
+
+/**
+ * Serve the tiny Tel Aviv dataset (e2e/geodata, built by `pnpm geodata:fixture` from
+ * scripts/geodata/fixtures) instead of the default "no local data" 404s. Call after stubNetwork.
+ */
+export async function stubGeodata(page: Page): Promise<void> {
+  const root = join(import.meta.dirname, 'geodata');
+  await page.route(GEODATA, (r) => {
+    const rel = new URL(r.request().url()).pathname.replace(/^\/data\//, '');
+    try {
+      return r.fulfill({ body: readFileSync(join(root, rel)), contentType: 'application/json' });
+    } catch {
+      return r.fulfill({ status: 404, body: '' });
+    }
+  });
+}
+
 export async function stubNetwork(page: Page): Promise<void> {
   // Anything else external fails fast. (Registered first: later routes take priority.)
   await page.route(/^https:\/\/(?!localhost)/, (r) => r.abort());
+  // No local geodata unless a test opts in with stubGeodata: the other tests exercise Photon/Overpass.
+  await page.route(GEODATA, (r) => r.fulfill({ status: 404, body: '' }));
   await page.route('https://tiles.openfreemap.org/**', (r: Route) => {
     const url = new URL(r.request().url());
     if (url.pathname === '/planet') return r.fulfill({ json: TILEJSON });
