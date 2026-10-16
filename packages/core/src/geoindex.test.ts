@@ -22,6 +22,7 @@ import { geodataRegionAt } from './region.ts';
 describe('searchKey', () => {
   it('folds final letters, quotes, punctuation, niqqud, case and accents', () => {
     expect(searchKey('תל אביב-יפו')).toBe('תל אביב יפו');
+    expect(searchKey('תל־אביב–יפו')).toBe('תל אביב יפו'); // maqaf is a hyphen
     expect(searchKey('ז׳בוטינסקי')).toBe(searchKey("ז'בוטינסקי"));
     expect(searchKey('ז׳בוטינסקי')).toBe('זבוטינסקי');
     expect(searchKey('קניון')).toBe('קניונ');
