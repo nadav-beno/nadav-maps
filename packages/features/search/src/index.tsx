@@ -2,17 +2,25 @@ import { signal, useSignal, useSignalEffect } from '@preact/signals';
 import { useEffect, useRef } from 'preact/hooks';
 import type { Map as MapLibreMap, LngLatBoundsLike } from 'maplibre-gl';
 import {
+  BASEMAP_SOURCE,
   distance,
   droppedPin,
   filterOpenNow,
   formatCoords,
   formatDistance,
+  highlightMatch,
+  lightKey,
+  makeIndex,
   matchLocalPlaces,
   mergeSuggestions,
   movedEnough,
+  nameIndex,
+  nameIndexNow,
   openNowStates,
   OVERTURE_SOURCE,
   parseMapLink,
+  suggestCorrections,
+  useNamesFile,
   type BBox,
   type Camera,
   type LocalFeature,
@@ -40,7 +48,7 @@ import {
   viewStack,
   type ViewProps,
 } from '@nm/core/app';
-import { CATEGORIES, categoryById, categoryLabel, reverseGeocode, searchNearby, searchPlaces, tools } from '@nm/tools';
+import { CATEGORIES, categoryById, categoryLabel, confidentResult, parseCategoryQuery, reverseGeocode, searchNearby, searchPlaces, tools } from '@nm/tools';
 
 let map: MapLibreMap;
 
@@ -152,7 +160,7 @@ function searchArea() {
   areaPill.value = false;
   if (!p) return;
   if (p.category) void runCategory(p.category, { filter: p.filter });
-  else if (p.query) void runSearch(p.query, { area: true, filter: p.filter }).catch(() => openError(p.query!, p.filter));
+  else if (p.query) void runSearch(p.query, { area: true, filter: p.filter, exact: p.exact }).catch(() => openError(p.query!, p.filter));
 }
 
 // ---------------------------------------------------------------------------
@@ -174,6 +182,66 @@ function localMatches(text: string, existing: Place[], limit = 3): Place[] {
   }
   const c = map.getCenter();
   return matchLocalPlaces(features, text, [c.lng, c.lat], existing, limit);
+}
+
+/** Names the map has loaded right now: street, place and POI labels, and Overture businesses. */
+function mapNames(): string[] {
+  const out = new Set<string>();
+  const read = (source: string, sourceLayer: string, keys: string[]) => {
+    if (!map.getSource(source)) return;
+    try {
+      for (const f of map.querySourceFeatures(source, { sourceLayer })) {
+        for (const k of keys) {
+          const v = f.properties?.[k];
+          if (typeof v === 'string' && v.length >= 2 && v.length < 60) out.add(v);
+        }
+      }
+    } catch {
+      /* style switching */
+    }
+  };
+  for (const layer of ['transportation_name', 'place', 'poi']) read(BASEMAP_SOURCE, layer, ['name', 'name:he', 'name:en', 'name_en']);
+  read(OVERTURE_SOURCE, 'place', ['@name']);
+  return [...out];
+}
+
+type SearchArgs = Omit<Parameters<typeof searchPlaces.run>[0], 'query' | 'exact' | 'limit'> & { limit?: number };
+
+/**
+ * search_places (which already corrects typos against the name dictionary) and, when that
+ * finds nothing at all, one more try with a correction from the names on the map.
+ */
+async function searchCorrected(text: string, args: SearchArgs, signal?: AbortSignal): Promise<Place[]> {
+  const r = await tools().call(searchPlaces, { query: text, ...args }, { signal });
+  if (r.length) return r;
+  const names = mapNames();
+  if (!names.length) return r;
+  const c = suggestCorrections(text, makeIndex(names), { limit: 1 })[0];
+  if (!c) return r;
+  const more = await tools().call(searchPlaces, { query: c.text, ...args, exact: true }, { signal });
+  return more.map((p) => ({ ...p, correctedQuery: c.text }));
+}
+
+/** "מסעדות ליד דיזנגוף סנטר": a category around a place, with the dictionary's words when it is loaded. */
+function categoryQuery(q: string) {
+  const idx = nameIndexNow();
+  return parseCategoryQuery(q, idx ? (w) => idx.known.has(lightKey(w)) : undefined);
+}
+
+/** A bbox of about `m` metres around a point. */
+function bboxAround(p: Place, m = 1200): BBox {
+  const dLat = m / 111_320;
+  const dLng = m / (111_320 * Math.cos((p.lat * Math.PI) / 180));
+  return [p.lng - dLng, p.lat - dLat, p.lng + dLng, p.lat + dLat];
+}
+
+/** The name with what was typed in bold, like Google's suggestion list. */
+function Highlighted({ text, query }: { text: string; query: string }) {
+  return (
+    <>
+      {highlightMatch(text, query).map((seg, i) => (seg.bold ? <b key={i}>{seg.text}</b> : seg.text))}
+    </>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -202,17 +270,31 @@ function openError(title: string, filter?: string) {
   open({ kind: 'results', props: { title, query: title, error: UNAVAILABLE, filter, url: { q: title, filter } } });
 }
 
-async function runSearch(q: string, opts: { openView?: boolean; area?: boolean; filter?: string } = {}): Promise<Place[]> {
+async function runSearch(q: string, opts: { openView?: boolean; area?: boolean; filter?: string; exact?: boolean } = {}): Promise<Place[]> {
   remember(q);
-  const remote = await tools().call(searchPlaces, { query: q, ...bias(), limit: 15, ...(opts.area ? { bbox: areaBBox() } : {}) });
-  const results = mergeSuggestions(remote, localMatches(q, remote), q);
+  // "קפה בפלורנטין": find the place, then the category around it.
+  const cq = !opts.area && !opts.exact && opts.openView !== false ? categoryQuery(q) : null;
+  if (cq) {
+    const anchor = (await searchCorrected(cq.anchor, { ...bias(), limit: 3 }))[0];
+    if (anchor) {
+      await runCategory(cq.category.id, { filter: opts.filter, anchor, title: q });
+      return lastResults;
+    }
+  }
+  const args = { ...bias(), limit: 15, ...(opts.area ? { bbox: areaBBox() } : {}) };
+  const remote = opts.exact ? await tools().call(searchPlaces, { query: q, ...args, exact: true }) : await searchCorrected(q, args);
+  const local = localMatches(q, remote);
+  const results = mergeSuggestions(remote, local, q);
+  const corrected = remote.find((r) => r.correctedQuery)?.correctedQuery;
   lastResults = results;
   if (opts.openView !== false) {
-    if (results.length === 1 && !opts.area) {
-      choose(results[0]);
+    // One clear answer (a street, city or landmark well ahead of the rest) opens right away.
+    const sure = !opts.area && results[0] === remote[0] ? confidentResult(remote, q) : null;
+    if ((results.length === 1 && !opts.area) || sure) {
+      choose(sure ?? results[0]);
     } else {
       const filter = opts.filter;
-      open({ kind: 'results', props: { title: q, query: q, places: results, filter, url: { q, filter } } });
+      open({ kind: 'results', props: { title: corrected ?? q, query: q, corrected, exact: opts.exact, places: results, filter, url: { q, filter } } });
       showResults(results);
       areaPill.value = false;
       anchor = null;
@@ -225,20 +307,29 @@ async function runSearch(q: string, opts: { openView?: boolean; area?: boolean; 
   return results;
 }
 
-async function runCategory(id: string, opts: { filter?: string } = {}) {
+/** A category search in the visible area, or around `anchor` ("cafes near Azrieli", titled with what was typed). */
+async function runCategory(id: string, opts: { filter?: string; anchor?: Place; title?: string } = {}) {
   const cat = categoryById(id);
   if (!cat) return;
-  const base = { title: cat.label, category: id, filter: opts.filter, url: { cat: id, filter: opts.filter } };
+  const around = opts.anchor;
+  const base = {
+    title: opts.title ?? cat.label,
+    category: id,
+    near: around?.name,
+    filter: opts.filter,
+    url: opts.title ? { q: opts.title, filter: opts.filter } : { cat: id, filter: opts.filter },
+  };
   areaPill.value = false;
   open({ kind: 'results', props: { ...base, loading: true } });
   try {
-    const o = origin();
-    const places = (await tools().call(searchNearby, { category: id as never, bbox: areaBBox(), limit: 60 }))
+    const o: [number, number] = around ? [around.lng, around.lat] : origin();
+    const places = (await tools().call(searchNearby, { category: id as never, bbox: around ? bboxAround(around) : areaBBox(), limit: 60 }))
       .sort((a, b2) => distance(o, [a.lng, a.lat]) - distance(o, [b2.lng, b2.lat]))
       .slice(0, 40);
     lastResults = places;
     open({ kind: 'results', props: { ...base, places } }, { replace: true });
     showResults(places);
+    if (around) afterPanelChange(() => (places.length ? fitPlaces(places.slice(0, 12)) : focusPlace(around)));
   } catch (e) {
     open({ kind: 'results', props: { ...base, error: (e as Error).message } }, { replace: true });
   }
@@ -327,7 +418,7 @@ function SearchBar() {
       const ac = new AbortController();
       abortRef.current = ac;
       try {
-        const r = await tools().call(searchPlaces, { query: text, ...bias(), limit: 7 }, { signal: ac.signal });
+        const r = await searchCorrected(text, { ...bias(), limit: 7 }, ac.signal);
         remote.value = r;
         local.value = localMatches(text, r);
         active.value = -1;
@@ -465,6 +556,8 @@ function SearchBar() {
           }}
           onFocus={() => {
             focused.value = true;
+            // Get the typo dictionary ready while the user types.
+            void nameIndex();
             if (q.value) suggest(q.value);
           }}
           onBlur={() => setTimeout(() => (focused.value = false), 150)}
@@ -525,7 +618,9 @@ function SearchBar() {
                   >
                     <PlaceBadge place={p} size={32} />
                     <span class="li-body">
-                      <span class="li-title">{p.name}</span>
+                      <span class="li-title">
+                        <Highlighted text={p.name} query={p.correctedQuery ?? q.value} />
+                      </span>
                       <span class="li-sub">{[categoryLabel(p.category), p.address].filter(Boolean).join(' · ')}</span>
                     </span>
                   </button>
@@ -588,6 +683,12 @@ interface ResultsProps {
   title: string;
   /** Text search (absent for a category search). */
   query?: string;
+  /** The corrected query the results are for, when the typed one had a typo. */
+  corrected?: string;
+  /** Searched exactly as typed ("search instead for"). */
+  exact?: boolean;
+  /** A category search around this place ("cafes near Azrieli"). */
+  near?: string;
   places?: Place[];
   category?: string;
   /** "open" = only places open now. */
@@ -656,6 +757,22 @@ function ResultsView({ view }: ViewProps<ResultsProps>) {
           </button>
         </div>
       )}
+      {p.corrected && p.query && (
+        <div class="did-you-mean" role="status">
+          <div>
+            מציג תוצאות עבור <b>{p.corrected}</b>
+          </div>
+          <button class="link-btn" onClick={() => void runSearch(p.query!, { exact: true, filter: p.filter }).catch(() => openError(p.query!, p.filter))}>
+            חפש במקום זאת <span class="did-you-mean-q">{p.query}</span>
+          </button>
+        </div>
+      )}
+      {p.near && p.category && !p.loading && (
+        <p class="muted small near-line">
+          <Icon name="location_on" size={16} />
+          {categoryById(p.category)?.label} ליד {p.near}
+        </p>
+      )}
       {p.loading && <div class="spinner" role="progressbar" aria-label="טוען" />}
       {p.error && <p class="error">{p.error}</p>}
       {openOnly && !states.value && all.length > 0 && <div class="spinner" role="progressbar" aria-label="טוען" />}
@@ -713,6 +830,8 @@ export default defineFeature({
   enabledByDefault: true,
   setup(ctx) {
     map = ctx.map;
+    // A bigger names list (built from OpenStreetMap in CI) is used when the site has one.
+    useNamesFile(`${import.meta.env.BASE_URL}data/il/names.json`);
     ctx.registerSlot('top', SearchBar, 0);
     ctx.registerView('results', ResultsView);
 

@@ -1,4 +1,4 @@
-import { normalizeQuery, parsePlaceId, queryVariants, regionAt, trafficProvider, type BBox, type LngLat } from '@nm/core';
+import { distance, fuzzyScore, nameIndex, normalizeQuery, parsePlaceId, prepareQuery, queryVariants, regionAt, suggestCorrections, trafficProvider, type BBox, type LngLat, type Place, type PreparedQuery } from '@nm/core';
 import { z } from 'zod';
 import { CATEGORIES, categoryById } from '../categories.ts';
 import { defineTool, ProviderError, type ToolContext } from '../define.ts';
@@ -26,6 +26,7 @@ export const searchPlaces = defineTool({
     zoom: z.number().min(0).max(22).optional().describe('How local the bias is (map zoom)'),
     limit: z.number().int().min(1).max(20).default(8),
     bbox: z.tuple([lng, lat, lng, lat]).optional().describe('[west, south, east, north] to search only inside (e.g. "search this area")'),
+    exact: z.boolean().default(false).describe('Search the text as typed, without correcting spelling mistakes'),
   }),
   async run(input, ctx) {
     const q = normalizeQuery(input.query);
@@ -40,9 +41,79 @@ export const searchPlaces = defineTool({
         if (results.length >= 3) break;
       }
     }
-    return results.slice(0, input.limit);
+    // Nothing that looks like what was typed: probably a typo. Ask again with the likeliest
+    // corrections from the name dictionary (at most two more requests), like Google's
+    // "showing results for".
+    if (!input.exact && !hasStrongMatch(results, input.query)) {
+      const corrections = suggestCorrections(input.query, await nameIndex(), { limit: 2 });
+      let extra = 0;
+      outer: for (const c of corrections) {
+        for (const text of [c.text, c.alt]) {
+          if (!text || extra >= 2) continue;
+          extra++;
+          const more = await photonSearch(ctx, normalizeQuery(text), opts);
+          if (more.length && (hasStrongMatch(more, text) || !results.length)) {
+            const ids = new Set(more.map((m) => m.id));
+            results = [...more.map((m) => ({ ...m, correctedQuery: c.text })), ...results.filter((r) => !ids.has(r.id))];
+            break outer;
+          }
+        }
+      }
+    }
+    return rankResults(results, input.query, opts.near).slice(0, input.limit);
   },
 });
+
+/** Does any result's name look like the query (typos, other script and text still being typed allowed)? */
+export function hasStrongMatch(places: Place[], query: string): boolean {
+  const pq = prepareQuery(query);
+  return places.some((p) => resultScore(pq, p) >= 0.78);
+}
+
+function resultScore(pq: PreparedQuery, p: Place): number {
+  const s = fuzzyScore(pq, p.name);
+  if (s >= 0.95 || !p.address) return s;
+  // "דיזנגוף תל אביב" also matches the street "דיזנגוף" in "תל אביב-יפו".
+  const parts = p.address.split(',').map((s) => s.trim());
+  const city = parts.length > 1 ? parts[parts.length - 2] : parts[0];
+  return Math.max(s, fuzzyScore(pq, `${p.name} ${city}`) * 0.98);
+}
+
+/**
+ * Re-rank search results: how well the name matches (the corrected query for corrected
+ * results), the engine's own order (importance), and closeness to the map.
+ */
+export function rankResults(places: Place[], query: string, near?: LngLat): Place[] {
+  if (places.length < 2) return places;
+  const prepared = new Map<string, PreparedQuery>();
+  const pqFor = (t: string) => prepared.get(t) ?? (prepared.set(t, prepareQuery(t)), prepared.get(t)!);
+  const n = places.length;
+  const scored = places.map((p, i) => {
+    const match = resultScore(pqFor(p.correctedQuery ?? query), p);
+    const near_ = near ? Math.exp(-distance(near, [p.lng, p.lat]) / 20000) : 0;
+    // Weak matches all look the same (category searches: "פיצה"); only clear matches move up.
+    return { p, s: 0.5 * (match >= 0.7 ? match : 0) + 0.3 * (1 - i / n) + 0.2 * near_ };
+  });
+  return scored.sort((a, b) => b.s - a.s).map((x) => x.p);
+}
+
+/**
+ * The result search should open right away instead of a list, like Google does for
+ * "דיזנגוב תל אביב": a clear match on a street, city or landmark, well ahead of the rest.
+ */
+export function confidentResult(places: Place[], query: string): Place | null {
+  const first = places[0];
+  if (!first) return null;
+  const pq = prepareQuery(first.correctedQuery ?? query);
+  const s0 = resultScore(pq, first);
+  const kind = first.category?.key ?? '';
+  const landmark = ['highway', 'place', 'boundary', 'tourism', 'historic', 'aeroway', 'railway', 'leisure', 'natural'].includes(kind) || ['mall', 'hospital', 'university', 'college', 'stadium'].includes(first.category?.value ?? '');
+  if (!landmark || s0 < 0.86) return null;
+  // The same street in pieces does not count as a rival; the same name in another town does.
+  const rest = places.slice(1).filter((p) => !(p.name === first.name && distance([p.lng, p.lat], [first.lng, first.lat]) < 3000));
+  const s1 = rest.length ? Math.max(...rest.map((p) => resultScore(pq, p))) : 0;
+  return s1 <= s0 - 0.12 ? first : null;
+}
 
 export const reverseGeocode = defineTool({
   name: 'reverse_geocode',

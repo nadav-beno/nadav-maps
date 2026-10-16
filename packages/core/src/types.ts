@@ -26,6 +26,8 @@ export interface Place {
   countryCode?: string;
   /** Bounding box for areas (cities, countries) so the map can fit them. */
   extent?: BBox;
+  /** Set by search when the query had a typo: the corrected query that found this place. */
+  correctedQuery?: string;
 }
 
 export interface PlaceDetails extends Place {

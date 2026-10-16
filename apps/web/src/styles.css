@@ -812,3 +812,13 @@ kbd {
 .tl-custom .input { flex: 1; min-width: 0; }
 .tl-home { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); text-align: start; }
 .tl-home-text { flex: 1; font-weight: 500; }
+
+/* ---- Search: typo corrections ("showing results for"), bold matches, category near a place ---- */
+.suggestion .li-title b { font-weight: 700; }
+.suggestion .li-title { font-weight: 400; }
+.did-you-mean { margin: 0 0 10px; padding: 10px 12px; border-radius: 12px; background: var(--bg-2); font-size: 14px; line-height: 1.5; }
+.did-you-mean b { font-weight: 600; }
+.link-btn { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; text-align: start; }
+.link-btn:hover { text-decoration: underline; }
+.did-you-mean-q { font-style: italic; }
+.near-line { display: flex; align-items: center; gap: 4px; margin: 0 0 8px; }
