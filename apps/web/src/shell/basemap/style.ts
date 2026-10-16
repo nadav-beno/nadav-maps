@@ -3,7 +3,7 @@ import type {
   LayerSpecification,
   StyleSpecification,
 } from 'maplibre-gl';
-import { OVERTURE_SOURCE, PROMINENT_GROUPS } from '@nm/core';
+import { BASEMAP_SOURCE, OVERTURE_SOURCE, PROMINENT_GROUPS } from '@nm/core';
 import { POI_GROUPS, overtureCategoriesIn, overtureColorExpression, overtureIconExpression, poiIconExpression, poiColorExpression } from './poi.ts';
 
 /**
@@ -190,7 +190,7 @@ export const DARK: Palette = {
   hillHighlight: 'rgba(255, 255, 255, 0.04)',
 };
 
-const SRC = 'omt';
+const SRC = BASEMAP_SOURCE;
 
 /** Label text in the UI language when OSM has it, otherwise the local name. */
 export function nameExpr(lang: string): ExpressionSpecification {

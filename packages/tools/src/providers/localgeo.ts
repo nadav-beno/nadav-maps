@@ -239,6 +239,17 @@ export async function localgeoSearch(
   }
 }
 
+/**
+ * URL of the region's names list (spell-correction dictionary), when this region has our
+ * geodata and its manifest loaded. Null otherwise, so nothing is fetched in vain.
+ */
+export async function localgeoNamesUrl(ctx: ToolContext, opts: { near?: LngLat; bbox?: BBox } = {}): Promise<string | null> {
+  const region = regionFor(opts);
+  if (!region) return null;
+  const ds = await dataset(ctx, region.geodata);
+  return ds ? `${ds.base}names.json` : null;
+}
+
 /** Local results first, then the remote ones that aren't the same place again. */
 export function mergePlaces(first: Place[], then: Place[]): Place[] {
   const out = [...first];

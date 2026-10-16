@@ -37,6 +37,19 @@ const paris = { geometry: { coordinates: [2.35, 48.85] }, properties: { osm_type
 
 beforeEach(() => resetLocalGeo());
 
+describe('typo corrections from the region names list', () => {
+  it('loads names.json only when a query finds nothing good, then corrects with it', async () => {
+    const good = setup();
+    await good.client.call(searchPlaces, { query: 'דיזנגוף', near: [34.78, 32.08] });
+    expect(good.calls).not.toContain('data:il/names.json');
+    const typo = setup();
+    // "מאפיית אורנה" is in the region's names list, not in the built-in dictionary.
+    const res = await typo.client.call(searchPlaces, { query: 'מאפיית אורנא', near: [34.78, 32.08] });
+    expect(typo.calls).toContain('data:il/names.json');
+    expect(res[0]).toMatchObject({ name: 'מאפיית אורנה', correctedQuery: 'מאפיית אורנה' });
+  });
+});
+
 describe('search from our own data', () => {
   it('resolves "street number city" to the address point without Photon', async () => {
     const { client, external } = setup();
@@ -75,8 +88,8 @@ describe('search from our own data', () => {
     expect(miss.external()).toContain('photon.komoot.io');
     const latin = setup({ photon: [paris] });
     const res = await latin.client.call(searchPlaces, { query: 'Tel Aviv' });
-    // A settlement first, then Photon's, then our other matches.
-    expect(res.map((r) => r.name)).toEqual(['תל אביב-יפו', 'Paris', 'מוזיאון תל אביב לאמנות']);
+    // A settlement first; then what matches the name (re-ranked by similarity) before Photon's unrelated one.
+    expect(res.map((r) => r.name)).toEqual(['תל אביב-יפו', 'מוזיאון תל אביב לאמנות', 'Paris']);
   });
 
   it('keeps local results when Photon fails', async () => {

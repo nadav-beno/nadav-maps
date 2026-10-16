@@ -110,6 +110,29 @@ test('search results', async ({ page }, info) => {
   await shot('14-short-link');
 });
 
+test('search typos', async ({ page }, info) => {
+  await stubNetwork(page);
+  const shot = (n: string) => page.screenshot({ path: `${dir}/${info.project.name}-${n}.png` });
+  await page.goto('./#15/32.08/34.78');
+  await page.waitForTimeout(1200);
+  const box = page.getByRole('searchbox');
+  await box.fill('עזראלי');
+  await page.getByRole('option').filter({ hasText: 'קניון עזריאלי' }).waitFor();
+  await shot('15-typo-suggest');
+  await box.fill('קפע');
+  await box.press('Enter');
+  await page.locator('.did-you-mean').waitFor();
+  await page.waitForTimeout(800);
+  await shot('16-typo-results');
+  await page.goto('./#13/32.1/34.85');
+  await page.waitForTimeout(1000);
+  await box.fill('בתי קפה ליד עזראלי');
+  await box.press('Enter');
+  await page.locator('.near-line').waitFor();
+  await page.waitForTimeout(1200);
+  await shot('17-category-near');
+});
+
 test('basemap', async ({ page }, info) => {
   await stubNetwork(page);
   const shot = (n: string) => page.screenshot({ path: `${dir}/${info.project.name}-map-${n}.png` });

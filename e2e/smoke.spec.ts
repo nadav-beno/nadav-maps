@@ -268,6 +268,66 @@ test('a stop on the way is kept in the link', async ({ page }) => {
   await expect(page).toHaveURL(/route=34\.7741,32\.0787;34\.7918,32\.0745/);
 });
 
+test('typos: shows results for the corrected query, and can search as typed instead', async ({ page }) => {
+  const asked: string[] = [];
+  page.on('request', (r) => r.url().startsWith('https://photon.komoot.io/api') && asked.push(new URL(r.url()).searchParams.get('q') ?? ''));
+  await page.goto('./#15/32.08/34.78');
+  const box = page.getByRole('searchbox', { name: 'חיפוש מקום או כתובת' });
+  // The fixture's Photon knows "קפה", not "קפע".
+  await box.fill('קפע');
+  await box.press('Enter');
+  const note = page.locator('.did-you-mean');
+  await expect(note).toContainText('מציג תוצאות עבור');
+  await expect(note.locator('b')).toHaveText('קפה');
+  await expect(page.locator('.list').getByText('קניון עזריאלי')).toBeVisible();
+  await expect(page).toHaveURL(/q=%D7%A7%D7%A4%D7%A2/);
+  expect(asked).toContain('קפה');
+  await note.getByRole('button', { name: /חפש במקום זאת/ }).click();
+  await expect(page.getByText('לא מצאנו תוצאות.')).toBeVisible();
+  await expect(page.locator('.did-you-mean')).toBeHidden();
+});
+
+test('typos: suggestions show the corrected place with the typed part in bold', async ({ page }) => {
+  await page.goto('./');
+  await page.getByRole('searchbox', { name: 'חיפוש מקום או כתובת' }).fill('עזראלי');
+  const option = page.getByRole('option').filter({ hasText: 'קניון עזריאלי' });
+  await expect(option).toBeVisible();
+  await expect(option.locator('.li-title b')).toHaveText('עזריאלי');
+  await option.click();
+  await expect(page.getByRole('heading', { name: 'קניון עזריאלי' })).toBeVisible();
+});
+
+test('typos: a misspelled street with its city, or typed on the English layout, opens the place card', async ({ page }) => {
+  await page.goto('./');
+  const box = page.getByRole('searchbox', { name: 'חיפוש מקום או כתובת' });
+  await box.fill('דיזנגוב תל אביב');
+  await box.press('Enter');
+  await expect(page.getByRole('heading', { name: 'דיזנגוף' })).toBeVisible();
+  await expect(page).toHaveURL(/place=osm:w1001/);
+  await page.goto('./');
+  await box.fill('shzbdu;');
+  await box.press('Enter');
+  await expect(page.getByRole('heading', { name: 'דיזנגוף' })).toBeVisible();
+});
+
+test('category near a place: "בתי קפה ליד עזראלי" lists cafes around Azrieli', async ({ page }) => {
+  await page.goto('./#13/32.1/34.85');
+  const overpass = page.waitForRequest((r) => r.url().includes('overpass') && decodeURIComponent(r.postData() ?? '').includes('"amenity"="cafe"'));
+  const box = page.getByRole('searchbox', { name: 'חיפוש מקום או כתובת' });
+  await box.fill('בתי קפה ליד עזראלי');
+  await box.press('Enter');
+  const body = decodeURIComponent((await overpass).postData() ?? '');
+  // The box is around Azrieli (32.0745, 34.7918), not the map centre.
+  const box4 = /\((-?[\d.]+),(-?[\d.]+),(-?[\d.]+),(-?[\d.]+)\)/.exec(body)!.slice(1).map(Number);
+  expect(box4[0]).toBeLessThan(32.0745);
+  expect(box4[2]).toBeGreaterThan(32.0745);
+  expect(box4[1]).toBeLessThan(34.7918);
+  expect(box4[3]).toBeGreaterThan(34.7918);
+  await expect(page.locator('.list').getByText('קפה לנדוור')).toBeVisible();
+  await expect(page.locator('.near-line')).toHaveText('בתי קפה ליד קניון עזריאלי');
+  await expect(page).toHaveURL(/q=/);
+});
+
 test('category chip finds nearby cafes', async ({ page }) => {
   await page.goto('./#15/32.08/34.78');
   await page.getByRole('button', { name: 'בתי קפה' }).click();
