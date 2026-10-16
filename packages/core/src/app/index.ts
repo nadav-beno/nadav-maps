@@ -10,3 +10,5 @@ export * from './transit-ui.tsx';
 export * from './elevation.ts';
 export * from './world.ts';
 export { ICONS } from './icon-paths.ts';
+export * from './send-to-phone.tsx';
+export * from './nearby.ts';

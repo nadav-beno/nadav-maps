@@ -27,6 +27,32 @@ export const PLACES = {
   },
 };
 
+export const BISTRO_TAGS = {
+  name: 'ביסטרו הכרמל',
+  'name:en': 'Bistro HaCarmel',
+  amenity: 'restaurant',
+  cuisine: 'mediterranean',
+  description: 'ביסטרו ים-תיכוני קטן ליד שוק הכרמל',
+  opening_hours: 'Mo-Su 12:00-23:30',
+  takeaway: 'yes',
+  delivery: 'no',
+  outdoor_seating: 'yes',
+  reservation: 'recommended',
+  'reservation:website': 'https://bistro.example/book',
+  'website:menu': 'https://bistro.example/menu',
+  'diet:kosher': 'yes',
+  'diet:vegetarian': 'yes',
+  wheelchair: 'yes',
+  'toilets:wheelchair': 'yes',
+  internet_access: 'wlan',
+  'internet_access:fee': 'no',
+  smoking: 'no',
+  dog: 'yes',
+  'payment:cash': 'yes',
+  'payment:credit_cards': 'yes',
+  'payment:apple_pay': 'yes',
+};
+
 export const ROUTE_LINE: [number, number][] = [
   [34.7741, 32.0787],
   [34.7790, 32.0780],
@@ -150,6 +176,10 @@ export async function stubNetwork(page: Page): Promise<void> {
           ],
         },
       });
+    }
+    // The Overture bistro tapped on the map, matched to its OSM node (service options, attributes).
+    if (body.includes('"name"="ביסטרו הכרמל"')) {
+      return r.fulfill({ json: { elements: [{ type: 'node', id: 5005, lat: 32.0801, lon: 34.7792, tags: BISTRO_TAGS }] } });
     }
     if (body.includes('"amenity"="cafe"')) {
       return r.fulfill({

@@ -1,7 +1,22 @@
 import { useSignal } from '@preact/signals';
 import { useEffect, useRef } from 'preact/hooks';
 import type { Map as MapLibreMap } from 'maplibre-gl';
-import { droppedPin, formatCoords, formatDistance, distance, OVERTURE_SOURCE, overturePlace, parsePlaceId, type Place, type PlaceDetails } from '@nm/core';
+import {
+  droppedPin,
+  formatCoords,
+  formatDistance,
+  cuisineLabel,
+  distance,
+  kosherBadge,
+  OVERTURE_SOURCE,
+  overturePlace,
+  parsePlaceId,
+  placeAttributes,
+  placeLinks,
+  serviceOptions,
+  type Place,
+  type PlaceDetails,
+} from '@nm/core';
 import {
   back,
   currentView,
@@ -11,19 +26,23 @@ import {
   EMPTY,
   home,
   Icon,
+  NEARBY_CHIPS,
+  openNearbyResults,
   openPlace,
   placeActions,
   placeSections,
   selectedPlace,
+  SendToPhone,
   setGeoJSON,
   toast,
   units,
   userLocation,
   type ViewProps,
 } from '@nm/core/app';
-import { categoryLabel, identifyPlace, placeDetails, placeSummary, reverseGeocode, tools, type PlaceSummary } from '@nm/tools';
+import { categoryLabel, identifyPlace, placeDetails, placeSummary, reverseGeocode, searchNearby, tools, type PlaceSummary } from '@nm/tools';
 import { parseHours, type HoursInfo } from '@nm/core';
 import { displayPhone, socialLabel } from './contact.ts';
+import { Attributes, PlusCodeRow, ServiceOptions, SimilarPlaces } from './sections.tsx';
 
 let map: MapLibreMap;
 
@@ -107,6 +126,38 @@ function Row({ icon, children, href, onClick, ltr }: { icon: string; children: p
   );
 }
 
+/** A second-language name under the title, as Google shows "Bistro HaCarmel" under the Hebrew name. */
+function secondaryName(p: Place, tags?: Record<string, string>): string | undefined {
+  if (!tags) return undefined;
+  const alt = /[֐-׿]/.test(p.name) ? (tags['name:en'] ?? (tags.name !== p.name ? tags.name : undefined)) : tags['name:he'];
+  return alt && alt !== p.name ? alt : undefined;
+}
+
+function NearbyChips({ p }: { p: Place }) {
+  return (
+    <div class="chips nearby-chips" role="toolbar" aria-label={`חיפוש באזור ${p.name}`}>
+      {NEARBY_CHIPS.map((c) => (
+        <button
+          key={c.id}
+          class="chip"
+          onClick={() =>
+            void openNearbyResults({
+              title: `${c.label} ליד ${p.name}`,
+              category: c.id,
+              center: [p.lng, p.lat],
+              map,
+              fetch: (bbox) => tools().call(searchNearby, { category: c.id as never, bbox, limit: 60 }),
+            })
+          }
+        >
+          <Icon name={c.icon} size={18} />
+          {c.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function PlaceView({ view }: ViewProps<{ place: Place }>) {
   const place = view.props!.place;
   const details = useSignal<PlaceDetails | null>(null);
@@ -114,6 +165,9 @@ function PlaceView({ view }: ViewProps<{ place: Place }>) {
   const hours = useSignal<HoursInfo | null>(null);
   const summary = useSignal<PlaceSummary | null>(null);
   const resolved = useSignal<Place>(place);
+  const tab = useSignal<'overview' | 'about'>('overview');
+  const nearbyOpen = useSignal(false);
+  const phoneOpen = useSignal(false);
   // The id this card upgraded itself to (a tapped label matched to OSM), so that swap doesn't reload.
   const upgradedTo = useRef<string | null>(null);
 
@@ -126,6 +180,8 @@ function PlaceView({ view }: ViewProps<{ place: Place }>) {
     details.value = null;
     hours.value = null;
     summary.value = null;
+    tab.value = 'overview';
+    nearbyOpen.value = false;
     let cancelled = false;
     const ac = new AbortController();
     (async () => {
@@ -163,8 +219,10 @@ function PlaceView({ view }: ViewProps<{ place: Place }>) {
 
   const p = resolved.value;
   const d = details.value;
+  const tags = d?.tags ?? {};
   const c = p.contact;
-  const cat = categoryLabel(p.category?.key === 'overture' ? p.category : (d?.category ?? p.category));
+  const category = p.category?.key === 'overture' ? p.category : (d?.category ?? p.category);
+  const cat = categoryLabel(category);
   const u = userLocation.value;
   const dist = u ? distance([u.lng, u.lat], [p.lng, p.lat]) : null;
   const address = p.address ?? d?.address;
@@ -172,17 +230,50 @@ function PlaceView({ view }: ViewProps<{ place: Place }>) {
   const website = d?.website ?? c?.website;
   const photos = [summary.value?.imageUrl, d?.imageUrl].filter((x, i, a): x is string => !!x && a.indexOf(x) === i);
   const sources = [p.osm || d ? 'OpenStreetMap' : null, p.id.startsWith('ovt:') ? 'Overture Maps' : null, summary.value ? 'ויקיפדיה' : null].filter(Boolean);
+  const isPin = p.id.startsWith('pt:') && !category;
+  const services = isPin ? [] : serviceOptions(tags, category);
+  const kosher = kosherBadge(tags);
+  const links = placeLinks(tags);
+  const groups = placeAttributes(tags);
+  const attrCount = groups.reduce((n, g) => n + g.items.length, 0);
+  // Google splits the card into tabs once there is an "about" worth a tab of its own.
+  const tabs = attrCount >= 2;
+  const inline = tabs ? [] : groups.map((g) => ({ ...g, items: g.items.filter((x) => x.key !== 'wheelchair') })).filter((g) => g.items.length);
+  const alt = secondaryName(p, d?.tags);
+  const description = links.description && links.description.length <= 200 ? links.description : undefined;
+  const about = tabs && tab.value === 'about';
 
   return (
     <article class="view place">
+      {photos.length > 0 && (
+        <div class="photo-strip">
+          {photos.map((src) => (
+            <img key={src} src={src} alt="" loading="lazy" referrerpolicy="no-referrer" onError={(e) => ((e.target as HTMLElement).style.display = 'none')} />
+          ))}
+        </div>
+      )}
       <div class="place-head">
-        <h2 class="place-title">{p.name}</h2>
+        <div class="place-names">
+          <h2 class="place-title">{p.name}</h2>
+          {alt && (
+            <p class="place-alt">
+              <bdi>{alt}</bdi>
+            </p>
+          )}
+        </div>
         <button class="icon-btn filled" aria-label="סגירה" onClick={home}>
           <Icon name="close" size={20} />
         </button>
       </div>
       <p class="place-sub">
-        {[cat, d?.cuisine?.split(';')[0], dist !== null ? formatDistance(dist, units.value) : null].filter(Boolean).join(' · ') || formatCoords(p.lng, p.lat)}
+        {[cat, cuisineLabel(d?.cuisine), dist !== null ? formatDistance(dist, units.value) : null].filter(Boolean).join(' · ') ||
+          formatCoords(p.lng, p.lat)}
+        {kosher && (
+          <span class="kosher-badge">
+            <Icon name="verified" size={14} />
+            {kosher}
+          </span>
+        )}
       </p>
       {hours.value && (
         <p class="place-open">
@@ -191,10 +282,36 @@ function PlaceView({ view }: ViewProps<{ place: Place }>) {
         </p>
       )}
 
-      <div class="action-row">
+      {tabs && (
+        <div class="place-tabs" role="tablist" aria-label="חלקי הכרטיס">
+          <button role="tab" aria-selected={!about} onClick={() => (tab.value = 'overview')}>
+            סקירה כללית
+          </button>
+          <button role="tab" aria-selected={about} onClick={() => (tab.value = 'about')}>
+            מידע כללי
+          </button>
+        </div>
+      )}
+
+      <div class="action-row round">
         <button class="action primary" onClick={() => directionsTo(p)}>
           <Icon name="directions" />
           מסלול
+        </button>
+        {placeActions.value.map(({ id, Component }) => (
+          <Component key={id} place={p} />
+        ))}
+        <button class="action" aria-pressed={nearbyOpen.value} aria-expanded={nearbyOpen.value} onClick={() => (nearbyOpen.value = !nearbyOpen.value)}>
+          <Icon name="travel_explore" />
+          באזור
+        </button>
+        <button class="action" onClick={() => (phoneOpen.value = true)}>
+          <Icon name="mobile_arrow_right" />
+          שליחה לטלפון
+        </button>
+        <button class="action" onClick={() => void share(p)}>
+          <Icon name="share" />
+          שיתוף
         </button>
         {phone && (
           <a class="action" href={telHref(phone)}>
@@ -202,13 +319,6 @@ function PlaceView({ view }: ViewProps<{ place: Place }>) {
             חיוג
           </a>
         )}
-        {placeActions.value.map(({ id, Component }) => (
-          <Component key={id} place={p} />
-        ))}
-        <button class="action" onClick={() => void share(p)}>
-          <Icon name="share" />
-          שיתוף
-        </button>
         {website && (
           <a class="action" href={website} target="_blank" rel="noopener noreferrer">
             <Icon name="public" />
@@ -216,86 +326,110 @@ function PlaceView({ view }: ViewProps<{ place: Place }>) {
           </a>
         )}
       </div>
+      {nearbyOpen.value && <NearbyChips p={p} />}
+      {phoneOpen.value && <SendToPhone title={p.name} url={shareUrl(p)} onClose={() => (phoneOpen.value = false)} />}
 
-      {photos.length > 0 && (
-        <div class="photo-strip">
-          {photos.map((src) => (
-            <img key={src} src={src} alt="" loading="lazy" referrerpolicy="no-referrer" onError={(e) => ((e.target as HTMLElement).style.display = 'none')} />
-          ))}
-        </div>
-      )}
+      {about ? (
+        <Attributes groups={groups} />
+      ) : (
+        <>
+          {(description || services.length > 0) && (
+            <div class="place-summary">
+              {description && <p class="place-desc">{description}</p>}
+              <ServiceOptions items={services} />
+            </div>
+          )}
 
-      {summary.value && (
-        <p class="about">
-          {summary.value.extract.length > 320 ? `${summary.value.extract.slice(0, 300).replace(/\s\S*$/, '')}…` : summary.value.extract}{' '}
-          <a class="source" href={summary.value.url} target="_blank" rel="noopener noreferrer">
-            ויקיפדיה
-          </a>
-        </p>
-      )}
+          {summary.value && (
+            <p class="about">
+              {summary.value.extract.length > 320 ? `${summary.value.extract.slice(0, 300).replace(/\s\S*$/, '')}…` : summary.value.extract}{' '}
+              <a class="source" href={summary.value.url} target="_blank" rel="noopener noreferrer">
+                ויקיפדיה
+              </a>
+            </p>
+          )}
 
-      <div class="details">
-        {address && <Row icon="location_on">{address}</Row>}
-        {hours.value && <Hours info={hours.value} />}
-        {phone && (
-          <Row icon="call" href={telHref(phone)} ltr>
-            {displayPhone(phone)}
-          </Row>
-        )}
-        {website && (
-          <Row icon="public" href={website} ltr>
-            {website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}
-          </Row>
-        )}
-        {c?.email && (
-          <Row icon="mail" href={`mailto:${c.email}`} ltr>
-            {c.email}
-          </Row>
-        )}
-        {c?.socials?.slice(0, 2).map((url) => (
-          <Row key={url} icon="link" href={url}>
-            {socialLabel(url)}
-          </Row>
-        ))}
-        {d?.wheelchair && WHEELCHAIR[d.wheelchair] && <Row icon="accessible">{WHEELCHAIR[d.wheelchair]}</Row>}
-        <Row
-          icon="my_location"
-          ltr
-          onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(`${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`);
-              toast('הקואורדינטות הועתקו');
-            } catch {
-              /* clipboard blocked */
-            }
-          }}
-        >
-          {formatCoords(p.lng, p.lat)}
-        </Row>
-        {loading.value && !d && (
-          <div class="detail-row">
-            <span class="detail-icon" />
-            <div class="detail-body skeleton" style={{ height: '14px', width: '60%' }} />
+          <div class="details">
+            {address && <Row icon="location_on">{address}</Row>}
+            {hours.value && <Hours info={hours.value} />}
+            {links.reservation && (
+              <Row icon="table_restaurant" href={links.reservation}>
+                הזמנת מקום
+              </Row>
+            )}
+            {links.menu && (
+              <Row icon="menu_book" href={links.menu}>
+                תפריט
+              </Row>
+            )}
+            {website && (
+              <Row icon="public" href={website} ltr>
+                {website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}
+              </Row>
+            )}
+            {phone && (
+              <Row icon="call" href={telHref(phone)} ltr>
+                {displayPhone(phone)}
+              </Row>
+            )}
+            {c?.email && (
+              <Row icon="mail" href={`mailto:${c.email}`} ltr>
+                {c.email}
+              </Row>
+            )}
+            {c?.socials?.slice(0, 2).map((url) => (
+              <Row key={url} icon="link" href={url}>
+                {socialLabel(url)}
+              </Row>
+            ))}
+            {d?.wheelchair && WHEELCHAIR[d.wheelchair] && <Row icon="accessible">{WHEELCHAIR[d.wheelchair]}</Row>}
+            <PlusCodeRow p={p} tags={d?.tags} />
+            {isPin && (
+              <Row
+                icon="my_location"
+                ltr
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(`${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`);
+                    toast('הקואורדינטות הועתקו');
+                  } catch {
+                    /* clipboard blocked */
+                  }
+                }}
+              >
+                {formatCoords(p.lng, p.lat)}
+              </Row>
+            )}
+            {loading.value && !d && (
+              <div class="detail-row">
+                <span class="detail-icon" />
+                <div class="detail-body skeleton" style={{ height: '14px', width: '60%' }} />
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      {placeSections.value.map(({ id, Component }) => (
-        <Component key={id} place={p} />
-      ))}
+          {inline.length > 0 && <Attributes groups={inline} />}
 
-      <footer class="place-footer">
-        <a class="btn small" href={osmNoteUrl(p)} target="_blank" rel="noopener noreferrer">
-          <Icon name="edit_location_alt" size={18} />
-          הצעת עריכה
-        </a>
-        {p.osm && (
-          <a class="btn small" href={`https://www.openstreetmap.org/${p.osm.type}/${p.osm.id}`} target="_blank" rel="noopener noreferrer">
-            <Icon name="map" size={18} />
-            ב-OpenStreetMap
-          </a>
-        )}
-      </footer>
+          {placeSections.value.map(({ id, Component }) => (
+            <Component key={id} place={p} />
+          ))}
+
+          <footer class="place-footer">
+            <a class="btn small" href={osmNoteUrl(p)} target="_blank" rel="noopener noreferrer">
+              <Icon name="edit_location_alt" size={18} />
+              שליחת הצעה לעריכה
+            </a>
+            {p.osm && (
+              <a class="btn small" href={`https://www.openstreetmap.org/${p.osm.type}/${p.osm.id}`} target="_blank" rel="noopener noreferrer">
+                <Icon name="map" size={18} />
+                ב-OpenStreetMap
+              </a>
+            )}
+          </footer>
+
+          {!isPin && <SimilarPlaces p={p} category={category} map={map} />}
+        </>
+      )}
       {sources.length > 0 && <p class="source-note">מקורות המידע: {sources.join(', ')}</p>}
     </article>
   );

@@ -8,6 +8,7 @@
     "@preact/signals": "^2.11.3",
     "maplibre-gl": "^6.13.0",
     "opening_hours": "^3.15.0",
-    "preact": "^11.0.1"
+    "preact": "^11.0.1",
+    "qrcode-generator": "^2.0.4"
   }
 }
