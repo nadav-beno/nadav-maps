@@ -9,6 +9,8 @@ export * from './url-state.ts';
 export * from './config.ts';
 export * from './overture.ts';
 export * from './place-visual.ts';
+export * from './place-info.ts';
+export * from './plus-code.ts';
 export * from './maneuver.ts';
 export * from './hours.ts';
 export * from './map-link.ts';

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { stubGeodata, stubNetwork } from './stubs.ts';
+import { encodePlusCode } from '../packages/core/src/plus-code.ts';
 import { adsbResponse, fakeGps, FLIGHT_FIXES } from './flight-fixture.ts';
 import { TAKEOUT_DAY, TAKEOUT_FIXTURE } from './timeline-fixture.ts';
 
@@ -62,6 +63,68 @@ test('a business from Overture opens with its phone, website and socials', async
   await expect(page.getByText(/03-?523-?6058/)).toBeVisible();
   await expect(page.getByText('bistro.example', { exact: true })).toBeVisible();
   await expect(page.getByText('פייסבוק')).toBeVisible();
+});
+
+test('place card like Google: service options, kosher, Plus Code, about tab, similar places', async ({ page }) => {
+  test.slow();
+  await page.goto('./?place=ovt:aaaaaaaa-0000-4000-8000-000000000001#16.5/32.0801/34.7792');
+  await expect(page.getByRole('heading', { name: 'ביסטרו הכרמל' })).toBeVisible({ timeout: 15_000 });
+  const services = page.getByRole('list', { name: 'אפשרויות שירות' });
+  await expect(services).toContainText('לאכול במקום');
+  await expect(services).toContainText('איסוף עצמי');
+  await expect(services).toContainText('אין משלוחים');
+  await expect(page.getByText('Bistro HaCarmel')).toBeVisible();
+  await expect(page.locator('.kosher-badge')).toHaveText('כשר');
+  await expect(page.getByText('ביסטרו ים-תיכוני קטן ליד שוק הכרמל')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'תפריט' })).toHaveAttribute('href', 'https://bistro.example/menu');
+  const code = encodePlusCode(32.0801, 34.7792);
+  await expect(page.getByRole('button', { name: `Plus Code ${code.slice(4)} תל אביב - יפו, העתקה` })).toBeVisible();
+  await page.getByRole('tab', { name: 'מידע כללי' }).click();
+  await expect(page.getByText('Wi-Fi חינם')).toBeVisible();
+  await expect(page.getByText('כרטיסי אשראי')).toBeVisible();
+  await expect(page.getByText('העישון אסור')).toBeVisible();
+  await page.getByRole('tab', { name: 'סקירה כללית' }).click();
+  const similar = page.locator('.similar');
+  await expect(similar.getByRole('heading', { name: 'אנשים מחפשים גם' })).toBeVisible({ timeout: 15_000 });
+  // Same kind of place nearby; the permanently closed restaurant is left out.
+  await expect(similar.getByRole('button', { name: /מסעדת הגפן/ })).toBeVisible();
+  await expect(similar.getByRole('button', { name: /סגור לצמיתות/ })).toHaveCount(0);
+  await similar.getByRole('button', { name: /מסעדת הגפן/ }).click();
+  await expect(page.getByRole('heading', { name: 'מסעדת הגפן' })).toBeVisible();
+  await expect(page).toHaveURL(/place=ovt:aaaaaaaa-0000-4000-8000-000000000009/);
+});
+
+test('send to phone shows a QR code of the link; nearby chips search around the place', async ({ page }) => {
+  await page.goto('./?place=ovt:aaaaaaaa-0000-4000-8000-000000000001#16.5/32.0801/34.7792');
+  await expect(page.getByRole('heading', { name: 'ביסטרו הכרמל' })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('button', { name: 'שליחה לטלפון' }).click();
+  const dialog = page.getByRole('dialog', { name: 'שליחה לטלפון' });
+  await expect(dialog.getByRole('img', { name: 'קוד QR של הקישור' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  // Escape closed only the sheet, not the card under it.
+  await expect(page.getByRole('heading', { name: 'ביסטרו הכרמל' })).toBeVisible();
+  await page.getByRole('button', { name: 'באזור' }).click();
+  await page.getByRole('toolbar', { name: 'חיפוש באזור ביסטרו הכרמל' }).getByRole('button', { name: 'בתי קפה' }).click();
+  await expect(page.getByRole('heading', { name: 'בתי קפה ליד ביסטרו הכרמל' })).toBeVisible();
+  await expect(page.locator('.list').getByText('קפה לנדוור')).toBeVisible();
+});
+
+test('directions: fastest route badge, send to phone, and what is around the destination', async ({ page }) => {
+  await page.goto('./?route=34.7741,32.0787;34.7918,32.0745&mode=car');
+  await expect(page.locator('.route-option')).toHaveCount(2);
+  await expect(page.locator('.route-option').first().locator('.route-badge')).toHaveText('המסלול הכי מהיר');
+  await expect(page.locator('.route-badge')).toHaveCount(1);
+  await page.getByRole('button', { name: 'שליחת המסלול לטלפון' }).click();
+  await expect(page.getByRole('dialog', { name: 'שליחה לטלפון' }).getByRole('img', { name: 'קוד QR של הקישור' })).toBeVisible();
+  await page.getByRole('dialog').getByRole('button', { name: 'סגירה' }).click();
+  const around = page.locator('.around-dest');
+  await expect(around.getByRole('heading', { name: /^מה יש באזור/ })).toBeVisible();
+  await around.getByRole('button', { name: 'בתי קפה' }).click();
+  await expect(page.locator('.list').getByText('קפה תמיד')).toBeVisible();
+  // Back returns to the route.
+  await page.getByRole('button', { name: 'חזרה' }).first().click();
+  await expect(page.locator('.route-option')).toHaveCount(2);
 });
 
 test('tapping a business on the map opens its card', async ({ page }, info) => {
