@@ -20,7 +20,6 @@ import {
   OVERTURE_SOURCE,
   parseMapLink,
   suggestCorrections,
-  useNamesFile,
   type BBox,
   type Camera,
   type LocalFeature,
@@ -40,6 +39,7 @@ import {
   load,
   open,
   openPlace,
+  providers,
   save,
   selectedPlace,
   setGeoJSON,
@@ -48,7 +48,7 @@ import {
   viewStack,
   type ViewProps,
 } from '@nm/core/app';
-import { CATEGORIES, categoryById, categoryLabel, confidentResult, parseCategoryQuery, reverseGeocode, searchNearby, searchPlaces, tools } from '@nm/tools';
+import { CATEGORIES, categoryById, categoryLabel, confidentResult, parseCategoryQuery, prefetchSearchNames, reverseGeocode, searchNearby, searchPlaces, tools } from '@nm/tools';
 
 let map: MapLibreMap;
 
@@ -270,8 +270,20 @@ function openError(title: string, filter?: string) {
   open({ kind: 'results', props: { title, query: title, error: UNAVAILABLE, filter, url: { q: title, filter } } });
 }
 
+let namesPrefetched = false;
+/** After a first search, get the region's full typo dictionary ready in idle time (it is ~10 MB, so never at startup). */
+function prefetchNames() {
+  if (namesPrefetched) return;
+  namesPrefetched = true;
+  const near = bias().near;
+  const run = () => prefetchSearchNames({ config: providers.value, fetch: (...a) => fetch(...a), lang: 'he' }, near);
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 5000 });
+  else setTimeout(run, 2000);
+}
+
 async function runSearch(q: string, opts: { openView?: boolean; area?: boolean; filter?: string; exact?: boolean } = {}): Promise<Place[]> {
   remember(q);
+  prefetchNames();
   // "קפה בפלורנטין": find the place, then the category around it.
   const cq = !opts.area && !opts.exact && opts.openView !== false ? categoryQuery(q) : null;
   if (cq) {
@@ -830,8 +842,6 @@ export default defineFeature({
   enabledByDefault: true,
   setup(ctx) {
     map = ctx.map;
-    // A bigger names list (built from OpenStreetMap in CI) is used when the site has one.
-    useNamesFile(`${import.meta.env.BASE_URL}data/il/names.json`);
     ctx.registerSlot('top', SearchBar, 0);
     ctx.registerView('results', ResultsView);
 

@@ -14,7 +14,8 @@
     "e2e": "playwright test",
     "boundaries": "node scripts/check-boundaries.mjs",
     "check": "pnpm boundaries && pnpm typecheck && pnpm test && pnpm build",
-    "new-feature": "node scripts/new-feature.mjs"
+    "new-feature": "node scripts/new-feature.mjs",
+    "geodata:fixture": "node --experimental-strip-types scripts/geodata/build.ts --region il --input scripts/geodata/fixtures/tel-aviv.geojsonseq --out e2e/geodata/il --built 2026-01-01T00:00:00.000Z --source scripts/geodata/fixtures/tel-aviv.geojsonseq"
   },
   "devDependencies": {
     "@material-symbols/svg-400": "0.48.0",

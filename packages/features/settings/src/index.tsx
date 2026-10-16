@@ -146,7 +146,10 @@ function AboutView(_: ViewProps) {
           אריחי מפה: <a href="https://openfreemap.org" target="_blank" rel="noopener noreferrer">OpenFreeMap</a>, סגנון מבוסס <a href="https://openmaptiles.org" target="_blank" rel="noopener noreferrer">OpenMapTiles</a>
         </li>
         <li>
-          חיפוש: <a href="https://photon.komoot.io" target="_blank" rel="noopener noreferrer">Photon</a> של komoot
+          חיפוש, כתובות ופרטי מקומות בישראל: עותק משלנו של נתוני OpenStreetMap, מתעדכן כל שבוע מקובצי <a href="https://download.geofabrik.de" target="_blank" rel="noopener noreferrer">Geofabrik</a>
+        </li>
+        <li>
+          חיפוש מחוץ לישראל: <a href="https://photon.komoot.io" target="_blank" rel="noopener noreferrer">Photon</a> של komoot
         </li>
         <li>
           מסלולים: <a href="https://valhalla.github.io/valhalla/" target="_blank" rel="noopener noreferrer">Valhalla</a> (שרת FOSSGIS)
@@ -155,7 +158,7 @@ function AboutView(_: ViewProps) {
           תחבורה ציבורית: <a href="https://transitous.org" target="_blank" rel="noopener noreferrer">Transitous</a> (MOTIS), <a href="https://transitous.org/sources/" target="_blank" rel="noopener noreferrer">לוחות זמנים פתוחים מהמפעילים</a>
         </li>
         <li>
-          פרטי מקומות: <a href="https://overpass-api.de" target="_blank" rel="noopener noreferrer">Overpass API</a>
+          חיפוש לפי קטגוריה ופרטי מקומות מחוץ לישראל: <a href="https://overpass-api.de" target="_blank" rel="noopener noreferrer">Overpass API</a>
         </li>
         <li>
           עסקים ומקומות נוספים: <a href="https://overturemaps.org" target="_blank" rel="noopener noreferrer">Overture Maps Foundation</a> (CDLA Permissive 2.0)

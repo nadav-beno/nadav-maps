@@ -19,3 +19,4 @@ export * from './world.ts';
 export * from './install.ts';
 export * from './fuzzy.ts';
 export * from './name-dictionary.ts';
+export * from './geoindex.ts';

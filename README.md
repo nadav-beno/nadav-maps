@@ -14,6 +14,7 @@
 - תנועה בזמן אמת ואירועי תנועה מ-HERE (גם בישראל) או מ-TomTom, וזמן נסיעה עם תנועה במסלולי רכב (כבוי עד שמגדירים מפתח, ראו [docs/data-sources.md](docs/data-sources.md))
 - תיאור מוויקיפדיה בכרטיס של מקומות מוכרים
 - חיפוש מקומות וכתובות (מבין קיצורים כמו ת"א, רח', פ"ת), קטגוריות קרובות (קפה, דלק, בתי מרקחת…)
+- נתונים משלנו לישראל: חיפוש, כתובות עם מספר בית, "מה יש כאן" ופרטי מקומות מקבצים שנבנים כל שבוע מ-OpenStreetMap (דרך Geofabrik) ומתפרסמים עם האתר, בלי שרת ציבורי (Photon ו-Overpass נשארים לגיבוי ולחו"ל; ראו [docs/data-sources.md](docs/data-sources.md#our-own-geodata-self-hosted-israel))
 - כרטיס מקום: כתובת, שעות פתיחה (פתוח/סגור עכשיו), טלפון, אתר, נגישות, תמונה, שיתוף
 - מסלולים ברכב, ברגל ובאופניים, עם חלופות, הימנעות מכבישי אגרה ומהירים
 - תחבורה ציבורית: מסלולים באוטובוס ורכבת עם החלפות, יציאה/הגעה בשעה מסוימת, וזמני יציאה קרובים בכל תחנה (Transitous)
@@ -35,7 +36,11 @@ pnpm install
 pnpm dev        # האתר
 pnpm server     # שרת REST + MCP בפורט 8787
 pnpm check      # כל הבדיקות והבנייה
+pnpm geodata:fixture   # בונה מחדש את נתוני הבדיקה הקטנים (e2e/geodata) אחרי שינוי ב-scripts/geodata
 ```
+
+הנתונים האמיתיים של ישראל נבנים רק ב-GitHub Actions (`scripts/geodata/build-all.sh`, צריך `osmium-tool`).
+בפיתוח מקומי אין תיקיית `data/`, והאפליקציה עובדת מול Photon ו-Overpass. לשרת: `GEODATA_URL=https://nadav-beno.github.io/nadav-maps/data/`.
 
 ## חיבור Claude לשרת ה-MCP
 
@@ -47,7 +52,7 @@ pnpm check      # כל הבדיקות והבנייה
 
 ## נתונים ורישיונות
 
-נתוני מפה © תורמי OpenStreetMap (ODbL). אריחים: OpenFreeMap. חיפוש: Photon. מסלולים: Valhalla (FOSSGIS). תחבורה ציבורית: Transitous (MOTIS).
+נתוני מפה © תורמי OpenStreetMap (ODbL). קובצי OSM של ישראל: Geofabrik. אריחים: OpenFreeMap. חיפוש: נתונים משלנו מ-OSM, ו-Photon מחוץ לישראל. מסלולים: Valhalla (FOSSGIS). תחבורה ציבורית: Transitous (MOTIS).
 עסקים: Overture Maps Foundation (CDLA Permissive 2.0). לוויין: Sentinel-2 cloudless של EOX (CC BY 4.0). תיאורים: ויקיפדיה (CC BY-SA).
 תנועה בזמן אמת (כשמוגדר מפתח): © HERE, © TomTom.
 אייקונים: Material Symbols (Apache 2.0), Maki (CC0). גופן: Rubik (OFL).

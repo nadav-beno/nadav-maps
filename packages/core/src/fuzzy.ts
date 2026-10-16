@@ -481,7 +481,7 @@ function cachedKeys(name: string): Keys {
 // ---------------------------------------------------------------------------
 // Index
 
-export interface NameEntry {
+export interface FuzzyName {
   /** The name as shown. */
   n: string;
   /** Kind: city, town, hood, street, poi, word (a category word such as "קפה"), ... */
@@ -495,7 +495,7 @@ export interface NameEntry {
 }
 
 export interface NameIndex {
-  entries: NameEntry[];
+  entries: FuzzyName[];
   keys: Keys[];
   /** log-normalized weights 0..1 */
   weights: Float32Array;
@@ -544,7 +544,7 @@ function keyGrams(k: Keys, out: number[] = []): number[] {
 }
 
 /** Build a search index over names (strings or entries). */
-export function makeIndex(names: (string | NameEntry)[]): NameIndex {
+export function makeIndex(names: (string | FuzzyName)[]): NameIndex {
   const steps = buildIndex(names);
   for (;;) {
     const r = steps.next();
@@ -556,7 +556,7 @@ export function makeIndex(names: (string | NameEntry)[]): NameIndex {
  * The same, yielding to the browser every few thousand names so a big list (an OSM names
  * file) does not freeze typing while it is indexed.
  */
-export async function makeIndexAsync(names: (string | NameEntry)[], pause: () => Promise<void> = () => new Promise((r) => setTimeout(r, 0))): Promise<NameIndex> {
+export async function makeIndexAsync(names: (string | FuzzyName)[], pause: () => Promise<void> = () => new Promise((r) => setTimeout(r, 0))): Promise<NameIndex> {
   const steps = buildIndex(names);
   for (;;) {
     const r = steps.next();
@@ -567,7 +567,7 @@ export async function makeIndexAsync(names: (string | NameEntry)[], pause: () =>
 
 const CHUNK = 4000;
 
-function* buildIndex(names: (string | NameEntry)[]): Generator<void, NameIndex> {
+function* buildIndex(names: (string | FuzzyName)[]): Generator<void, NameIndex> {
   const entries = names.map((n) => (typeof n === 'string' ? { n } : n)).filter((e) => e.n && e.n.trim());
   const N = entries.length;
   const keys: Keys[] = new Array(N);
@@ -627,7 +627,7 @@ function* buildIndex(names: (string | NameEntry)[]): Generator<void, NameIndex> 
 }
 
 export interface FuzzyMatch {
-  entry: NameEntry;
+  entry: FuzzyName;
   index: number;
   /** 0..1 match quality, before the importance bonus. */
   score: number;
@@ -701,11 +701,11 @@ export function searchIndex(
 }
 
 /** Merge several indexes' worth of names into one (e.g. the built-in dictionary plus a downloaded list). */
-export function mergeNames(...lists: (NameEntry[] | undefined)[]): NameEntry[] {
-  const seen = new Map<string, NameEntry>();
+export function mergeNames(...lists: (FuzzyName[] | undefined)[]): FuzzyName[] {
+  const seen = new Map<string, FuzzyName>();
   for (const l of lists) {
     for (const e of l ?? []) {
-      const k = `${lightKey(e.n)}|${e.c ?? ''}`;
+      const k = `${e.n}|${e.c ?? ''}`;
       const prev = seen.get(k);
       if (!prev || (e.w ?? 0) > (prev.w ?? 0)) seen.set(k, { ...prev, ...e, alt: e.alt ?? prev?.alt });
     }
@@ -715,7 +715,7 @@ export function mergeNames(...lists: (NameEntry[] | undefined)[]): NameEntry[] {
 
 function wordsIndex(index: NameIndex): NameIndex {
   if (index.words) return index.words;
-  const best = new Map<string, NameEntry>();
+  const best = new Map<string, FuzzyName>();
   index.entries.forEach((e, i) => {
     const w = index.weights[i];
     for (const word of e.n.split(/[\s\-־–,()]+/)) {

@@ -16,7 +16,7 @@ import {
   swapKeyboardLayout,
 } from './fuzzy.ts';
 import { BUILTIN_NAMES, parseNameLines } from './names/index.ts';
-import { parseNamesFile } from './name-dictionary.ts';
+import { namesFileIndex, namesFileIndexNow, parseNamesFile } from './name-dictionary.ts';
 
 const index = makeIndex(BUILTIN_NAMES);
 const top = (q: string, prefix = true) => searchIndex(index, q, { limit: 3, prefix })[0]?.entry.n;
@@ -204,6 +204,30 @@ describe('dictionaries', () => {
   it('a names file adds correction targets', () => {
     const idx = makeIndex(mergeNames(BUILTIN_NAMES, [{ n: 'הרב קוק', k: 'street', w: 3 }]));
     expect(suggestCorrections('הרב קוג', idx)[0]?.text).toBe('הרב קוק');
+  });
+});
+
+describe('names file loading', () => {
+  it('fetches a names file once, indexes it with the built-in names and caches it', async () => {
+    let calls = 0;
+    const f = (async () => {
+      calls++;
+      return new Response(JSON.stringify([{ n: 'מאפיית אורנה', k: 'poi', w: 15, c: 'תל אביב-יפו' }]), { headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+    const url = 'https://maps.example/data/il/names.json';
+    expect(namesFileIndexNow(url)).toBeNull();
+    const [a, b] = await Promise.all([namesFileIndex(url, f), namesFileIndex(url, f)]);
+    expect(calls).toBe(1);
+    expect(a).toBe(b);
+    expect(namesFileIndexNow(url)).toBe(a);
+    expect(suggestCorrections('מאפיית אורנא', a!)[0]?.text).toBe('מאפיית אורנה');
+    expect(suggestCorrections('דיזנגוב', a!)[0]?.text).toBe('דיזנגוף');
+  });
+  it('gives null for a missing file or an HTML fallback page', async () => {
+    const html = (async () => new Response('<html>', { headers: { 'content-type': 'text/html' } })) as typeof fetch;
+    expect(await namesFileIndex('https://maps.example/x/names.json', html)).toBeNull();
+    const missing = (async () => new Response('', { status: 404 })) as typeof fetch;
+    expect(await namesFileIndex('https://maps.example/y/names.json', missing)).toBeNull();
   });
 });
 

@@ -1,10 +1,10 @@
-import type { NameEntry } from '../fuzzy.ts';
+import type { FuzzyName } from '../fuzzy.ts';
 import { IL_NAMES } from './il.ts';
 import { WORLD_NAMES } from './world.ts';
 
 /** "hebrew|english|kind|weight|city" lines -> entries, one per language, each pointing at the other. */
-export function parseNameLines(text: string, defaultKind = 'city'): NameEntry[] {
-  const out: NameEntry[] = [];
+export function parseNameLines(text: string, defaultKind = 'city'): FuzzyName[] {
+  const out: FuzzyName[] = [];
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     const [he, en, a, b, c] = line.split('|').map((s) => s?.trim());
@@ -19,4 +19,4 @@ export function parseNameLines(text: string, defaultKind = 'city'): NameEntry[] 
 }
 
 /** The dictionary that ships with the app: Israel (hand-curated) and world cities and countries. */
-export const BUILTIN_NAMES: NameEntry[] = [...parseNameLines(IL_NAMES), ...parseNameLines(WORLD_NAMES)];
+export const BUILTIN_NAMES: FuzzyName[] = [...parseNameLines(IL_NAMES), ...parseNameLines(WORLD_NAMES)];

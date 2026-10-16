@@ -1,10 +1,11 @@
-import { distance, fuzzyScore, nameIndex, normalizeQuery, parsePlaceId, prepareQuery, queryVariants, regionAt, suggestCorrections, trafficProvider, type BBox, type LngLat, type Place, type PreparedQuery } from '@nm/core';
+import { distance, fuzzyScore, nameIndex, namesFileIndex, namesFileIndexNow, normalizeQuery, parsePlaceId, prepareQuery, queryVariants, regionAt, suggestCorrections, trafficProvider, type BBox, type Correction, type LngLat, type Place, type PreparedQuery } from '@nm/core';
 import { z } from 'zod';
 import { CATEGORIES, categoryById } from '../categories.ts';
 import { defineTool, ProviderError, type ToolContext } from '../define.ts';
 import { findFlight } from '../providers/adsb.ts';
 import { overpassCategory, overpassDetails, overpassIdentify } from '../providers/overpass.ts';
 import { photonReverse, photonSearch } from '../providers/photon.ts';
+import { localgeoDetails, localgeoIdentify, localgeoNamesUrl, localgeoReverse, localgeoSearch, mergePlaces } from '../providers/localgeo.ts';
 import { hereIncidents, hereTrafficTime } from '../providers/here.ts';
 import { NO_KEY_MESSAGE, tomtomIncidents, tomtomTrafficTime } from '../providers/tomtom.ts';
 import { transitDepartures, transitPlan } from '../providers/transitous.ts';
@@ -29,29 +30,20 @@ export const searchPlaces = defineTool({
     exact: z.boolean().default(false).describe('Search the text as typed, without correcting spelling mistakes'),
   }),
   async run(input, ctx) {
-    const q = normalizeQuery(input.query);
     const opts = { near: input.near as LngLat | undefined, zoom: input.zoom, limit: input.limit, bbox: input.bbox as BBox | undefined };
-    let results = await photonSearch(ctx, q, opts);
-    // Hebrew prefixes and connector words hurt recall; retry with variants when thin.
-    if (results.length < 3) {
-      for (const v of queryVariants(input.query)) {
-        const more = await photonSearch(ctx, v, opts);
-        const ids = new Set(results.map((r) => r.id));
-        results = [...results, ...more.filter((m) => !ids.has(m.id))];
-        if (results.length >= 3) break;
-      }
-    }
+    const first = await searchText(ctx, input.query, opts);
+    if (first.strong) return first.places.slice(0, input.limit);
+    let results = first.places;
     // Nothing that looks like what was typed: probably a typo. Ask again with the likeliest
-    // corrections from the name dictionary (at most two more requests), like Google's
-    // "showing results for".
+    // corrections (at most two more searches), like Google's "showing results for".
     if (!input.exact && !hasStrongMatch(results, input.query)) {
-      const corrections = suggestCorrections(input.query, await nameIndex(), { limit: 2 });
+      const corrections = await correctionsFor(ctx, input.query, opts);
       let extra = 0;
       outer: for (const c of corrections) {
         for (const text of [c.text, c.alt]) {
           if (!text || extra >= 2) continue;
           extra++;
-          const more = await photonSearch(ctx, normalizeQuery(text), opts);
+          const more = (await searchText(ctx, text, opts)).places;
           if (more.length && (hasStrongMatch(more, text) || !results.length)) {
             const ids = new Set(more.map((m) => m.id));
             results = [...more.map((m) => ({ ...m, correctedQuery: c.text })), ...results.filter((r) => !ids.has(r.id))];
@@ -63,6 +55,53 @@ export const searchPlaces = defineTool({
     return rankResults(results, input.query, opts.near).slice(0, input.limit);
   },
 });
+
+type SearchOpts = { near?: LngLat; zoom?: number; limit?: number; bbox?: BBox };
+
+/** One search: our own OSM data first (regions with geodata, e.g. Israel), then Photon when that has no good answer. */
+async function searchText(ctx: ToolContext, text: string, opts: SearchOpts): Promise<{ places: Place[]; strong: boolean }> {
+  const local = await localgeoSearch(ctx, text, opts);
+  if (local?.strong) return { places: local.places, strong: true };
+  let results: Place[];
+  try {
+    results = await photonSearch(ctx, normalizeQuery(text), opts);
+    // Hebrew prefixes and connector words hurt recall; retry with variants when thin.
+    if (results.length < 3) {
+      for (const v of queryVariants(text)) {
+        const more = await photonSearch(ctx, v, opts);
+        const ids = new Set(results.map((r) => r.id));
+        results = [...results, ...more.filter((m) => !ids.has(m.id))];
+        if (results.length >= 3) break;
+      }
+    }
+  } catch (e) {
+    if (local?.places.length) return { places: local.places, strong: false };
+    throw e;
+  }
+  // Settlements and exact names stay on top; the rest come after Photon's.
+  if (local?.places.length) results = mergePlaces(mergePlaces(local.top, results), local.places);
+  return { places: results, strong: false };
+}
+
+/** How long a weak search may wait for the region's full names list the first time it is needed. */
+const NAMES_WAIT_MS = 4000;
+
+/**
+ * Corrections for a query that found nothing good. Where the region has our geodata, from its
+ * full names list (it includes the built-in names), loaded on this first need and then kept
+ * in memory; if it is slow to arrive, or missing, from the small built-in dictionary.
+ */
+async function correctionsFor(ctx: ToolContext, query: string, opts: SearchOpts): Promise<Correction[]> {
+  const url = await localgeoNamesUrl(ctx, opts).catch(() => null);
+  let idx = url ? namesFileIndexNow(url) : null;
+  if (url && !idx) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<null>((r) => (timer = setTimeout(() => r(null), NAMES_WAIT_MS)));
+    idx = await Promise.race([namesFileIndex(url, ctx.fetch), timeout]);
+    clearTimeout(timer);
+  }
+  return suggestCorrections(query, idx ?? (await nameIndex()), { limit: 2 });
+}
 
 /** Does any result's name look like the query (typos, other script and text still being typed allowed)? */
 export function hasStrongMatch(places: Place[], query: string): boolean {
@@ -120,7 +159,9 @@ export const reverseGeocode = defineTool({
   title: 'מה יש בנקודה',
   description: 'Find the address or place at a coordinate.',
   input: z.object({ lng, lat }),
-  run: (input, ctx) => photonReverse(ctx, input.lng, input.lat),
+  async run(input, ctx) {
+    return (await localgeoReverse(ctx, input.lng, input.lat)) ?? photonReverse(ctx, input.lng, input.lat);
+  },
 });
 
 export const placeDetails = defineTool({
@@ -131,7 +172,7 @@ export const placeDetails = defineTool({
   async run(input, ctx) {
     const { osm } = parsePlaceId(input.id);
     if (!osm) return null;
-    return overpassDetails(ctx, osm.type, osm.id);
+    return (await localgeoDetails(ctx, osm.type, osm.id)) ?? overpassDetails(ctx, osm.type, osm.id);
   },
 });
 
@@ -140,7 +181,10 @@ export const identifyPlace = defineTool({
   title: 'זיהוי מקום לפי שם ומיקום',
   description: 'Find the OSM place with this name near a coordinate (e.g. a label tapped on the map) and return its details.',
   input: z.object({ name: z.string().min(1).max(200), lng, lat }),
-  run: (input, ctx) => overpassIdentify(ctx, input.name, input.lng, input.lat),
+  async run(input, ctx) {
+    const local = await localgeoIdentify(ctx, input.name, input.lng, input.lat);
+    return local !== undefined ? local : overpassIdentify(ctx, input.name, input.lng, input.lat);
+  },
 });
 
 export const searchNearby = defineTool({
@@ -269,3 +313,13 @@ export const flightPosition = defineTool({
 });
 
 export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, transitDirections, transitDeparturesTool, placeSummary, trafficIncidents, trafficTravelTime, flightPosition];
+
+/**
+ * Start loading the region's full names list (typo dictionary) in the background, e.g. in
+ * idle time after a first search, so later corrections need not wait for it.
+ */
+export function prefetchSearchNames(ctx: ToolContext, near?: LngLat): void {
+  void localgeoNamesUrl(ctx, { near })
+    .then((url) => (url ? namesFileIndex(url, ctx.fetch) : null))
+    .catch(() => {});
+}
