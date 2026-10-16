@@ -544,6 +544,19 @@ export async function buildGeodata(lines: LineSource, opts: BuildOptions): Promi
     const k = gk(s.point[0], s.point[1]);
     (settleGrid.get(k) ?? settleGrid.set(k, []).get(k)!).push(s);
   }
+  // One spelling per city: addr:city ("Tel Aviv", "תל אביב-יפו") and municipality names ("תל־אביב–יפו")
+  // map to the settlement's display name through any of its name tags.
+  const canon = new Map<string, string>();
+  const RANK: Partial<Record<GeoKind, number>> = { city: 0, town: 1, village: 2, hamlet: 3 };
+  for (const s of [...merged].filter((x) => SETTLEMENT.has(x.kind)).sort((p, q) => (RANK[p.kind] ?? 9) - (RANK[q.kind] ?? 9)))
+    for (const [k, v] of Object.entries(s.tags))
+      if (/^(name|official_name|alt_name|old_name|short_name|int_name)(:|$)/.test(k))
+        for (const one of v.split(';')) {
+          const key = searchKey(one);
+          if (key && !canon.has(key)) canon.set(key, s.name);
+        }
+  const canonCity = (raw: string | undefined): string | undefined => (raw ? (canon.get(searchKey(raw)) ?? raw) : undefined);
+
   const cityCache = new Map<string, string | undefined>();
   const cityAt = (p: Pos): string | undefined => {
     // Memoise per ~10 m cell: addresses of one building and segments of one street repeat points.
@@ -572,6 +585,7 @@ export async function buildGeodata(lines: LineSource, opts: BuildOptions): Promi
             }
           }
     }
+    out = canonCity(out);
     if (cityCache.size > 2_000_000) cityCache.clear();
     cityCache.set(ck, out);
     return out;
@@ -634,7 +648,7 @@ export async function buildGeodata(lines: LineSource, opts: BuildOptions): Promi
   // Addresses join the street with that name in their city, else the nearest one within 1.5 km.
   for (const a of addresses) {
     const nk = searchKey(a.street);
-    const city = a.city ?? cityAt(a.point);
+    const city = canonCity(a.city) ?? cityAt(a.point);
     const ck = searchKey(city ?? '');
     const cands = byName.get(nk) ?? [];
     let g = cands.find((c) => searchKey(c.city ?? '') === ck && bboxDistanceM(a.point, c.bbox) < 3000);
@@ -685,7 +699,7 @@ export async function buildGeodata(lines: LineSource, opts: BuildOptions): Promi
   }
 
   for (const p of pois) {
-    const city = p.tags['addr:city'] ?? cityAt(p.point);
+    const city = canonCity(p.tags['addr:city']) ?? cityAt(p.point);
     const w = poiWeight(p.tags, p.cat, p.kind);
     records.push(
       clean({
@@ -826,7 +840,7 @@ export async function buildGeodata(lines: LineSource, opts: BuildOptions): Promi
       const [x, y] = cellOf(a.point[0], a.point[1], REV_CELL);
       const t = tileAt(x, y);
       const [dx, dy] = rel(a.point, x, y);
-      t.tile.a.push([dx, dy, idx(t.names, t.tile.n, a.street), a.num, idx(t.cities, t.tile.c, a.city ?? g.city ?? '')]);
+      t.tile.a.push([dx, dy, idx(t.names, t.tile.n, a.street), a.num, idx(t.cities, t.tile.c, canonCity(a.city) ?? g.city ?? '')]);
     }
   }
   for (const seg of segments) {
@@ -873,7 +887,7 @@ export async function buildGeodata(lines: LineSource, opts: BuildOptions): Promi
     const [x, y] = cellOf(p.point[0], p.point[1], REV_CELL);
     const t = tileAt(x, y);
     const [dx, dy] = rel(p.point, x, y);
-    const city = p.tags['addr:city'] ?? cityAt(p.point) ?? '';
+    const city = canonCity(p.tags['addr:city']) ?? cityAt(p.point) ?? '';
     t.tile.p.push([dx, dy, idx(t.names, t.tile.n, nameOf(p.tags)!), idx(t.cities, t.tile.c, city), p.sid, `${p.cat.key}=${p.cat.value}`]);
   }
   for (const [k, t] of tiles) {
