@@ -33,6 +33,7 @@ re-checked before relying on it.
 | Place descriptions and photos | Wikipedia REST + Wikidata | (fixed) | CC BY-SA, link back | Be considerate, requests in series, descriptive User-Agent ([API:Etiquette](https://www.mediawiki.org/wiki/API:Etiquette)) | Low | **Keep** |
 | Live traffic, incidents, traffic-aware car times (new, off) | TomTom `api.tomtom.com` | `TOMTOM_KEY` | "© TomTom" (we show it in the map credits and About only while it's on) | Free tier per month: 200K traffic vector tiles, 2.5K Incident Details, 20K Routing ([pricing](https://docs.tomtom.com/pricing)); commercial use allowed "even as part of the free evaluation" ([FAQ](https://docs.tomtom.com/platform/documentation/status-and-support/faqs)) | **No live traffic in Israel** (see below); browser key is public by nature | **Key-based, wired, off.** Use for the US/Europe/Gulf; HERE for Israel |
 | Live traffic, incidents, traffic-aware car times (new, off) | HERE `traffic.vector.hereapi.com`, `data.traffic.hereapi.com`, `router.hereapi.com` | `HERE_KEY` | "© <year> HERE" (map credits and About, only while it's on) | Free per month: 30K Traffic Vector Tile, 5K Traffic (v7 incidents), 30K Routing car ([HERE plans](https://developers.here.com/plans)) | Low-medium: 5K incident calls/month is small; browser key is public (limit it with Trusted Domains) | **Key-based, wired, off.** The provider for Israel |
+| Measured road speeds, Hong Kong (new, off) | Atlas (our own service) `atlas-traffic-command.nadav747710.chatgpt.site` | `ATLAS_URL`, `ATLAS_KEY` | Atlas's `attribution` string from `/api/status` (map credits while drawn) and the DATA.GOV.HK terms link | Publishable key: 600 req/min per key, 120/min per IP ([OpenAPI](https://atlas-traffic-command.nadav747710.chatgpt.site/openapi.json)) | Medium: depends on Atlas being refreshed every 2 to 5 minutes (see below); Hong Kong only | **Wired, off until `VITE_ATLAS_KEY` is set.** See [Atlas](#atlas-our-own-traffic-service) |
 
 Things that are already done right: provider URLs are all env driven, `''` switches a source off, the
 User-Agent identifies us, our own server logs never carry coordinates or search text, and error
@@ -163,6 +164,36 @@ OpenStreetMap and publish with the site on GitHub Pages.
 - **HERE data on a non-HERE base map, and caching**: not checked against HERE's service terms
   **(unverified)**; until then no caching beyond the browser's HTTP cache and the tool client's 5-minute
   in-memory cache, and "© HERE" whenever the layer is on.
+
+## Atlas: our own traffic service
+
+Atlas is the traffic service Nadav built separately (contract: `<ATLAS_URL>/openapi.json`, Atlas v11).
+What it really offers today, and how the app uses it (`packages/core/src/atlas.ts`, `packages/features/layers/src/atlas.tsx`):
+
+- **Data:** Hong Kong Transport Department average speeds per road segment, joined exactly
+  (segment_id = ROUTE_ID) to the official CSDI CENTERLINE geometry. Measured km/h only: no
+  free-flow speed, no congestion level, no incidents, no ETA, nothing in Israel.
+- **Tiles:** `GET /api/v1/tiles/flow/{z}/{x}/{y}.pbf?key=&v=<tiles_version>`, zoom 8 to 17, layer
+  `traffic_flow` with `segment_id`, `speed_kph`, `observed_at`, `stale`. We colour by absolute speed
+  (a sequential palette, legend "מהירות נמדדת בקמ״ש"), never as congestion, and filter out `stale=true`.
+- **Status:** `GET /api/status` (public, no key) about once a minute while the traffic layer is on and
+  the page visible. Atlas is drawn only when `stale` is false, `source_status` is `ok` and a
+  `tiles_version` and coverage exist; a new version swaps the tile template with `setTiles`.
+  Otherwise the layers screen says it is stale, unavailable or refused (401/403, no retries).
+- **Where:** only where its coverage box is on screen; there it replaces HERE/TomTom flow (our data
+  first). Elsewhere the layers screen says "אין כיסוי של Atlas באזור הזה".
+- **Keys:** publishable read keys that Atlas binds to an origin. The production key (for
+  `https://nadav-beno.github.io`) goes in the repository variable `VITE_ATLAS_KEY`, like the HERE and
+  TomTom keys; empty = Atlas off. A separate development key works only from `http://localhost:5173`
+  (`pnpm dev`), via `?atlas=<key>`. Keys are not kept in the repository.
+- **Freshness depends on refreshing Atlas.** Reading status or tiles does not fetch new data.
+  `.github/workflows/atlas-refresh.yml` asks Atlas to refresh every 5 minutes but needs the
+  repository secret `ATLAS_REFRESH_KEY` (a private ingestion credential from the Atlas operator);
+  until it is set, Atlas goes stale within 10 minutes of its last manual refresh and the app hides it.
+- **Terms:** DATA.GOV.HK and CSDI terms permit redistribution with acknowledgement of the source and
+  government ownership, as is, without endorsement; we show Atlas's attribution string and link the terms.
+- **Tests:** `e2e/atlas.spec.ts` answers Atlas from its own fixtures in `e2e/atlas/` (an archived real
+  observation and a real tile whose feature is stale); `key=test` does not exist on the real service.
 
 ## Gaps vs Google Maps, and what would close them
 
