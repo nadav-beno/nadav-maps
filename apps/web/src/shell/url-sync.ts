@@ -1,7 +1,7 @@
 import { effect } from '@preact/signals';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { buildUrl, type UrlState } from '@nm/core';
-import { currentView, viewStack } from '@nm/core/app';
+import { currentView, embedded, viewStack } from '@nm/core/app';
 
 /**
  * Keeps the address bar in sync with the app, and the browser back button with the panel:
@@ -18,6 +18,7 @@ export function startUrlSync(map: MapLibreMap): void {
     const params = (currentView.value.props?.url ?? {}) as Partial<UrlState>;
     return buildUrl(location.href, {
       ...params,
+      embed: embedded.peek() || undefined,
       view: { zoom: map.getZoom(), center: [c.lng, c.lat], bearing: map.getBearing(), pitch: map.getPitch() },
     });
   };

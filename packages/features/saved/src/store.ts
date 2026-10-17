@@ -1,6 +1,6 @@
 import { computed, signal } from '@preact/signals';
 import type { Place } from '@nm/core';
-import { load, save } from '@nm/core/app';
+import { incognito, load, save } from '@nm/core/app';
 
 /**
  * Saved places, lists, home/work and history. Stored on the device for now; the
@@ -19,6 +19,14 @@ export interface SavedList {
   createdAt: number;
   /** Built-in lists can't be deleted. */
   builtIn?: boolean;
+  /** Badge colour for the list icon (Google gives each system list its own). */
+  color?: string;
+}
+
+/** A private name for a place ("אמא", "החדר כושר"), shown on the map and searchable. */
+export interface Label {
+  label: string;
+  place: Place;
 }
 
 export interface SavedData {
@@ -27,20 +35,26 @@ export interface SavedData {
   home?: Place;
   work?: Place;
   history: (Place & { at: number })[];
+  /** Private labels by place id. */
+  labels?: Record<string, Label>;
 }
 
 const KEY = 'saved:v1';
 
+/** Google's system lists, in its order. */
+export const BUILT_IN: Omit<SavedList, 'places' | 'createdAt'>[] = [
+  { id: 'favorites', name: 'מועדפים', icon: '❤️', color: '#d93025', builtIn: true },
+  { id: 'want', name: 'רוצה ללכת', icon: '🚩', color: '#188038', builtIn: true },
+  { id: 'travel', name: 'תוכניות נסיעה', icon: '🧳', color: '#1a73e8', builtIn: true },
+  { id: 'starred', name: 'מסומנים בכוכב', icon: '⭐', color: '#f9ab00', builtIn: true },
+];
+
+/** Icons offered for a list (any emoji works; these are the quick picks). */
+export const LIST_ICONS = ['📍', '❤️', '⭐', '🚩', '🧳', '🍽️', '☕', '🍺', '🏖️', '🏞️', '🛍️', '🏛️', '🎉', '👶', '🐶', '🏋️', '🚲', '🏠'];
+
 function initial(): SavedData {
   const now = Date.now();
-  return {
-    version: 1,
-    lists: [
-      { id: 'favorites', name: 'מועדפים', icon: '⭐', places: [], createdAt: now, builtIn: true },
-      { id: 'want', name: 'רוצה ללכת', icon: '🚩', places: [], createdAt: now, builtIn: true },
-    ],
-    history: [],
-  };
+  return { version: 1, lists: BUILT_IN.map((b) => ({ ...b, places: [], createdAt: now })), history: [], labels: {} };
 }
 
 export const data = signal<SavedData>(migrate(load<unknown>(KEY, null)));
@@ -48,10 +62,19 @@ data.subscribe((d) => {
   if (!save(KEY, d)) console.warn('saving places failed (storage full or blocked)');
 });
 
-function migrate(raw: unknown): SavedData {
+export function migrate(raw: unknown): SavedData {
   if (!raw || typeof raw !== 'object' || (raw as SavedData).version !== 1) return initial();
   const d = raw as SavedData;
-  return { ...initial(), ...d, lists: Array.isArray(d.lists) && d.lists.length ? d.lists : initial().lists, history: d.history ?? [] };
+  const lists = Array.isArray(d.lists) && d.lists.length ? d.lists : initial().lists;
+  // Bring older data up to date: favorites became a heart, and the newer system lists are added.
+  const now = Date.now();
+  const fixed = lists.map((l) => {
+    const b = BUILT_IN.find((x) => x.id === l.id && l.builtIn);
+    if (!b) return l;
+    return { ...l, color: l.color ?? b.color, icon: l.id === 'favorites' && l.icon === '⭐' ? b.icon : l.icon };
+  });
+  for (const b of BUILT_IN) if (!fixed.some((l) => l.id === b.id)) fixed.push({ ...b, places: [], createdAt: now });
+  return { ...initial(), ...d, lists: fixed, history: d.history ?? [], labels: d.labels ?? {} };
 }
 
 export const savedIds = computed(() => {
@@ -89,6 +112,41 @@ export function toggleInList(listId: string, place: Place): boolean {
   return added;
 }
 
+/** The list the one-tap "Save" button uses: the last one picked, favorites at first. */
+export const lastListId = signal<string>(load('saved:lastList', 'favorites'));
+lastListId.subscribe((v) => save('saved:lastList', v));
+
+/** Save to the last-used list (if not there already). Returns that list. */
+export function quickSave(place: Place): SavedList {
+  const d = data.value;
+  const list = d.lists.find((l) => l.id === lastListId.peek()) ?? d.lists[0];
+  if (!list.places.some((p) => p.id === place.id)) toggleInList(list.id, place);
+  return list;
+}
+
+export function setNote(placeId: string, note: string): void {
+  const n = note.trim().slice(0, 500) || undefined;
+  data.value = { ...data.value, lists: data.value.lists.map((l) => ({ ...l, places: l.places.map((p) => (p.id === placeId ? { ...p, note: n } : p)) })) };
+}
+
+/** The note on a saved place (the same in every list it is in). */
+export function noteOf(placeId: string): string | undefined {
+  for (const l of data.value.lists) for (const p of l.places) if (p.id === placeId && p.note) return p.note;
+  return undefined;
+}
+
+export function setListIcon(id: string, icon: string): void {
+  data.value = { ...data.value, lists: data.value.lists.map((l) => (l.id === id ? { ...l, icon } : l)) };
+}
+
+export function setLabel(place: Place, label: string | undefined): void {
+  const labels = { ...(data.value.labels ?? {}) };
+  const t = label?.trim().slice(0, 40);
+  if (t) labels[place.id] = { label: t, place: strip(place) };
+  else delete labels[place.id];
+  data.value = { ...data.value, labels };
+}
+
 export function createList(name: string, icon = '📍', places: SavedPlace[] = []): SavedList {
   const list: SavedList = { id: `l${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: name.trim() || 'רשימה חדשה', icon, places, createdAt: Date.now() };
   data.value = { ...data.value, lists: [...data.value.lists, list] };
@@ -115,6 +173,7 @@ export function setHomeWork(which: 'home' | 'work', place: Place | undefined): v
 }
 
 export function addHistory(place: Place): void {
+  if (incognito.peek()) return;
   const h = data.value.history.filter((p) => p.id !== place.id);
   data.value = { ...data.value, history: [{ ...strip(place), at: Date.now() }, ...h].slice(0, 50) };
 }

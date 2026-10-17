@@ -1,4 +1,4 @@
-import { osmPlaceId, type BBox, type OsmType, type PlaceDetails } from '@nm/core';
+import { osmPlaceId, type BBox, type LngLat, type OsmType, type PlaceDetails } from '@nm/core';
 import { getJson, type ToolContext } from '../define.ts';
 
 interface OverpassElement {
@@ -94,4 +94,28 @@ export async function overpassIdentify(ctx: ToolContext, name: string, lng: numb
   // Prefer a node/way with a category over a bare building or route relation.
   details.sort((a, b) => Number(!!b.category && b.category.key !== 'building') - Number(!!a.category && a.category.key !== 'building'));
   return details[0] ?? null;
+}
+
+/**
+ * Places of a category within `radiusM` of a line (Overpass "around" takes a polyline),
+ * for "search along the route". The line should be simplified to ~100 points first.
+ */
+export async function overpassAlongLine(ctx: ToolContext, filters: string[], line: LngLat[], radiusM: number, limit = 60): Promise<PlaceDetails[]> {
+  const coords = line.map(([x, y]) => `${y.toFixed(5)},${x.toFixed(5)}`).join(',');
+  const parts = filters.map((f) => `nwr${f}(around:${Math.round(radiusM)},${coords});`).join('');
+  const els = await overpass(ctx, `[out:json][timeout:25];(${parts});out tags center ${limit};`);
+  return els.map((el) => elementToDetails(el, ctx.lang)).filter((p): p is PlaceDetails => !!p);
+}
+
+/**
+ * Shops, food and services inside a building or area (a mall's directory), with the floor
+ * from the "level" tag when mapped.
+ */
+export async function overpassInside(ctx: ToolContext, type: 'way' | 'relation', id: number, limit = 200): Promise<PlaceDetails[]> {
+  const sel = type === 'way' ? `way(${id})` : `rel(${id})`;
+  const q = `[out:json][timeout:20];${sel};map_to_area->.a;(nwr(area.a)[shop];nwr(area.a)[amenity~"^(restaurant|cafe|fast_food|bank|atm|pharmacy|toilets|ice_cream|bar|food_court|post_office|clinic|dentist)$"];nwr(area.a)[leisure~"^(fitness_centre|playground)$"];nwr(area.a)[office];);out tags center ${limit};`;
+  const els = await overpass(ctx, q);
+  return els
+    .map((el) => elementToDetails(el, ctx.lang))
+    .filter((p): p is PlaceDetails => !!p && !!(p.tags.name || p.tags.brand) && !(p.osm?.type === type && p.osm.id === id));
 }

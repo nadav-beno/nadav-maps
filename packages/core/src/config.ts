@@ -48,6 +48,16 @@ export interface ProviderConfig {
    * Overpass remain the fallback.
    */
   geodataUrl: string;
+  /**
+   * Wikimedia Commons API for photos taken near a place ('' = no photo gallery beyond the
+   * place's own image). Free files with authors and licences shown next to each photo.
+   */
+  photosUrl: string;
+  /**
+   * Open-Meteo air quality API for the air quality layer ('' = layer hidden). Free for
+   * non-commercial use without a key, CC BY 4.0; a self-hosted instance takes the same URL.
+   */
+  airQualityUrl: string;
   /** Identifies us to public servers, as their usage policies ask. */
   userAgent: string;
 }
@@ -68,6 +78,8 @@ export const DEFAULT_PROVIDERS: ProviderConfig = {
   flightsUrl: 'https://api.adsb.lol',
   // Off unless configured: the web build sets it to its own <base>data/ (providersFromEnv).
   geodataUrl: '',
+  photosUrl: 'https://commons.wikimedia.org/w/api.php',
+  airQualityUrl: 'https://air-quality-api.open-meteo.com/v1/air-quality',
   userAgent: 'NadavMaps/0.2 (+https://github.com/nadav-beno/nadav-maps)',
 };
 
@@ -88,6 +100,8 @@ export function providersFromEnv(env: Record<string, string | undefined>, prefix
     flightsUrl: env[prefix + 'FLIGHTS_URL'] ?? DEFAULT_PROVIDERS.flightsUrl,
     // Vite's BASE_URL is set in the browser build: default to the data published with the site.
     geodataUrl: withSlash(env[prefix + 'GEODATA_URL'] ?? (env.BASE_URL !== undefined ? `${env.BASE_URL}data/` : DEFAULT_PROVIDERS.geodataUrl)),
+    photosUrl: env[prefix + 'PHOTOS_URL'] ?? DEFAULT_PROVIDERS.photosUrl,
+    airQualityUrl: env[prefix + 'AIR_QUALITY_URL'] ?? DEFAULT_PROVIDERS.airQualityUrl,
     userAgent: DEFAULT_PROVIDERS.userAgent,
   };
 }

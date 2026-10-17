@@ -1,15 +1,17 @@
-import { distance, fuzzyScore, nameIndex, namesFileIndex, namesFileIndexNow, normalizeQuery, parsePlaceId, prepareQuery, queryVariants, regionAt, suggestCorrections, trafficProvider, type BBox, type Correction, type LngLat, type Place, type PreparedQuery } from '@nm/core';
+import { distance, fuzzyScore, lineLength, sampleLine, snapToLine, nameIndex, namesFileIndex, namesFileIndexNow, normalizeQuery, parsePlaceId, prepareQuery, queryVariants, regionAt, suggestCorrections, trafficProvider, type BBox, type Correction, type LngLat, type Place, type PreparedQuery } from '@nm/core';
 import { z } from 'zod';
 import { CATEGORIES, categoryById } from '../categories.ts';
 import { defineTool, ProviderError, type ToolContext } from '../define.ts';
 import { findFlight } from '../providers/adsb.ts';
-import { overpassCategory, overpassDetails, overpassIdentify } from '../providers/overpass.ts';
+import { airQualityAt } from '../providers/air-quality.ts';
+import { commonsPhotosNear } from '../providers/commons.ts';
+import { overpassAlongLine, overpassCategory, overpassDetails, overpassIdentify, overpassInside } from '../providers/overpass.ts';
 import { photonReverse, photonSearch } from '../providers/photon.ts';
 import { localgeoDetails, localgeoIdentify, localgeoNamesUrl, localgeoReverse, localgeoSearch, mergePlaces } from '../providers/localgeo.ts';
 import { hereIncidents, hereTrafficTime } from '../providers/here.ts';
 import { NO_KEY_MESSAGE, tomtomIncidents, tomtomTrafficTime } from '../providers/tomtom.ts';
 import { transitDepartures, transitPlan } from '../providers/transitous.ts';
-import { valhallaRoute } from '../providers/valhalla.ts';
+import { valhallaGuidance, valhallaRoute } from '../providers/valhalla.ts';
 import { wikipediaSummary } from '../providers/wikipedia.ts';
 
 const lng = z.number().min(-180).max(180);
@@ -208,13 +210,16 @@ export const getDirections = defineTool({
   name: 'get_directions',
   title: 'מסלול',
   description:
-    'Route between 2 to 10 points by car, walking or bike. Returns up to 3 alternatives with distance (m), duration (s), geometry and Hebrew turn-by-turn steps.',
+    'Route between 2 to 10 points by car, motorcycle, walking or bike. Returns up to 3 alternatives with distance (m), duration (s), geometry, tags (toll, ferry, highway) and Hebrew turn-by-turn steps.',
   input: z.object({
     waypoints: z.array(point).min(2).max(10).describe('[[lng, lat], ...] origin first, destination last'),
-    mode: z.enum(['car', 'walk', 'bike']).default('car'),
+    mode: z.enum(['car', 'walk', 'bike', 'motorcycle']).default('car'),
     alternatives: z.number().int().min(0).max(2).default(2),
     avoidTolls: z.boolean().default(false),
     avoidHighways: z.boolean().default(false),
+    avoidFerries: z.boolean().default(false),
+    avoidUnpaved: z.boolean().default(false).describe('Car, motorcycle and bike: keep to paved roads'),
+    avoidStairs: z.boolean().default(false).describe('Walking: avoid steps and stairs (strollers, wheelchairs)'),
     heading: z.number().min(0).max(360).optional().describe('Current heading, for re-routing while driving'),
     includeGeometry: z.boolean().default(true),
   }),
@@ -222,6 +227,89 @@ export const getDirections = defineTool({
     const routes = await valhallaRoute(ctx, input.waypoints as LngLat[], input.mode, input);
     return input.includeGeometry ? routes : routes.map((r) => ({ ...r, geometry: [] }));
   },
+});
+
+export const routeGuidance = defineTool({
+  name: 'route_guidance',
+  title: 'מגבלות מהירות ונתיבים במסלול',
+  description:
+    'Speed limits (km/h by geometry index range) and lane arrows at junctions for a route from get_directions, for turn-by-turn navigation. Pass the same waypoints and mode, and the route geometry. Parts the router has no data for come back empty.',
+  input: z.object({
+    waypoints: z.array(point).min(2).max(10),
+    geometry: z.array(point).min(2).max(20000),
+    mode: z.enum(['car', 'walk', 'bike', 'motorcycle']).default('car'),
+  }),
+  run: (input, ctx) => valhallaGuidance(ctx, input.waypoints as LngLat[], input.geometry as LngLat[], input.mode),
+});
+
+/** A place found along a route, with how far along it is and the extra time to stop there. */
+export type AlongPlace = Place & { alongM: number; offM: number; detourS: number; openingHours?: string };
+
+/**
+ * Order places by where they are along the route (ahead of `fromIndex` only) and estimate
+ * the detour: there and back at town speed from the nearest point of the route.
+ */
+export function placesAlong(places: (Place & { openingHours?: string })[], line: LngLat[], fromIndex = 0, maxOffM = 2000): AlongPlace[] {
+  const start = lineLength(line, 0, fromIndex);
+  const out: AlongPlace[] = [];
+  for (const p of places) {
+    const snap = snapToLine([p.lng, p.lat], line, fromIndex);
+    if (snap.distanceM > maxOffM) continue;
+    const alongM = lineLength(line, 0, snap.index) + distance(line[snap.index], snap.point) - start;
+    const detourS = Math.max(60, Math.round((2 * snap.distanceM) / 8.3 / 60) * 60);
+    out.push({ ...p, alongM: Math.round(alongM), offM: Math.round(snap.distanceM), detourS });
+  }
+  return out.sort((a, b) => a.detourS - b.detourS || a.alongM - b.alongM);
+}
+
+export const searchAlongRoute = defineTool({
+  name: 'search_along_route',
+  title: 'חיפוש לאורך המסלול',
+  description: `Find places of a category close to a route (e.g. fuel or coffee on the way), with how far along the route each is (m) and the estimated extra time to stop (s). Categories: ${CATEGORIES.map((c) => c.id).join(', ')}.`,
+  input: z.object({
+    category: z.enum(CATEGORIES.map((c) => c.id) as [string, ...string[]]),
+    geometry: z.array(point).min(2).max(20000).describe('The route line, [[lng, lat], ...]'),
+    fromIndex: z.number().int().min(0).default(0).describe('Only places ahead of this geometry index (the current position)'),
+    radius: z.number().int().min(100).max(3000).default(800),
+    limit: z.number().int().min(1).max(40).default(20),
+  }),
+  async run(input, ctx) {
+    const line = (input.geometry as LngLat[]).slice(Math.min(input.fromIndex, input.geometry.length - 2));
+    const total = lineLength(line);
+    // Long routes: look at the next 150 km only, the way Google does on the road.
+    const ahead = total > 150000 ? line.slice(0, Math.max(2, snapToLine(sampleLine(line, 2 + Math.ceil(total / 150000))[1].p, line).index + 1)) : line;
+    const simple = sampleLine(ahead, Math.min(120, Math.max(10, Math.ceil(lineLength(ahead) / 1000)))).map((s) => s.p);
+    const found = await overpassAlongLine(ctx, categoryById(input.category)!.filters, simple, input.radius, 80);
+    return placesAlong(found.filter((p) => p.tags.name || p.tags.brand), ahead, 0, input.radius * 1.5).slice(0, input.limit);
+  },
+});
+
+export const placesInside = defineTool({
+  name: 'places_inside',
+  title: 'מדריך מקומות בתוך מתחם',
+  description: 'Shops, restaurants and services inside a mall, airport terminal, campus or other mapped area (OSM way or relation id), with the floor ("level" tag) when known.',
+  input: z.object({ id: z.string().regex(/^osm:[wr]\d+$/, 'expected an OSM way or relation id like osm:w123'), limit: z.number().int().min(1).max(300).default(200) }),
+  async run(input, ctx) {
+    const { osm } = parsePlaceId(input.id);
+    if (!osm || osm.type === 'node') return [];
+    return overpassInside(ctx, osm.type, osm.id, input.limit);
+  },
+});
+
+export const placePhotos = defineTool({
+  name: 'place_photos',
+  title: 'תמונות של מקום',
+  description: 'Free photos taken at a place, from Wikimedia Commons, with author and licence for each (show them with the photo).',
+  input: z.object({ lng, lat, radius: z.number().int().min(10).max(1000).default(120), limit: z.number().int().min(1).max(50).default(20) }),
+  run: (input, ctx) => commonsPhotosNear(ctx, input.lng, input.lat, input.radius, input.limit),
+});
+
+export const airQuality = defineTool({
+  name: 'air_quality',
+  title: 'איכות אוויר',
+  description: 'Current air quality (European AQI, PM2.5, PM10) at up to 50 points, from Open-Meteo (CAMS model data, CC BY 4.0).',
+  input: z.object({ points: z.array(point).min(1).max(50) }),
+  run: (input, ctx) => airQualityAt(ctx, input.points as LngLat[]),
 });
 
 export const placeSummary = defineTool({
@@ -249,6 +337,8 @@ export const transitDirections = defineTool({
     time: z.string().datetime({ offset: true }).optional().describe('Departure (or arrival with arriveBy) time, ISO 8601; default now'),
     arriveBy: z.boolean().default(false),
     wheelchair: z.boolean().default(false).describe('Only step-free journeys'),
+    fewerTransfers: z.boolean().default(false).describe('Prefer journeys with fewer changes'),
+    lessWalking: z.boolean().default(false).describe('Prefer journeys with less walking'),
     maxItineraries: z.number().int().min(1).max(8).default(5),
   }),
   run: (input, ctx) => transitPlan(ctx, input.from as LngLat, input.to as LngLat, input),
@@ -312,7 +402,7 @@ export const flightPosition = defineTool({
   run: (input, ctx) => findFlight(ctx, input.callsign),
 });
 
-export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, transitDirections, transitDeparturesTool, placeSummary, trafficIncidents, trafficTravelTime, flightPosition];
+export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, routeGuidance, searchAlongRoute, placesInside, placePhotos, airQuality, transitDirections, transitDeparturesTool, placeSummary, trafficIncidents, trafficTravelTime, flightPosition];
 
 /**
  * Start loading the region's full names list (typo dictionary) in the background, e.g. in

@@ -31,7 +31,16 @@ if (typeof matchMedia === 'function') {
 
 export const theme = signal<ThemePref>(load<ThemePref>('theme', 'system'));
 theme.subscribe((v) => save('theme', v));
-export const isDark = computed(() => (theme.value === 'system' ? systemDark.value : theme.value === 'dark'));
+/** Set by navigation at night (auto night mode) to darken the map whatever the theme. */
+export const forceDark = signal(false);
+export const isDark = computed(() => forceDark.value || (theme.value === 'system' ? systemDark.value : theme.value === 'dark'));
+
+/**
+ * Incognito: while on, nothing the user does is remembered on the device (search history,
+ * recent places and routes, timeline). Saved lists still work when asked for explicitly.
+ */
+export const incognito = signal<boolean>(load('incognito', false));
+incognito.subscribe((v) => save('incognito', v));
 
 export const unitsPref = signal<Units | 'auto'>(load<Units | 'auto'>('units', 'auto'));
 unitsPref.subscribe((v) => save('units', v));
@@ -61,7 +70,11 @@ export const currentView = computed<View>(() => viewStack.value[viewStack.value.
 export const sheet = signal<SheetSize>('peek');
 export const selectedPlace = signal<Place | null>(null);
 export const userLocation = signal<UserLocation | null>(null);
+/** True while a route preview drives `userLocation` (not where the user really is). */
+export const simulatingLocation = signal(false);
 export const toastMessage = signal<{ text: string; action?: { label: string; run: () => void } } | null>(null);
+/** Inside another site's iframe (?embed=1): the shell shows only the map and the card. */
+export const embedded = signal(false);
 /** Full-screen modes (navigation) hide the regular chrome. */
 export const immersive = signal(false);
 

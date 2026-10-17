@@ -1,7 +1,7 @@
 import { signal } from '@preact/signals';
 import type { Map as MapLibreMap } from 'maplibre-gl';
-import { circle } from '@nm/core';
-import { cssVar, defineFeature, ensureLayer, EMPTY, Icon, immersive, locationRequests, setGeoJSON, toast, userLocation } from '@nm/core/app';
+import { circle, formatDistance, plausibleFix, type Fix } from '@nm/core';
+import { cssVar, defineFeature, ensureLayer, EMPTY, Icon, immersive, load, locationRequests, save, setGeoJSON, toast, units, userLocation } from '@nm/core/app';
 
 /**
  * The "my location" button, six states (see spec):
@@ -12,6 +12,13 @@ import { cssVar, defineFeature, ensureLayer, EMPTY, Icon, immersive, locationReq
 export type LocState = 'off' | 'locating' | 'shown' | 'follow' | 'compass' | 'error';
 export const locState = signal<LocState>('off');
 const errorKind = signal<'denied' | 'unavailable' | 'timeout' | null>(null);
+/** GPS jamming/spoofing suspected: fixes jump impossibly far, so we keep the last good one. */
+const gpsSuspect = signal(false);
+/** Asking before the browser's own permission prompt, so people know why (once). */
+const prePrompt = signal<null | (() => void)>(null);
+const approxDismissed = signal(false);
+let lastGood: Fix | null = null;
+let suspectSince = 0;
 
 let map: MapLibreMap;
 let watchId: number | null = null;
@@ -49,6 +56,20 @@ function follow(animate = true) {
 
 function onPosition(pos: GeolocationPosition) {
   const c = pos.coords;
+  const fix: Fix = { lng: c.longitude, lat: c.latitude, accuracy: c.accuracy, timestamp: pos.timestamp };
+  if (!plausibleFix(lastGood, fix)) {
+    // Keep the last good position. After 3 minutes of steady "impossible" fixes, believe them
+    // (the device really moved while the page slept and the clock jumped less than it should).
+    const now = Date.now();
+    if (!gpsSuspect.peek()) {
+      suspectSince = now;
+      gpsSuspect.value = true;
+      toast('זוהתה קפיצה חשודה במיקום (שיבוש GPS). מציגים את המיקום האחרון הידוע.', undefined, 7000);
+    }
+    if (now - suspectSince < 3 * 60000) return;
+  }
+  gpsSuspect.value = false;
+  lastGood = fix;
   userLocation.value = { lng: c.longitude, lat: c.latitude, accuracy: c.accuracy, heading: c.heading, speed: c.speed, timestamp: pos.timestamp };
   errorKind.value = null;
   if (locState.value === 'locating' || locState.value === 'error') {
@@ -86,6 +107,26 @@ function explainError() {
     );
   } else if (errorKind.value === 'timeout') toast('לא הצלחנו למצוא את המיקום. נסו שוב במקום פתוח יותר.');
   else toast('המיקום לא זמין במכשיר הזה כרגע.');
+}
+
+/** Start GPS, first explaining why if the browser is about to ask for permission. */
+async function askThenWatch(then?: () => void) {
+  const go = () => {
+    startWatch();
+    then?.();
+  };
+  if (load('location:explained', false)) return go();
+  let state: PermissionState | 'unknown' = 'unknown';
+  try {
+    state = (await navigator.permissions?.query({ name: 'geolocation' as PermissionName }))?.state ?? 'unknown';
+  } catch {
+    /* Safari before 16 */
+  }
+  if (state === 'granted' || state === 'denied') return go();
+  prePrompt.value = () => {
+    save('location:explained', true);
+    go();
+  };
 }
 
 function startWatch() {
@@ -141,6 +182,8 @@ function stopCompass() {
 async function onButton() {
   switch (locState.value) {
     case 'off':
+      void askThenWatch();
+      break;
     case 'error':
       startWatch();
       break;
@@ -181,6 +224,61 @@ const LABEL: Record<LocState, string> = {
   error: 'המיקום לא זמין. לחיצה לניסיון חוזר',
 };
 
+function PrePrompt() {
+  const go = prePrompt.value;
+  if (!go) return null;
+  return (
+    <div class="modal-backdrop" onClick={() => (prePrompt.value = null)}>
+      <div class="modal loc-preprompt" role="dialog" aria-labelledby="loc-pp-title" onClick={(e) => e.stopPropagation()}>
+        <Icon name="my_location" size={36} style={{ color: 'var(--accent)' }} />
+        <h2 id="loc-pp-title">להראות איפה אתם?</h2>
+        <p>כדי להציג את המיקום שלכם על המפה ולנווט ממנו, הדפדפן יבקש עכשיו הרשאת מיקום. כדאי לבחור "בזמן השימוש".</p>
+        <p class="muted small">המיקום נשאר במכשיר. אנחנו לא שומרים אותו ולא שולחים אותו לשרתים שלנו.</p>
+        <div class="modal-actions">
+          <button class="btn" onClick={() => (prePrompt.value = null)}>
+            לא עכשיו
+          </button>
+          <button
+            class="btn primary"
+            onClick={() => {
+              prePrompt.value = null;
+              go();
+            }}
+          >
+            המשך
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Under the search bar: the position is only approximate, or looks jammed. */
+function LocationNotice() {
+  const u = userLocation.value;
+  if (gpsSuspect.value)
+    return (
+      <div class="loc-notice warn" role="status">
+        <Icon name="warning" size={18} />
+        המיקום נראה משובש (שיבוש GPS). מוצג המיקום האחרון שנראה תקין.
+      </div>
+    );
+  if (!u || u.accuracy <= 1000 || approxDismissed.value) return null;
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  return (
+    <div class="loc-notice" role="status">
+      <Icon name="location_searching" size={18} />
+      <span>
+        המיקום משוער בלבד (±{formatDistance(u.accuracy, units.value)}).{' '}
+        {ios ? 'כדי לדייק: הגדרות ← פרטיות ← שירותי מיקום ← Safari ← "מיקום מדויק".' : 'כדאי להפעיל GPS או "דיוק מיקום" בהגדרות המכשיר.'}
+      </span>
+      <button class="icon-btn small" aria-label="סגירה" onClick={() => (approxDismissed.value = true)}>
+        <Icon name="close" size={18} />
+      </button>
+    </div>
+  );
+}
+
 function LocationButton() {
   const s = locState.value;
   return (
@@ -202,6 +300,8 @@ export default defineFeature({
   setup(ctx) {
     map = ctx.map;
     ctx.registerFab({ id: 'location', order: 0, Component: LocationButton });
+    ctx.registerSlot('overlay', PrePrompt, 50);
+    ctx.registerSlot('top', LocationNotice, 50);
 
     ctx.onStyle((m) => {
       setGeoJSON(m, 'me-accuracy', EMPTY);
@@ -219,10 +319,10 @@ export default defineFeature({
 
     // Other features (directions) can ask for the location without moving the map.
     locationRequests.subscribe((n) => {
-      if (!n || watchId !== null) return;
+      if (!n || watchId !== null || prePrompt.peek()) return;
+      void askThenWatch();
       firstFix = false;
       stateAfterFix = 'shown';
-      startWatch();
     });
 
     // The user dragging the map ends follow mode (like every map app).

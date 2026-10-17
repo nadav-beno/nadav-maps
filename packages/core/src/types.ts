@@ -42,7 +42,7 @@ export interface PlaceDetails extends Place {
   wikidata?: string;
 }
 
-export type TravelMode = 'car' | 'walk' | 'bike';
+export type TravelMode = 'car' | 'walk' | 'bike' | 'motorcycle';
 /** What the directions screen can plan: the road modes plus public transport. */
 export type DirectionsMode = TravelMode | 'transit';
 
@@ -117,7 +117,13 @@ export interface RouteStep {
   /** Index into the route geometry where this step starts. */
   shapeIndex: number;
   roundaboutExit?: number;
+  /** The step passes a toll booth or is a ferry ride. */
+  toll?: boolean;
+  ferry?: boolean;
 }
+
+/** What a route has that people may want to know before choosing it. */
+export type RouteTag = 'toll' | 'ferry' | 'highway';
 
 export interface Route {
   mode: TravelMode;
@@ -127,4 +133,19 @@ export interface Route {
   steps: RouteStep[];
   /** Short name of the main roads, e.g. "כביש 1". */
   summary?: string;
+  tags?: RouteTag[];
+}
+
+/** One lane at a junction: the arrows painted on it and whether it fits the next turn. */
+export interface Lane {
+  indications: string[];
+  valid: boolean;
+}
+
+/** Extras for navigating a route, read once when navigation starts. */
+export interface RouteGuidance {
+  /** Speed limits along the route, by geometry index range (km/h). */
+  speedLimits: { from: number; to: number; kmh: number }[];
+  /** Lane arrows at junctions, by position. */
+  lanes: { at: LngLat; lanes: Lane[] }[];
 }
