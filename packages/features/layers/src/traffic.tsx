@@ -28,18 +28,19 @@ import {
 } from '@nm/core';
 import { back, ICONS, Icon, isDark, load, open, providers, region, save, units, type FeatureContext, type ViewProps } from '@nm/core/app';
 import { tools, trafficIncidents, type TrafficIncident } from '@nm/tools';
+import { atlasConfigured, syncAtlas } from './atlas.tsx';
 
 /**
  * Live traffic from HERE or TomTom (whichever covers the region on screen and has a key), drawn in
- * Google's colours under our labels, plus incident icons you can tap. Exists only when a traffic key
- * is configured; otherwise nothing here runs.
+ * Google's colours under our labels, plus incident icons you can tap; inside Atlas coverage, Atlas
+ * speeds instead (atlas.tsx). Exists only when a traffic key is configured; otherwise nothing here runs.
  */
 type MapT = FeatureContext['map'];
 
 export const trafficOn = signal<boolean>(load('layers:traffic', false));
 trafficOn.subscribe((v) => save('layers:traffic', v));
 
-export const hasTraffic = () => !!(providers.peek().tomtomKey || providers.peek().hereKey);
+export const hasTraffic = () => !!(providers.peek().tomtomKey || providers.peek().hereKey || atlasConfigured());
 
 /** The provider for the region on screen (null = no key). */
 export const currentTraffic = () => trafficProvider(region.value, providers.value);
@@ -93,7 +94,9 @@ const offsetBy = (side: unknown) => ['interpolate', ['exponential', 1.5], ['zoom
 
 /** Adds (or removes) the traffic sources and layers to match the toggle and the region. Runs after every style change. */
 export function syncTraffic(m: MapT) {
-  const choice = trafficOn.peek() ? trafficProvider(region.peek(), providers.peek()) : null;
+  // Our own Atlas speeds first where it covers the screen; HERE/TomTom flow would draw over them.
+  const atlas = syncAtlas(m, trafficOn.peek(), beforeOverlays(m));
+  const choice = trafficOn.peek() && !atlas ? trafficProvider(region.peek(), providers.peek()) : null;
   const want = choice?.id;
   // Switching provider (panning from Israel to Britain with both keys): start over.
   if (want !== 'tomtom' && m.getSource(FLOW_SRC)) removeTraffic(m);

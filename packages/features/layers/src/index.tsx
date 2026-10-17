@@ -1,5 +1,6 @@
 import { signal } from '@preact/signals';
 import { back, defineFeature, Icon, mapLayers, mapType, open, region, type FeatureContext, type MapLayers, type MapTypePref, type ViewProps } from '@nm/core/app';
+import { AtlasNote, atlasConfigured, atlasInView, atlasState, initAtlas, setAtlasRunning } from './atlas.tsx';
 import { currentTraffic, hasTraffic, onTrafficClick, PROVIDER_NAME, syncTraffic, TrafficIncidentView, trafficOn, TrafficToggle } from './traffic.tsx';
 
 let map: FeatureContext['map'];
@@ -60,7 +61,8 @@ function LayersView(_: ViewProps) {
           />
         )}
       </div>
-      {hasTraffic() && trafficOn.value && <TrafficNote />}
+      {hasTraffic() && trafficOn.value && !(atlasState.value.kind === 'ok' && atlasInView.value) && <TrafficNote />}
+      {atlasConfigured() && trafficOn.value && <AtlasNote />}
       {mapType.value === 'satellite' && (
         <p class="muted small">
           תצלומי לוויין Sentinel-2 (רזולוציה של 10 מטר לפיקסל): מתאימים למבט על אזורים, לא לזיהוי בתים. תצלומים מפורטים יותר דורשים רישיון בתשלום.
@@ -129,6 +131,10 @@ export default defineFeature({
         }
       });
       ctx.onMapClick((_e, features) => onTrafficClick(ctx.map, features as never), 60);
+      if (atlasConfigured()) {
+        initAtlas(ctx.map, () => syncTraffic(ctx.map));
+        trafficOn.subscribe(setAtlasRunning);
+      }
     }
     const sync = () => {
       bearing.value = ctx.map.getBearing();
