@@ -13,7 +13,9 @@ import {
   type LngLat,
   type Place,
   type Route,
+  type RouteTag,
   type TransitItinerary,
+  type TravelMode,
   regionAt,
   trafficProvider,
 } from '@nm/core';
@@ -25,6 +27,7 @@ import {
   ensureLayer,
   EMPTY,
   elevationProfile,
+  incognito,
   Icon,
   LineChip,
   lineColors,
@@ -40,6 +43,7 @@ import {
   requestLocation,
   save,
   setGeoJSON,
+  toast,
   units,
   userLocation,
   type ViewProps,
@@ -53,15 +57,58 @@ const to = signal<Endpoint>(null);
 const mode = signal<DirectionsMode>(load<DirectionsMode>('directions:mode', 'car'));
 /** Stops on the way (car, walk and bike only). */
 const vias = signal<Endpoint[]>([]);
-const MAX_VIAS = 3;
+/** Google allows 10 points: origin, destination and up to 8 stops on the way. */
+const MAX_VIAS = 8;
 /** When to travel by public transport; `at` is a local "YYYY-MM-DDTHH:mm". */
 const when = signal<{ kind: 'now' | 'depart' | 'arrive'; at: string }>({ kind: 'now', at: '' });
 const itineraries = signal<TransitItinerary[]>([]);
 mode.subscribe((m) => save('directions:mode', m));
-const avoidTolls = signal(load('directions:avoidTolls', false));
-const avoidHighways = signal(load('directions:avoidHighways', false));
-avoidTolls.subscribe((v) => save('directions:avoidTolls', v));
-avoidHighways.subscribe((v) => save('directions:avoidHighways', v));
+
+function persisted(key: string, initial: boolean) {
+  const s = signal<boolean>(load(`directions:${key}`, initial));
+  s.subscribe((v) => save(`directions:${key}`, v));
+  return s;
+}
+const avoidTolls = persisted('avoidTolls', false);
+const avoidHighways = persisted('avoidHighways', false);
+const avoidFerries = persisted('avoidFerries', false);
+const avoidUnpaved = persisted('avoidUnpaved', false);
+const avoidStairs = persisted('avoidStairs', false);
+const wheelchair = persisted('wheelchair', false);
+const fewerTransfers = persisted('fewerTransfers', false);
+const lessWalking = persisted('lessWalking', false);
+
+/** Route options for a road mode, as get_directions takes them. */
+function avoidFor(m: TravelMode) {
+  const road = m === 'car' || m === 'motorcycle';
+  return {
+    avoidTolls: road && avoidTolls.value,
+    avoidHighways: road && avoidHighways.value,
+    avoidFerries: avoidFerries.value,
+    avoidUnpaved: m !== 'walk' && avoidUnpaved.value,
+    avoidStairs: m === 'walk' && avoidStairs.value,
+  };
+}
+const transitPrefs = () => ({ wheelchair: wheelchair.value, fewerTransfers: fewerTransfers.value, lessWalking: lessWalking.value });
+
+/** Routes planned lately, for the home screen (not kept in incognito). */
+interface RecentRoute {
+  from: { name: string; lng: number; lat: number } | 'me';
+  to: { name: string; lng: number; lat: number };
+  mode: DirectionsMode;
+  at: number;
+}
+const recentRoutes = signal<RecentRoute[]>(load<RecentRoute[]>('directions:recent', []));
+recentRoutes.subscribe((v) => save('directions:recent', v));
+
+function rememberRoute() {
+  const f = from.peek(), t = to.peek();
+  if (incognito.peek() || t?.kind !== 'place' || !f) return;
+  const pt = (p: Place) => ({ name: p.name, lng: p.lng, lat: p.lat });
+  const entry: RecentRoute = { from: f.kind === 'me' ? 'me' : pt(f.place), to: pt(t.place), mode: mode.peek(), at: Date.now() };
+  const same = (r: RecentRoute) => r.to.name === entry.to.name && Math.abs(r.to.lng - entry.to.lng) < 1e-4 && (r.from === 'me' ? entry.from === 'me' : entry.from !== 'me' && r.from.name === entry.from.name);
+  recentRoutes.value = [entry, ...recentRoutes.peek().filter((r) => !same(r))].slice(0, 8);
+}
 
 const routes = signal<Route[]>([]);
 const active = signal(0);
@@ -151,7 +198,7 @@ async function compute() {
   });
   try {
     if (m === 'transit') {
-      const its = await tools().call(transitDirections, { from: a, to: b, ...whenIso() });
+      const its = await tools().call(transitDirections, { from: a, to: b, ...whenIso(), ...transitPrefs() });
       if (seq !== requestSeq) return;
       batch(() => {
         itineraries.value = its;
@@ -165,8 +212,7 @@ async function compute() {
         waypoints: [a, ...viaCoords(), b],
         mode: m,
         alternatives: vias.value.length ? 0 : 2,
-        avoidTolls: m === 'car' && avoidTolls.value,
-        avoidHighways: m === 'car' && avoidHighways.value,
+        ...avoidFor(m),
       });
       if (seq !== requestSeq) return;
       batch(() => {
@@ -179,15 +225,17 @@ async function compute() {
       });
       if (rs[0] && m !== 'car') void loadProfile(rs[0], seq);
       if (rs[0] && m === 'car') void loadTrafficTime(rs[0]);
+      if (rs[0]) rememberRoute();
     }
-    drawRoutes();
+    if (m === 'transit') drawRoutes();
+    else animateRoutes();
     fitRoutes();
     // The other modes' times, without geometry, for the mode tabs.
     for (const other of MODES.map((x) => x.id).filter((x) => x !== m)) {
       const p =
         other === 'transit'
-          ? tools().call(transitDirections, { from: a, to: b, maxItineraries: 1, ...whenIso() }).then((r) => r[0]?.durationS)
-          : tools().call(getDirections, { waypoints: [a, ...viaCoords(), b], mode: other, alternatives: 0, includeGeometry: false }).then((r) => r[0]?.durationS);
+          ? tools().call(transitDirections, { from: a, to: b, maxItineraries: 1, ...whenIso(), ...transitPrefs() }).then((r) => r[0]?.durationS)
+          : tools().call(getDirections, { waypoints: [a, ...viaCoords(), b], mode: other, alternatives: 0, includeGeometry: false, ...avoidFor(other) }).then((r) => r[0]?.durationS);
       p.then((t) => {
         if (seq === requestSeq && t !== undefined) modeTimes.value = { ...modeTimes.value, [other]: t };
       }).catch(() => {});
@@ -212,7 +260,26 @@ async function loadProfile(r: Route, seq: number) {
 
 const inDirections = () => currentView.peek().kind === 'directions';
 
-function drawRoutes() {
+let drawAnim = 0;
+
+/** Draw the chosen route from origin to destination over ~0.6 s, like Google (not with reduced motion). */
+function animateRoutes() {
+  const r = routes.peek()[active.peek()];
+  const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced || !r || r.geometry.length < 3 || typeof requestAnimationFrame !== 'function') return drawRoutes();
+  const id = ++drawAnim;
+  const t0 = performance.now();
+  const step = (t: number) => {
+    if (id !== drawAnim) return;
+    const k = Math.min(1, (t - t0) / 600);
+    drawRoutes(1 - (1 - k) ** 3);
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+function drawRoutes(progress = 1) {
+  if (progress === 1) drawAnim++;
   if (!map?.getSource('routes')) return;
   const rs = inDirections() ? routes.value : [];
   setGeoJSON(map, 'routes', {
@@ -222,7 +289,7 @@ function drawRoutes() {
       .map((r, i) => ({
         type: 'Feature' as const,
         properties: { idx: i, active: i === active.value },
-        geometry: { type: 'LineString' as const, coordinates: r.geometry },
+        geometry: { type: 'LineString' as const, coordinates: i === active.value && progress < 1 ? r.geometry.slice(0, Math.max(2, Math.ceil(r.geometry.length * progress))) : r.geometry },
       }))
       .sort((x, y) => Number(x.properties.active) - Number(y.properties.active)),
   });
@@ -360,7 +427,41 @@ const MODES: { id: DirectionsMode; label: string; icon: string }[] = [
   { id: 'transit', label: 'תחבורה ציבורית', icon: 'directions_bus' },
   { id: 'walk', label: 'הליכה', icon: 'directions_walk' },
   { id: 'bike', label: 'אופניים', icon: 'directions_bike' },
+  { id: 'motorcycle', label: 'אופנוע', icon: 'two_wheeler' },
 ];
+
+const TAG_LABELS: Record<RouteTag, { label: string; icon: string }> = {
+  toll: { label: 'כביש אגרה', icon: 'toll' },
+  ferry: { label: 'מעבורת', icon: 'directions_boat' },
+  highway: { label: 'כביש מהיר', icon: 'add_road' },
+};
+
+/**
+ * Google's one line on why a route is worth choosing: "המסלול הכי מהיר · חוסך 6 דק׳" for the
+ * best one, "ארוך ב-4 דק׳ · בלי כביש אגרה" for the others.
+ */
+export function routeContext(rs: Route[], i: number, fastest: number, time: (r: Route) => number): string {
+  const r = rs[i];
+  if (!r) return '';
+  const best = rs[fastest];
+  const has = (x: Route, t: RouteTag) => !!x.tags?.includes(t);
+  const parts: string[] = [];
+  if (i === fastest) {
+    if (rs.length < 2) return '';
+    const second = Math.min(...rs.filter((_, j) => j !== i).map(time));
+    const saves = Math.round((second - time(r)) / 60);
+    parts.push('המסלול הכי מהיר');
+    if (saves >= 2) parts.push(`חוסך ${saves} דק׳`);
+  } else {
+    const more = Math.round((time(r) - time(best)) / 60);
+    parts.push(more >= 1 ? `ארוך ב-${more} דק׳` : 'זמן דומה');
+    if (r.distanceM < best.distanceM * 0.9) parts.push('מסלול קצר יותר');
+    if (has(best, 'toll') && !has(r, 'toll')) parts.push('בלי כביש אגרה');
+    if (has(best, 'ferry') && !has(r, 'ferry')) parts.push('בלי מעבורת');
+    if (has(best, 'highway') && !has(r, 'highway')) parts.push('בלי כבישים מהירים');
+  }
+  return parts.join(' · ');
+}
 
 function Steps({ route }: { route: Route }) {
   return (
@@ -554,8 +655,8 @@ function Elevation({ p }: { p: ElevationProfile }) {
 function OtherApps({ dest }: { dest: LngLat }) {
   const [lng, lat] = dest;
   const m = mode.value;
-  const g = { car: 'driving', walk: 'walking', bike: 'bicycling', transit: 'transit' }[m];
-  const apple = { car: 'd', walk: 'w', bike: 'c', transit: 'r' }[m];
+  const g = { car: 'driving', motorcycle: 'driving', walk: 'walking', bike: 'bicycling', transit: 'transit' }[m];
+  const apple = { car: 'd', motorcycle: 'd', walk: 'w', bike: 'c', transit: 'r' }[m];
   return (
     <div class="other-apps">
       <span class="muted small">פתיחה באפליקציה אחרת:</span>
@@ -612,6 +713,212 @@ function fastestIndex(rs: Route[], traffic: Map<Route, number>): number {
   return best;
 }
 
+type Toggle = { label: string; value: typeof avoidTolls };
+
+function optionsFor(m: DirectionsMode): Toggle[] {
+  if (m === 'transit')
+    return [
+      { label: 'נגיש לכיסא גלגלים', value: wheelchair },
+      { label: 'פחות החלפות', value: fewerTransfers },
+      { label: 'פחות הליכה', value: lessWalking },
+    ];
+  if (m === 'walk')
+    return [
+      { label: 'בלי מדרגות (עגלה, כיסא גלגלים)', value: avoidStairs },
+      { label: 'בלי מעבורות', value: avoidFerries },
+    ];
+  if (m === 'bike')
+    return [
+      { label: 'בלי דרכי עפר', value: avoidUnpaved },
+      { label: 'בלי מעבורות', value: avoidFerries },
+    ];
+  return [
+    { label: 'בלי כבישי אגרה (כביש 6)', value: avoidTolls },
+    { label: 'בלי כבישים מהירים', value: avoidHighways },
+    { label: 'בלי מעבורות', value: avoidFerries },
+    { label: 'בלי דרכי עפר', value: avoidUnpaved },
+  ];
+}
+
+function RouteOptions({ m }: { m: DirectionsMode }) {
+  return (
+    <div class="option-list">
+      {optionsFor(m).map((o) => (
+        <label key={o.label}>
+          <input
+            type="checkbox"
+            checked={o.value.value}
+            onChange={(e) => {
+              o.value.value = (e.target as HTMLInputElement).checked;
+              void compute();
+            }}
+          />{' '}
+          {o.label}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+/** Move the stop at `from` to position `to` in [origin, ...stops, destination]. */
+export function moveStop<T>(list: T[], fromIdx: number, toIdx: number): T[] {
+  if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0 || fromIdx >= list.length || toIdx >= list.length) return list;
+  const next = [...list];
+  const [x] = next.splice(fromIdx, 1);
+  next.splice(toIdx, 0, x);
+  return next;
+}
+
+/**
+ * Origin, stops and destination; with stops on the way each row gets a handle to drag it
+ * to another place in the order (or move it with the arrow keys), like Google.
+ */
+function StopList({ transit, onChange }: { transit: boolean; onChange: () => void }) {
+  const drag = useSignal<{ from: number; over: number } | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const stops: Endpoint[] = [from.value, ...(transit ? [] : vias.value), to.value];
+  const last = stops.length - 1;
+  const reorderable = !transit && vias.value.length > 0;
+
+  const apply = (list: Endpoint[]) => {
+    batch(() => {
+      from.value = list[0];
+      to.value = list[list.length - 1];
+      vias.value = list.slice(1, -1);
+    });
+    if (from.value?.kind === 'me' || to.value?.kind === 'me' || vias.value.some((v) => v?.kind === 'me')) if (!userLocation.peek()) requestLocation();
+    onChange();
+  };
+  const set = (i: number, e: Endpoint) => {
+    if (e?.kind === 'me' && !userLocation.value) requestLocation();
+    if (i === 0) from.value = e;
+    else if (i === last) to.value = e;
+    else {
+      const next = [...vias.value];
+      if (e) next[i - 1] = e;
+      else next.splice(i - 1, 1);
+      vias.value = next;
+    }
+    onChange();
+  };
+  const rowAt = (y: number) => {
+    const rows = [...(listRef.current?.querySelectorAll('.stop-row') ?? [])];
+    const idx = rows.findIndex((r) => {
+      const b = r.getBoundingClientRect();
+      return y < b.top + b.height / 2;
+    });
+    return idx < 0 ? rows.length - 1 : idx;
+  };
+
+  return (
+    <div class="endpoint-fields" ref={listRef}>
+      {stops.map((v, i) => {
+        const label = i === 0 ? 'נקודת מוצא' : i === last ? 'לאן?' : `עצירה ${i}`;
+        const d = drag.value;
+        return (
+          <div key={i} class={`stop-row ${i > 0 && i < last ? 'via-row' : ''} ${d?.from === i ? 'dragging' : ''} ${d && d.over === i && d.from !== i ? 'drop-target' : ''}`}>
+            {reorderable && (
+              <button
+                class="icon-btn small drag-handle"
+                aria-label={`שינוי סדר: ${labelOf(v) || label}`}
+                title="גררו כדי לשנות את הסדר"
+                onPointerDown={(e) => {
+                  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                  drag.value = { from: i, over: i };
+                }}
+                onPointerMove={(e) => {
+                  if (drag.value) drag.value = { ...drag.value, over: rowAt(e.clientY) };
+                }}
+                onPointerUp={() => {
+                  const dd = drag.value;
+                  drag.value = null;
+                  if (dd && dd.over !== dd.from) apply(moveStop(stops, dd.from, dd.over));
+                }}
+                onPointerCancel={() => (drag.value = null)}
+                onKeyDown={(e) => {
+                  const to_ = e.key === 'ArrowUp' ? i - 1 : e.key === 'ArrowDown' ? i + 1 : -1;
+                  if (to_ < 0 || to_ > last) return;
+                  e.preventDefault();
+                  apply(moveStop(stops, i, to_));
+                }}
+              >
+                <Icon name="drag_indicator" size={20} />
+              </button>
+            )}
+            <PointInput label={label} value={v} onChange={(e) => set(i, e)} autoFocus={i === last ? !to.value : i > 0 && !v} />
+            {i > 0 && i < last && (
+              <button class="icon-btn small" aria-label={`הסרת עצירה ${i}`} onClick={() => set(i, null)}>
+                <Icon name="close" size={20} />
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Google's "Best" tab: the quickest way to go right now, when it isn't the mode shown. */
+function BestMode({ onPick }: { onPick: (m: DirectionsMode) => void }) {
+  const times = Object.entries(modeTimes.value) as [DirectionsMode, number][];
+  if (times.length < 2) return null;
+  const [best, t] = times.reduce((a, b) => (b[1] < a[1] ? b : a));
+  if (best === mode.value) return null;
+  const m = MODES.find((x) => x.id === best)!;
+  return (
+    <button class="best-mode chip" onClick={() => onPick(best)}>
+      <Icon name="bolt" size={18} />
+      הכי מהיר עכשיו: {m.label}, {formatDuration(t)}
+    </button>
+  );
+}
+
+function RecentRoutes() {
+  const list = recentRoutes.value;
+  if (!list.length || incognito.value) return null;
+  const go = (r: RecentRoute) => {
+    batch(() => {
+      from.value = r.from === 'me' ? { kind: 'me' } : { kind: 'place', place: droppedPin(r.from.lng, r.from.lat, r.from.name) };
+      to.value = { kind: 'place', place: { ...droppedPin(r.to.lng, r.to.lat, r.to.name), name: r.to.name } };
+      vias.value = [];
+      mode.value = r.mode;
+    });
+    if (r.from === 'me' && !userLocation.peek()) requestLocation();
+    open({ kind: 'directions', props: { url: urlFor() } });
+    void compute();
+  };
+  return (
+    <section class="home-section recent-routes" aria-labelledby="recent-routes-title">
+      <h3 id="recent-routes-title">מסלולים אחרונים</h3>
+      <ul class="list">
+        {list.slice(0, 3).map((r, i) => (
+          <li key={i}>
+            <button class="list-item" onClick={() => go(r)}>
+              <span class="li-icon" aria-hidden="true">
+                <Icon name={MODES.find((m) => m.id === r.mode)?.icon ?? 'directions'} size={20} />
+              </span>
+              <span class="li-body">
+                <span class="li-title">{r.to.name}</span>
+                <span class="li-sub">מ{r.from === 'me' ? 'המיקום שלי' : r.from.name}</span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <button
+        class="link-like small"
+        onClick={() => {
+          const old = recentRoutes.peek();
+          recentRoutes.value = [];
+          toast('המסלולים האחרונים נמחקו', { label: 'ביטול', run: () => (recentRoutes.value = old) });
+        }}
+      >
+        ניקוי
+      </button>
+    </section>
+  );
+}
+
 function DirectionsView(_: ViewProps) {
   const showSteps = useSignal(false);
   const showOptions = useSignal(false);
@@ -635,13 +942,7 @@ function DirectionsView(_: ViewProps) {
     if (e?.kind === 'me' && !userLocation.value) requestLocation();
     reroute();
   };
-  const setVia = (i: number, e: Endpoint) => {
-    const next = [...vias.value];
-    if (e) next[i] = e;
-    else next.splice(i, 1);
-    vias.value = next;
-    reroute();
-  };
+  const destination = to.value?.kind === 'place' ? to.value.place : null;
 
   return (
     <div class="view directions">
@@ -656,19 +957,7 @@ function DirectionsView(_: ViewProps) {
           ))}
           <Icon name="location_on" size={18} class="to-dot" />
         </div>
-        <div class="endpoint-fields">
-          <PointInput label="נקודת מוצא" value={from.value} onChange={(e) => set('from', e)} />
-          {!transit &&
-            vias.value.map((v, i) => (
-              <div key={i} class="via-row">
-                <PointInput label={`עצירה ${i + 1}`} value={v} onChange={(e) => setVia(i, e)} autoFocus={!v} />
-                <button class="icon-btn small" aria-label={`הסרת עצירה ${i + 1}`} onClick={() => setVia(i, null)}>
-                  <Icon name="close" size={20} />
-                </button>
-              </div>
-            ))}
-          <PointInput label="לאן?" value={to.value} onChange={(e) => set('to', e)} autoFocus={!to.value} />
-        </div>
+        <StopList transit={transit} onChange={reroute} />
         <button class="icon-btn" aria-label="החלפת מוצא ויעד" onClick={swap}>
           <Icon name="swap_vert" />
         </button>
@@ -694,50 +983,35 @@ function DirectionsView(_: ViewProps) {
           );
         })}
       </div>
+      <BestMode
+        onPick={(m) => {
+          mode.value = m;
+          showSteps.value = false;
+          reroute();
+        }}
+      />
       {transit && <WhenPicker />}
-      {!transit && (
-        <div class="options">
-          {vias.value.length < MAX_VIAS && (
-            <button class="link-like small" onClick={() => (vias.value = [...vias.value, null])}>
-              <Icon name="add" size={18} /> הוספת עצירה
-            </button>
-          )}
-          {mode.value === 'car' && (
-            <button class="link-like small" aria-expanded={showOptions.value} onClick={() => (showOptions.value = !showOptions.value)}>
-              <Icon name="tune" size={18} /> אפשרויות מסלול
-            </button>
-          )}
-          {mode.value === 'car' && showOptions.value && (
-            <div class="option-list">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={avoidTolls.value}
-                  onChange={(e) => {
-                    avoidTolls.value = (e.target as HTMLInputElement).checked;
-                    void compute();
-                  }}
-                />{' '}
-                בלי כבישי אגרה (כביש 6)
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={avoidHighways.value}
-                  onChange={(e) => {
-                    avoidHighways.value = (e.target as HTMLInputElement).checked;
-                    void compute();
-                  }}
-                />{' '}
-                בלי כבישים מהירים
-              </label>
-            </div>
-          )}
-        </div>
-      )}
+      <div class="options">
+        {!transit && vias.value.length < MAX_VIAS && (
+          <button class="link-like small" onClick={() => (vias.value = [...vias.value, null])}>
+            <Icon name="add" size={18} /> הוספת עצירה
+          </button>
+        )}
+        <button class="link-like small" aria-expanded={showOptions.value} onClick={() => (showOptions.value = !showOptions.value)}>
+          <Icon name="tune" size={18} /> {transit ? 'העדפות נסיעה' : 'אפשרויות מסלול'}
+          {optionsFor(mode.value).some((o) => o.value.value) && <span class="dot-badge" aria-label="יש אפשרויות פעילות" />}
+        </button>
+        {showOptions.value && <RouteOptions m={mode.value} />}
+      </div>
 
       {from.value?.kind === 'me' && !haveLocation.value && <p class="muted small">ממתין למיקום שלך…</p>}
-      {loading.value && <div class="spinner" role="progressbar" aria-label="מחשב מסלול" />}
+      {loading.value && (
+        <ul class="route-options skeleton-list" role="progressbar" aria-label="מחשב מסלול">
+          {[0, 1].map((i) => (
+            <li key={i} class="skeleton route-skeleton" />
+          ))}
+        </ul>
+      )}
       {error.value && !loading.value && <p class="error">{error.value}</p>}
 
       {!loading.value && !transit && rs.length > 0 && (
@@ -768,6 +1042,19 @@ function DirectionsView(_: ViewProps) {
                 <span class="route-sub muted small">
                   {x.summary ? `דרך ${x.summary} · ` : ''}הגעה ב-{formatArrival(x.durationS, Date.now(), region.value.timeZone)}
                 </span>
+                {rs.length > 1 && <span class="route-context small">{routeContext(rs, i, fastest, (y) => trafficTimes.value.get(y) ?? y.durationS)}</span>}
+                {!!x.tags?.filter((t) => t !== 'highway').length && (
+                  <span class="route-tags">
+                    {x.tags
+                      .filter((t) => t !== 'highway')
+                      .map((t) => (
+                        <span key={t} class="route-tag">
+                          <Icon name={TAG_LABELS[t].icon} size={14} />
+                          {TAG_LABELS[t].label}
+                        </span>
+                      ))}
+                  </span>
+                )}
                 {rs.length > 1 && i === fastest && <span class="route-badge">המסלול הכי מהיר</span>}
               </button>
             </li>
@@ -790,7 +1077,7 @@ function DirectionsView(_: ViewProps) {
         <div class="route-actions">
           {r &&
             (startable ? (
-              <button class="btn primary big" onClick={() => open({ kind: 'navigate', props: { route: r, destination: to.value?.kind === 'place' ? to.value.place : null } })}>
+              <button class="btn primary big" onClick={() => open({ kind: 'navigate', props: { route: r, destination, waypoints: [coordOf(from.value), ...viaCoords(), coordOf(to.value)].filter(Boolean) } })}>
                 <Icon name="navigation" size={20} />
                 יציאה לדרך
               </button>
@@ -800,6 +1087,12 @@ function DirectionsView(_: ViewProps) {
                 ניווט מהמיקום שלי
               </button>
             ))}
+          {r && (
+            <button class="btn big" onClick={() => open({ kind: 'navigate', props: { route: r, destination, simulate: true } })}>
+              <Icon name="play_arrow" size={20} />
+              תצוגה מקדימה
+            </button>
+          )}
           <button class={`btn big ${it ? 'primary' : ''}`} aria-expanded={showSteps.value} onClick={() => (showSteps.value = !showSteps.value)}>
             <Icon name="route" size={20} />
             {showSteps.value ? 'הסתרת השלבים' : 'שלבים'}
@@ -863,6 +1156,7 @@ export default defineFeature({
     map = ctx.map;
     ctx.registerView('directions', DirectionsView, { hideTop: true });
     ctx.registerFab({ id: 'directions', order: 1, Component: DirectionsFab });
+    ctx.registerHomeSection({ id: 'recent-routes', order: 20, Component: RecentRoutes });
 
     ctx.onStyle((m) => {
       setGeoJSON(m, 'routes', EMPTY);
@@ -908,9 +1202,10 @@ export default defineFeature({
     // Opening the screen with a destination (from a place card, or a link).
     currentView.subscribe((v) => {
       if (v.kind === 'directions') {
-        const p = v.props as { to?: Place; from?: Place } | undefined;
+        const p = v.props as { to?: Place; from?: Place; mode?: DirectionsMode } | undefined;
         if (p?.to) {
           batch(() => {
+            if (p.mode) mode.value = p.mode;
             to.value = { kind: 'place', place: p.to! };
             from.value = p.from ? { kind: 'place', place: p.from } : { kind: 'me' };
           });

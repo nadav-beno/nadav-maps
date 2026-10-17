@@ -182,18 +182,30 @@ export async function transitPlan(
   ctx: ToolContext,
   from: LngLat,
   to: LngLat,
-  opts: { time?: string; arriveBy?: boolean; maxItineraries?: number; wheelchair?: boolean },
+  opts: { time?: string; arriveBy?: boolean; maxItineraries?: number; wheelchair?: boolean; fewerTransfers?: boolean; lessWalking?: boolean },
 ): Promise<TransitItinerary[]> {
   const params = new URLSearchParams({ fromPlace: place(from), toPlace: place(to), detailedTransfers: 'false', numItineraries: String(opts.maxItineraries ?? 5) });
   if (opts.time) params.set('time', opts.time);
   if (opts.arriveBy) params.set('arriveBy', 'true');
   if (opts.wheelchair) params.set('pedestrianProfile', 'WHEELCHAIR');
+  // Shorter walks to the first stop and from the last one (MOTIS defaults to 15 minutes).
+  if (opts.lessWalking) {
+    params.set('maxPreTransitTime', '600');
+    params.set('maxPostTransitTime', '600');
+  }
   params.set('language', ctx.lang);
   const res = await motis<{ itineraries?: MotisItinerary[]; direct?: MotisItinerary[] }>(ctx, 'plan', params);
   // Walking only is the "direct" answer; keep it when it's the sensible choice.
   const its = (res.itineraries ?? []).map(motisItinerary);
   const direct = (res.direct ?? []).map(motisItinerary).filter((d) => d.legs.every((l) => l.kind === 'walk'));
-  return [...its, ...direct.filter((d) => !its.length || d.durationS < Math.min(...its.map((i) => i.durationS)))].slice(0, opts.maxItineraries ?? 5);
+  const all = [...its, ...direct.filter((d) => !its.length || d.durationS < Math.min(...its.map((i) => i.durationS)))];
+  return sortItineraries(all, opts).slice(0, opts.maxItineraries ?? 5);
+}
+
+/** The user's transit preferences decide the order; ties keep the faster journey first. */
+export function sortItineraries(its: TransitItinerary[], o: { fewerTransfers?: boolean; lessWalking?: boolean }): TransitItinerary[] {
+  if (!o.fewerTransfers && !o.lessWalking) return its;
+  return [...its].sort((a, b) => (o.fewerTransfers ? a.transfers - b.transfers : 0) || (o.lessWalking ? Math.round((a.walkM - b.walkM) / 200) : 0) || a.durationS - b.durationS);
 }
 
 export async function transitDepartures(ctx: ToolContext, at: { stopId?: string; center?: LngLat; radiusM?: number }, n: number, time?: string): Promise<Departure[]> {

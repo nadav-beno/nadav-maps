@@ -1,4 +1,4 @@
-import { signal } from '@preact/signals';
+import { signal, useSignal } from '@preact/signals';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import {
   back,
@@ -7,8 +7,10 @@ import {
   featureCatalog,
   flagOverrides,
   isEnabled,
+  embedded,
   open,
   providers,
+  toast,
   theme,
   unitsPref,
   type ThemePref,
@@ -202,6 +204,56 @@ function AboutView(_: ViewProps) {
   );
 }
 
+const EMBED_SIZES = [
+  { id: 's', label: 'קטן', w: 400, h: 300 },
+  { id: 'm', label: 'בינוני', w: 600, h: 450 },
+  { id: 'l', label: 'גדול', w: 800, h: 600 },
+] as const;
+
+/** iframe code for the current map view (and the place or route shown), like Google's "Embed a map". */
+export function embedCode(href: string, w: number, h: number): string {
+  const u = new URL(href);
+  u.searchParams.set('embed', '1');
+  const src = u.toString().replace(/&/g, '&amp;').replace(/"/g, '%22');
+  return `<iframe src="${src}" width="${w}" height="${h}" style="border:0" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade" title="מפה"></iframe>`;
+}
+
+function EmbedView({ view }: ViewProps<{ href?: string }>) {
+  const size = useSignal<(typeof EMBED_SIZES)[number]['id']>('m');
+  // The address of the screen that opened this one (the map behind the menu).
+  const href = view.props?.href ?? location.href;
+  const s = EMBED_SIZES.find((x) => x.id === size.value)!;
+  const code = embedCode(href, s.w, s.h);
+  return (
+    <div class="view">
+      <Header title="הטמעת מפה באתר" />
+      <p class="muted small">מעתיקים את הקוד לאתר שלכם, והמפה מופיעה בו באזור שמוצג עכשיו. אפשר להזיז ולהגדיל אותה, ולחיצה על "פתיחה במפות נדב" פותחת את האפליקציה המלאה.</p>
+      <div class="chips" role="radiogroup" aria-label="גודל">
+        {EMBED_SIZES.map((x) => (
+          <button key={x.id} class="chip" role="radio" aria-checked={size.value === x.id} aria-pressed={size.value === x.id} onClick={() => (size.value = x.id)}>
+            {x.label} ({x.w}×{x.h})
+          </button>
+        ))}
+      </div>
+      <textarea class="input code" dir="ltr" rows={5} readOnly aria-label="קוד להטמעה" value={code} onFocus={(e) => (e.target as HTMLTextAreaElement).select()} />
+      <button
+        class="btn primary"
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(code);
+            toast('הקוד הועתק');
+          } catch {
+            toast('ההעתקה נחסמה. סמנו את הקוד והעתיקו ידנית.');
+          }
+        }}
+      >
+        <Icon name="content_copy" size={18} />
+        העתקת הקוד
+      </button>
+    </div>
+  );
+}
+
 export default defineFeature({
   id: 'settings',
   title: 'הגדרות ומידע',
@@ -212,12 +264,14 @@ export default defineFeature({
     ctx.registerView('install', InstallView);
     ctx.registerView('privacy', PrivacyView);
     ctx.registerView('about', AboutView);
+    ctx.registerView('embed', EmbedView);
+    ctx.registerMenuItem({ id: 'embed', label: 'הטמעת מפה באתר', icon: 'code', order: 87, run: () => open({ kind: 'embed', props: { href: location.href } }) });
     ctx.registerMenuItem({ id: 'settings', label: 'הגדרות', icon: 'settings', order: 80, run: () => open({ kind: 'settings' }) });
     ctx.registerSlot('overlay', InstallSheet, 40);
     if (installInfo().method !== 'installed') {
       ctx.registerMenuItem({ id: 'install', label: 'התקנה כאפליקציה', icon: 'mobile_arrow_down', order: 85, run: () => open({ kind: 'install' }) });
       // Opened on a specific screen (e.g. ?panel=install): no hint on top of it this time.
-      if (!ctx.initialUrl.panel) scheduleInstallHint();
+      if (!ctx.initialUrl.panel && !embedded.peek()) scheduleInstallHint();
     }
     ctx.registerMenuItem({
       id: 'report',

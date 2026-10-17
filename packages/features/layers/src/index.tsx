@@ -1,5 +1,6 @@
 import { signal } from '@preact/signals';
 import { back, defineFeature, Icon, mapLayers, mapType, open, region, type FeatureContext, type MapLayers, type MapTypePref, type ViewProps } from '@nm/core/app';
+import { addAirLayers, AirLegend, airOn, hasAir, refreshAir } from './air.tsx';
 import { currentTraffic, hasTraffic, onTrafficClick, PROVIDER_NAME, syncTraffic, TrafficIncidentView, trafficOn, TrafficToggle } from './traffic.tsx';
 
 let map: FeatureContext['map'];
@@ -51,6 +52,19 @@ function LayersView(_: ViewProps) {
             {d.label}
           </button>
         ))}
+        {hasAir() && (
+          <button
+            class="layer-opt"
+            aria-pressed={airOn.value}
+            onClick={() => {
+              airOn.value = !airOn.value;
+              refreshAir(map);
+            }}
+          >
+            <span class="layer-thumb thumb-air" />
+            איכות אוויר
+          </button>
+        )}
         {hasTraffic() && (
           <TrafficToggle
             onToggle={() => {
@@ -61,6 +75,7 @@ function LayersView(_: ViewProps) {
         )}
       </div>
       {hasTraffic() && trafficOn.value && <TrafficNote />}
+      <AirLegend />
       {mapType.value === 'satellite' && (
         <p class="muted small">
           תצלומי לוויין Sentinel-2 (רזולוציה של 10 מטר לפיקסל): מתאימים למבט על אזורים, לא לזיהוי בתים. תצלומים מפורטים יותר דורשים רישיון בתשלום.
@@ -114,6 +129,13 @@ export default defineFeature({
     ctx.registerView('layers', LayersView);
     ctx.registerSlot('controls', LayersButton, 0);
     ctx.registerSlot('controls', Compass, 10);
+    if (hasAir()) {
+      ctx.onStyle((m) => {
+        addAirLayers(m);
+        if (airOn.peek()) refreshAir(m);
+      });
+      ctx.map.on('moveend', () => airOn.peek() && refreshAir(ctx.map));
+    }
     if (hasTraffic()) {
       ctx.registerView('traffic-incident', TrafficIncidentView);
       ctx.onStyle(syncTraffic);

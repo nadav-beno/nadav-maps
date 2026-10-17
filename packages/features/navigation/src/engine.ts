@@ -65,6 +65,7 @@ export function progressOn(route: Route, cum: number[], pos: LngLat, lastSegment
 /** Announcement distances (meters before the maneuver) by mode. */
 export const PROMPTS: Record<Route['mode'], number[]> = {
   car: [1500, 400, 80],
+  motorcycle: [1500, 400, 80],
   bike: [300, 60],
   walk: [120, 25],
 };

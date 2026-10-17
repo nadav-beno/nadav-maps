@@ -11,3 +11,7 @@ export { motisItinerary, motisDeparture, transitMode } from './providers/transit
 export { parseIncident, NO_KEY_MESSAGE, type TrafficIncident, type TrafficTime } from './providers/tomtom.ts';
 export { parseHereIncident, hereRouteSummary } from './providers/here.ts';
 export { parseAdsb, callsignCandidates, type AircraftPosition, type FlightLookup } from './providers/adsb.ts';
+export { aqiLabel, type AirQuality } from './providers/air-quality.ts';
+export { type Photo } from './providers/commons.ts';
+export { costingOptions, speedLimitsOf, lanesOf } from './providers/valhalla.ts';
+export { sortItineraries } from './providers/transitous.ts';

@@ -9,6 +9,7 @@ import {
   directionsTo,
   ensureLayer,
   EMPTY,
+  incognito,
   open,
   openPlace,
   selectedPlace,
@@ -28,11 +29,18 @@ import {
   deleteList,
   encodeList,
   fromGeoJSON,
+  lastListId,
+  LIST_ICONS,
   listsContaining,
+  noteOf,
+  quickSave,
   renameList,
   restoreList,
   savedIds,
   setHomeWork,
+  setLabel,
+  setListIcon,
+  setNote,
   toGeoJSON,
   toggleInList,
   type SavedList,
@@ -41,7 +49,16 @@ import {
 
 let map: MapLibreMap;
 
-function PlaceRow({ p, onRemove }: { p: Place; onRemove?: () => void }) {
+/** A list's emoji in its coloured circle, like Google's list badges. */
+function ListBadge({ l }: { l: Pick<SavedList, 'icon' | 'color'> }) {
+  return (
+    <span class="li-icon list-badge" aria-hidden="true" style={l.color ? { background: `${l.color}22`, boxShadow: `inset 0 0 0 1.5px ${l.color}` } : undefined}>
+      {l.icon}
+    </span>
+  );
+}
+
+function PlaceRow({ p, onRemove, onNote, editingNote, onNoteDone }: { p: Place & { note?: string }; onRemove?: () => void; onNote?: () => void; editingNote?: boolean; onNoteDone?: (note: string) => void }) {
   const u = userLocation.value;
   return (
     <li class="row-with-action">
@@ -56,9 +73,27 @@ function PlaceRow({ p, onRemove }: { p: Place; onRemove?: () => void }) {
         <span class="li-body">
           <div class="li-title">{p.name}</div>
           <div class="li-sub">{[categoryLabel(p.category), p.address].filter(Boolean).join(' · ')}</div>
+          {p.note && !editingNote && <div class="li-note">{p.note}</div>}
         </span>
         {u && <span class="li-end">{formatDistance(distance([u.lng, u.lat], [p.lng, p.lat]), units.value)}</span>}
       </button>
+      {editingNote && (
+        <input
+          class="input note-input"
+          autoFocus
+          aria-label={`הערה ל${p.name}`}
+          placeholder="הערה"
+          maxLength={500}
+          value={p.note ?? ''}
+          onBlur={(e) => onNoteDone?.((e.target as HTMLInputElement).value)}
+          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+        />
+      )}
+      {onNote && !editingNote && (
+        <button class="icon-btn" aria-label={`הערה ל${p.name}`} onClick={onNote}>
+          <Icon name="edit" size={20} />
+        </button>
+      )}
       {onRemove && (
         <button class="icon-btn" aria-label={`הסרת ${p.name}`} onClick={onRemove}>
           <Icon name="delete" size={20} />
@@ -71,8 +106,14 @@ function PlaceRow({ p, onRemove }: { p: Place; onRemove?: () => void }) {
 // ----- "Save" on the place card -----
 function SaveAction({ place }: { place: Place }) {
   const saved = savedIds.value.has(place.id);
+  // One tap saves to the last list used, with "Change" to pick others (Google's flow).
+  const onClick = () => {
+    if (saved) return open({ kind: 'save-to', props: { place } });
+    const l = quickSave(place);
+    toast(`נשמר ב${l.name} ${l.icon}`, { label: 'שינוי', run: () => open({ kind: 'save-to', props: { place } }) }, 5000);
+  };
   return (
-    <button class={`action ${saved ? 'primary' : ''}`} aria-pressed={saved} onClick={() => open({ kind: 'save-to', props: { place } })}>
+    <button class={`action ${saved ? 'primary' : ''}`} aria-pressed={saved} onClick={onClick}>
       <Icon name={saved ? 'bookmark' : 'bookmark_outline'} />
       {saved ? 'נשמר' : 'שמירה'}
     </button>
@@ -98,8 +139,14 @@ function SaveToView({ view }: ViewProps<{ place: Place }>) {
         {d.lists.map((l) => (
           <li key={l.id}>
             <label class="list-item checkable">
-              <input type="checkbox" checked={inLists.includes(l.id)} onChange={() => toggleInList(l.id, place)} />
-              <span class="li-icon" aria-hidden="true">{l.icon}</span>
+              <input
+                type="checkbox"
+                checked={inLists.includes(l.id)}
+                onChange={() => {
+                  if (toggleInList(l.id, place)) lastListId.value = l.id;
+                }}
+              />
+              <ListBadge l={l} />
               <span class="li-body">
                 <div class="li-title">{l.name}</div>
                 <div class="li-sub">{l.places.length} מקומות</div>
@@ -115,6 +162,7 @@ function SaveToView({ view }: ViewProps<{ place: Place }>) {
           if (!newName.value.trim()) return;
           const l = createList(newName.value);
           toggleInList(l.id, place);
+          lastListId.value = l.id;
           newName.value = '';
         }}
       >
@@ -234,7 +282,7 @@ function SavedView(_: ViewProps) {
         {d.lists.map((l) => (
           <li key={l.id}>
             <button class="list-item" onClick={() => open({ kind: 'list', props: { id: l.id } })}>
-              <span class="li-icon" aria-hidden="true">{l.icon}</span>
+              <ListBadge l={l} />
               <span class="li-body">
                 <div class="li-title">{l.name}</div>
                 <div class="li-sub">{l.places.length} מקומות</div>
@@ -257,6 +305,16 @@ function SavedView(_: ViewProps) {
           יצירה
         </button>
       </form>
+      {Object.keys(d.labels ?? {}).length > 0 && (
+        <>
+          <h3 class="section-title">מתויגים</h3>
+          <ul class="list">
+            {Object.values(d.labels ?? {}).map((x) => (
+              <PlaceRow key={x.place.id} p={{ ...x.place, name: x.label, address: x.place.name }} onRemove={() => setLabel(x.place, undefined)} />
+            ))}
+          </ul>
+        </>
+      )}
       {fileInput}
       <label class="btn small" for="import-geojson">
         <Icon name="upload" size={18} /> ייבוא קובץ GeoJSON
@@ -297,6 +355,8 @@ function ListView({ view }: ViewProps<{ id?: string; shared?: { name: string; pl
     ? { id: 'shared', name: shared.name, icon: '🔗', places: shared.places, createdAt: Date.now() }
     : data.value.lists.find((l) => l.id === props.id);
   const editing = useSignal(false);
+  const picking = useSignal(false);
+  const noteFor = useSignal<string | null>(null);
   if (!list) {
     return (
       <div class="view empty">
@@ -385,6 +445,12 @@ function ListView({ view }: ViewProps<{ id?: string; shared?: { name: string; pl
           <Icon name="map" />
           במפה
         </button>
+        {!shared && (
+          <button class="action" aria-expanded={picking.value} onClick={() => (picking.value = !picking.value)}>
+            <span class="circle" aria-hidden="true">{list.icon}</span>
+            סמל
+          </button>
+        )}
         {!shared && !list.builtIn && (
           <>
             <button class="action" onClick={() => (editing.value = true)}>
@@ -405,12 +471,100 @@ function ListView({ view }: ViewProps<{ id?: string; shared?: { name: string; pl
           </>
         )}
       </div>
+      {picking.value && (
+        <div class="emoji-picker" role="group" aria-label="בחירת סמל לרשימה">
+          {LIST_ICONS.map((e) => (
+            <button
+              key={e}
+              class="emoji-btn"
+              aria-pressed={list.icon === e}
+              onClick={() => {
+                setListIcon(list.id, e);
+                picking.value = false;
+              }}
+            >
+              {e}
+            </button>
+          ))}
+        </div>
+      )}
       {list.places.length === 0 && <p class="muted">עוד אין כאן מקומות. בכרטיס של כל מקום יש כפתור שמירה.</p>}
       <ul class="list">
         {list.places.map((p) => (
-          <PlaceRow key={p.id} p={p} onRemove={shared ? undefined : () => toggleInList(list.id, p)} />
+          <PlaceRow
+            key={p.id}
+            p={p}
+            onRemove={shared ? undefined : () => toggleInList(list.id, p)}
+            onNote={shared ? undefined : () => (noteFor.value = p.id)}
+            editingNote={noteFor.value === p.id}
+            onNoteDone={(n) => {
+              setNote(p.id, n);
+              noteFor.value = null;
+            }}
+          />
         ))}
       </ul>
+    </div>
+  );
+}
+
+/** On the place card: a private label, and a note when the place is saved. */
+function PersonalSection({ place }: { place: Place }) {
+  const d = data.value;
+  const label = d.labels?.[place.id]?.label;
+  const saved = savedIds.value.has(place.id);
+  const note = saved ? noteOf(place.id) : undefined;
+  const editing = useSignal<'label' | 'note' | null>(null);
+  const field = (kind: 'label' | 'note', value: string | undefined, placeholder: string) => (
+    <input
+      class="input"
+      autoFocus
+      aria-label={placeholder}
+      placeholder={placeholder}
+      maxLength={kind === 'label' ? 40 : 500}
+      value={value ?? ''}
+      onBlur={(e) => {
+        const v = (e.target as HTMLInputElement).value;
+        if (kind === 'label') setLabel(place, v);
+        else setNote(place.id, v);
+        editing.value = null;
+      }}
+      onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+    />
+  );
+  return (
+    <div class="personal-section">
+      {editing.value === 'label' ? (
+        field('label', label, 'תווית פרטית (למשל "אמא")')
+      ) : (
+        <button class="detail-row link-row" onClick={() => (editing.value = 'label')}>
+          <Icon name="label" size={20} />
+          <span>{label ? `תווית: ${label}` : 'הוספת תווית פרטית'}</span>
+        </button>
+      )}
+      {saved &&
+        (editing.value === 'note' ? (
+          field('note', note, 'הערה למקום')
+        ) : (
+          <button class="detail-row link-row" onClick={() => (editing.value = 'note')}>
+            <Icon name="edit" size={20} />
+            <span>{note ? note : 'הוספת הערה'}</span>
+          </button>
+        ))}
+    </div>
+  );
+}
+
+/** While incognito is on, a pill under the search bar says so and turns it off. */
+function IncognitoBanner() {
+  if (!incognito.value) return null;
+  return (
+    <div class="loc-notice incognito-pill" role="status">
+      <Icon name="visibility_off" size={18} />
+      <span>גלישה בסתר: החיפושים והמקומות לא נשמרים</span>
+      <button class="link-like small" onClick={() => (incognito.value = false)}>
+        כיבוי
+      </button>
     </div>
   );
 }
@@ -422,9 +576,14 @@ function drawSaved() {
   const d = data.value;
   if (d.home) seen.set(d.home.id, { ...d.home, icon: '🏠' });
   if (d.work) seen.set(d.work.id, { ...d.work, icon: '💼' });
+  for (const [id, x] of Object.entries(d.labels ?? {})) if (!seen.has(id)) seen.set(id, { ...x.place, icon: '🏷️' });
   setGeoJSON(map, 'saved-places', {
     type: 'FeatureCollection',
-    features: [...seen.values()].map((p) => ({ type: 'Feature', properties: { id: p.id, name: p.name, icon: p.icon }, geometry: { type: 'Point', coordinates: [p.lng, p.lat] } })),
+    features: [...seen.values()].map((p) => ({
+      type: 'Feature',
+      properties: { id: p.id, name: p.name, icon: p.icon, ...(d.labels?.[p.id] ? { label: d.labels[p.id].label } : {}) },
+      geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+    })),
   });
 }
 
@@ -438,6 +597,18 @@ export default defineFeature({
     ctx.registerView('list', ListView);
     ctx.registerView('save-to', SaveToView);
     ctx.registerPlaceAction({ id: 'save', order: 0, Component: SaveAction });
+    ctx.registerPlaceSection({ id: 'personal', order: 5, Component: PersonalSection });
+    ctx.registerSlot('top', IncognitoBanner, 60);
+    ctx.registerMenuItem({
+      id: 'incognito',
+      label: 'גלישה בסתר',
+      icon: 'visibility_off',
+      order: 12,
+      run: () => {
+        incognito.value = !incognito.peek();
+        toast(incognito.peek() ? 'גלישה בסתר פעילה: חיפושים, מקומות ומסלולים לא יישמרו' : 'גלישה בסתר כובתה');
+      },
+    });
     ctx.registerHomeSection({ id: 'saved', order: 10, Component: HomeShortcuts });
     ctx.registerMenuItem({ id: 'saved', label: 'שמורים ורשימות', icon: 'bookmarks', order: 10, run: () => open({ kind: 'saved' }) });
     ctx.registerTab({ id: 'saved', label: 'שמורים', icon: 'bookmark', order: 10, view: 'saved' });
@@ -450,7 +621,8 @@ export default defineFeature({
         source: 'saved-places',
         minzoom: 9,
         layout: {
-          'text-field': ['get', 'icon'],
+          // A labelled place shows its private name next to the icon.
+          'text-field': ['case', ['has', 'label'], ['concat', ['get', 'icon'], ' ', ['get', 'label']], ['get', 'icon']] as never,
           'text-size': 18,
           'text-allow-overlap': true,
           'text-ignore-placement': true,
@@ -465,7 +637,7 @@ export default defineFeature({
       if (!f) return;
       const id = String(f.properties.id);
       const d = data.value;
-      const p = [d.home, d.work, ...d.lists.flatMap((l) => l.places)].find((x) => x?.id === id);
+      const p = [d.home, d.work, ...d.lists.flatMap((l) => l.places), ...Object.values(d.labels ?? {}).map((x) => x.place)].find((x) => x?.id === id);
       if (p) {
         openPlace(p);
         return true;
