@@ -1,6 +1,5 @@
 {
   "type": "FeatureCollection",
-  "unlocated_count": 1,
   "features": [
     {
       "type": "Feature",
@@ -11,17 +10,30 @@
         "provider_incident_id": "test-1",
         "message_id": "test-1",
         "type": "Traffic Accident",
+        "severity": null,
         "description": "Test announcement: one lane of the road is closed.",
         "location_description": "Test Road",
         "direction_description": "Kowloon bound",
         "provider_status": "NEW",
-        "status": "open",
-        "announced_at": "2026-10-18T05:30:00Z",
+        "status": "active",
+        "announced_at": 1792215000,
         "start_time": null,
         "end_time": null,
-        "severity": null,
-        "location_status": "provided"
+        "location_status": "provider_coordinates"
       }
     }
-  ]
+  ],
+  "total": 1,
+  "offset": 0,
+  "next_offset": null,
+  "version": "test-1",
+  "server_time": 1792217100,
+  "fetched_at": "2026-10-17T06:05:00.000Z",
+  "stale": false,
+  "source_status": "ok",
+  "unlocated_count": 1,
+  "rejected_count": 0,
+  "coverage_country_codes": ["HK"],
+  "attribution": "Traffic announcements: Transport Department, Government of the Hong Kong SAR; DATA.GOV.HK.",
+  "terms_urls": ["https://data.gov.hk/en/terms-and-conditions"]
 }

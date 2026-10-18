@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { atlasStatus, INCIDENTS, SEGMENT_AT, stubAtlas } from './atlas-scene.ts';
+import { atlasStatus, INCIDENTS, packStatus, SEGMENT_AT, stubAtlas } from './atlas-scene.ts';
 import { stubNetwork } from './stubs.ts';
 
 /** Atlas, our own traffic service, with all its requests answered from its archived fixtures. */
@@ -53,6 +53,30 @@ test('atlas: measured speeds in Hong Kong, new snapshots through setTiles, kept 
   await page.getByRole('radio', { name: 'לוויין' }).click();
   await expect.poll(() => hasLayer(page)).toBe(true);
   await expect.poll(() => tileTemplate(page)).toContain('v=v2');
+});
+
+test('atlas: Atlas fixture pack, fresh tile drawn at z14, its stale, error and unavailable statuses hidden', async ({ page }) => {
+  const atlas = await stubAtlas(page, { status: packStatus('ok'), tiles: 'fresh' });
+  await page.goto(`./?atlas=test#14/${SEGMENT_AT[1]}/${SEGMENT_AT[0]}`);
+  await trafficOn(page);
+  await expect.poll(() => rendered(page)).toBeGreaterThan(0);
+  expect(atlas.requests.some((r) => r.path === '/api/v1/tiles/flow/14/13389/7148.pbf' && r.v === '111111111111111111111111')).toBe(true);
+
+  const check = async () => page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  for (const name of ['stale', 'error'] as const) {
+    atlas.status = packStatus(name);
+    await check();
+    await expect(page.getByText(/הנתונים של Atlas לא עדכניים \(המדידה האחרונה ב-/)).toBeVisible();
+    await expect.poll(() => hasLayer(page)).toBe(false);
+    atlas.status = packStatus('ok');
+    await check();
+    await expect.poll(() => hasLayer(page)).toBe(true);
+  }
+  // No data at all: unavailable, not "old data".
+  atlas.status = packStatus('unavailable');
+  await check();
+  await expect(page.getByText('Atlas לא זמין כרגע, ולכן הנתונים שלו לא מוצגים.')).toBeVisible();
+  expect(await hasLayer(page)).toBe(false);
 });
 
 test('atlas: stale tile features and a stale snapshot are hidden', async ({ page }) => {
@@ -116,6 +140,16 @@ test('atlas: official incident announcements as icons with their details', async
   await expect(page.getByText('Test announcement: one lane of the road is closed.')).toBeVisible();
   await expect(page.getByText('Test Road · Kowloon bound')).toBeVisible();
   await expect(page.getByText(/^הוכרז ב-/)).toBeVisible();
+});
+
+test('atlas: a stale incidents answer shows no announcement and says so', async ({ page }) => {
+  const atlas = await stubAtlas(page, { status: atlasStatus(), tiles: 'fresh', incidents: { ...INCIDENTS, stale: true, source_status: 'stale' } });
+  await page.goto(`./?atlas=test${kowloon}`);
+  await trafficOn(page);
+  await expect(page.getByText('הודעות התנועה הרשמיות לא עדכניות כרגע, ולכן לא מוצגות.')).toBeVisible();
+  expect(atlas.requests.filter((r) => r.path === '/api/v1/incidents').length).toBe(1);
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => (window as unknown as W).map.queryRenderedFeatures({ layers: ['atlas-incidents'] }).length)).toBe(0);
 });
 
 test('atlas: Israel has no Atlas coverage and asks for no tiles', async ({ page }) => {

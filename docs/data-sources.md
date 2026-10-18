@@ -184,13 +184,16 @@ What it really offers today, and how the app uses it (`packages/core/src/atlas.t
   and a `tiles_version` and coverage exist; a new version swaps the tile template with `setTiles`.
   The layer hides itself at `stale_after`, converted to the device clock with `server_time` (midpoint
   of the request), even if later reads fail. Otherwise the layers screen says it is stale,
-  unavailable or refused (401/403, no retries).
+  unavailable (also `source_status: unavailable`, which comes with `stale: true` but has no data at
+  all) or refused (401/403, no retries).
 - **Refresh on read:** Atlas fetches new data when it is read (no cron, no secret on our side), so the
   first read after a quiet spell can be stale. After a stale answer we read again after 15 seconds,
   up to three times, then every minute.
 - **Incidents:** `GET /api/v1/incidents?key=&bbox=` for Atlas's coverage box, every 5 minutes while
-  Atlas is drawn (the key's JSON quota is shared by all users). Located, open announcements become
-  tappable icons; the details screen shows the source's own English text and the announcement time.
+  Atlas is drawn (the key's JSON quota is shared by all users). Located announcements that are not
+  `closed` become tappable icons; the details screen shows the source's own English text and the
+  announcement time (`announced_at`, epoch seconds). An answer with `stale: true` or a `source_status`
+  other than `ok` shows no icons (the layers screen says so) and is read again after a minute.
   The source has no start, end or severity, so we show none. Announcements without coordinates are
   only counted in the layers screen; we do not geocode their road names.
 - **Direction:** v4 adds `direction`, `one_way` and `driving_side`. We do not offset lines by them:
@@ -206,11 +209,11 @@ What it really offers today, and how the app uses it (`packages/core/src/atlas.t
   so a server-side (REST/MCP) Atlas tool would need that fixed first; the web app is not affected.
 - **Terms:** DATA.GOV.HK and CSDI terms permit redistribution with acknowledgement of the source and
   government ownership, as is, without endorsement; we show Atlas's attribution string and link the terms.
-- **Tests:** `e2e/atlas.spec.ts` answers Atlas offline from `e2e/atlas/`: an archived real
-  observation, a real tile whose feature is stale, and an incidents answer we wrote in the documented
-  v4 shape (`incidents.json`, not a real announcement). Atlas's own v4 fixture pack
-  (`/fixtures/v4/manifest.json`) could not be fetched from the sandbox that wrote the tests.
-  `key=test` does not exist on the real service.
+- **Tests:** `e2e/atlas.spec.ts` answers Atlas offline from `e2e/atlas/`. `e2e/atlas/v4/` is Atlas's
+  own v4 fixture pack, unchanged (statuses ok/stale/error/unavailable, tile 14/13389/7148 fresh, stale
+  and empty); a unit test checks it against its `manifest.json` hashes. `flow-real.json` is the same
+  real observation as GeoJSON for other zooms, and `incidents.json` is an incidents answer we wrote in
+  the OpenAPI shape (not a real announcement). `key=test` does not exist on the real service.
 
 ## Gaps vs Google Maps, and what would close them
 

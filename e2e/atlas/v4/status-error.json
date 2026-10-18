@@ -1,0 +1,54 @@
+{
+  "server_time": 1792217680,
+  "stale_after": 1792217580,
+  "tiles_stale_policy": "status_only",
+  "baseline": {
+    "id": "night-p85-v1",
+    "window_days": 28,
+    "local_hours": "00:00–04:59",
+    "timezone": "Asia/Hong_Kong",
+    "sampling": "one observation per 15-minute UTC slot; speeds rounded to nearest 1 km/h",
+    "quantile": 0.85,
+    "min_nights": 21,
+    "min_span_days": 27,
+    "min_samples": 200,
+    "meaning": "Empirical nighttime reference, not independently verified free-flow speed; ratio=current/reference, not a measured congestion probability.",
+    "eligible_segments": 0,
+    "history_backfill": null
+  },
+  "platform_scope": "global",
+  "stale": true,
+  "partial_stale": false,
+  "observed_at": 1792216980,
+  "tiles_version": "111111111111111111111111",
+  "country_codes": [
+    "HK"
+  ],
+  "source_count": 1,
+  "region_count": 1,
+  "sources_url": "https://atlas-traffic-command.nadav747710.chatgpt.site/api/v1/sources",
+  "regions_url": "https://atlas-traffic-command.nadav747710.chatgpt.site/api/v1/regions",
+  "coverage": {
+    "bbox": [
+      114.20366370164284,
+      22.34055246611459,
+      114.20395267647044,
+      22.341142756839503
+    ],
+    "kind": "matched_road_segments",
+    "geojson_url": "https://atlas-traffic-command.nadav747710.chatgpt.site/api/v1/coverage.geojson?v=111111111111111111111111"
+  },
+  "source_status": "error",
+  "last_success_at": "2026-10-17T06:04:00.000Z",
+  "last_error_at": "2026-10-17T06:14:40.000Z",
+  "scheduler": {
+    "status": "refresh_on_read",
+    "target_interval_seconds": 120,
+    "continuous_when_idle": false
+  },
+  "matched_segments": 1,
+  "unmatched_segments": 0,
+  "redistribution_status": "source_specific",
+  "terms_url": "https://atlas-traffic-command.nadav747710.chatgpt.site/api/v1/sources",
+  "attribution": "Traffic speeds and road geometry: Transport Department, Government of the Hong Kong Special Administrative Region; DATA.GOV.HK and CSDI Portal. Government retains intellectual property ownership. Processed by Atlas; no government endorsement."
+}

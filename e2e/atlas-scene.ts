@@ -6,26 +6,31 @@ import vtpbf from 'vt-pbf';
 
 /**
  * Atlas (Nadav's traffic service) answered offline from the fixtures Atlas ships with its source:
- *   atlas/flow-real.json   one archived real observation (HK segment 103495, 64.5 km/h) with its
- *                          official CENTERLINE geometry, encoded here as a fresh MVT tile;
- *   atlas/traffic-flow-14-13389-7148.pbf   a real tile Atlas served, whose feature is stale=true
- *                          (v3; since v4 tiles always say false, but browsers may still hold old ones);
- *   atlas/incidents.json   an incidents answer in the v4 GeoJSON shape. Written by us from the documented
- *                          fields (the live feed had no located announcement), not a real announcement.
- * Statuses follow the v4 shape (server_time, stale_after). The sandbox that wrote these tests cannot
- * reach Atlas, so Atlas's own v4 fixture pack (<atlas>/fixtures/v4/manifest.json) is not copied here.
- * Only the key "test" is accepted, like the other providers' stubs.
+ *   atlas/v4/              Atlas's own v4 offline fixture pack, unchanged (hashes checked against its
+ *                          manifest.json in packages/core/src/atlas.test.ts): status-ok/stale/error/
+ *                          unavailable.json, and tile 14/13389/7148 as flow-fresh.pbf, flow-stale.pbf
+ *                          (stale=true, which v4 tiles never say but old cached ones may) and flow-empty.pbf;
+ *   atlas/flow-real.json   the same real observation (HK segment 103495, 64.5 km/h) as GeoJSON, encoded
+ *                          here for the other zoom levels;
+ *   atlas/incidents.json   an incidents answer in the OpenAPI shape. Written by us (the live feed had no
+ *                          located announcement), not a real announcement.
+ * The pack's statuses have fixed times; the app hides by server_time and stale_after, so they work
+ * against the real clock. atlasStatus() builds other states. Only the key "test" is accepted.
  */
 export const ATLAS = 'https://atlas-traffic-command.nadav747710.chatgpt.site';
 const dir = join(import.meta.dirname, 'atlas');
 const FLOW = JSON.parse(readFileSync(join(dir, 'flow-real.json'), 'utf8'));
-export const STALE_TILE = readFileSync(join(dir, 'traffic-flow-14-13389-7148.pbf'));
+const pack = (name: string) => readFileSync(join(dir, 'v4', name));
+const PACK_TILE = { fresh: pack('flow-fresh.pbf'), stale: pack('flow-stale.pbf'), empty: pack('flow-empty.pbf') };
+/** A status from Atlas's fixture pack. ok is fresh for 480 s after it is read. */
+export const packStatus = (name: 'ok' | 'stale' | 'error' | 'unavailable'): Record<string, unknown> => JSON.parse(pack(`status-${name}.json`).toString('utf8'));
 export const INCIDENTS = JSON.parse(readFileSync(join(dir, 'incidents.json'), 'utf8'));
 /** Where the fixture segment is (Kowloon). */
 export const SEGMENT_AT: [number, number] = [114.2038, 22.3408];
 
 const index = new geojsonvt(FLOW, { maxZoom: 17, indexMaxZoom: 5, extent: 4096, buffer: 64 });
 function freshTile(z: number, x: number, y: number): Buffer {
+  if (z === 14 && x === 13389 && y === 7148) return PACK_TILE.fresh;
   const t = index.getTile(z, x, y);
   // Atlas answers an empty tile with a zero-length Tile message (no layers).
   return Buffer.from(vtpbf.fromGeojsonVt(t ? { traffic_flow: t } : {}, { version: 2 }));
@@ -62,7 +67,7 @@ export function atlasStatus(over: Record<string, unknown> = {}, { freshS = 600, 
 export interface AtlasStub {
   /** What /api/status answers next: a status object, one made at read time, or an HTTP status number. */
   status: Record<string, unknown> | (() => Record<string, unknown>) | number;
-  /** 'fresh' encodes flow-real.json, 'stale' serves the real stale tile, a number is an HTTP error. */
+  /** 'fresh' serves flow-fresh.pbf (other zooms from flow-real.json), 'stale' flow-stale.pbf, a number an HTTP error. */
   tiles: 'fresh' | 'stale' | number;
   /** What /api/v1/incidents answers (defaults to no announcements). */
   incidents?: Record<string, unknown> | number;
@@ -93,7 +98,7 @@ export async function stubAtlas(page: Page, stub: Omit<AtlasStub, 'requests'>): 
       if (url.searchParams.get('key') !== 'test') return r.fulfill({ status: 401, json: { error: { code: 'invalid_key', message: 'test' } }, headers: cors });
       if (typeof s.tiles === 'number') return r.fulfill({ status: s.tiles, json: { error: { code: 'error', message: 'test' } }, headers: cors });
       const [z, x, y] = [+tile[1], +tile[2], +tile[3]];
-      const body = s.tiles === 'stale' ? (z === 14 && x === 13389 && y === 7148 ? STALE_TILE : Buffer.alloc(0)) : freshTile(z, x, y);
+      const body = s.tiles === 'stale' ? (z === 14 && x === 13389 && y === 7148 ? PACK_TILE.stale : PACK_TILE.empty) : freshTile(z, x, y);
       return r.fulfill({ body, contentType: 'application/vnd.mapbox-vector-tile', headers: cors });
     }
     return r.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'test' } }, headers: cors });

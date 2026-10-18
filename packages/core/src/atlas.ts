@@ -140,7 +140,7 @@ export type AtlasIncident = {
   description: string;
   location: string;
   direction: string;
-  /** When it was announced (ISO), not when it started: the source has no start or end. */
+  /** When it was announced (ISO; Atlas sends epoch seconds), not when it started: the source has no start or end. */
   announcedAt: string | null;
   at: LngLat;
 };
@@ -160,16 +160,32 @@ export function atlasIncidentCategory(heading: string): number {
 const str = (x: unknown) => (typeof x === 'string' ? x.trim() : '');
 const isPoint = (c: unknown): c is LngLat => Array.isArray(c) && c.length >= 2 && isNum(c[0]) && isNum(c[1]) && Math.abs(c[0]) <= 180 && Math.abs(c[1]) <= 90;
 
+/** announced_at is epoch seconds in v4; an ISO string is accepted too. */
+function announcedIso(x: unknown): string | null {
+  if (isNum(x) && x > 0) return new Date(x * 1000).toISOString();
+  return typeof x === 'string' && !Number.isNaN(Date.parse(x)) ? x : null;
+}
+
+export interface AtlasIncidents {
+  incidents: AtlasIncident[];
+  /** How many Atlas said it left out for lack of a location. */
+  unlocated: number;
+  /** Atlas could not refresh the feed (stale, or source_status not ok): nothing is shown from it. */
+  stale: boolean;
+}
+
 /**
- * Validates /api/v1/incidents. Only located, open announcements are kept (a bbox query has no others);
- * unlocated is how many Atlas said it left out for lack of a location.
+ * Validates /api/v1/incidents. Only located announcements that are not closed are kept (a bbox query
+ * has no unlocated ones). A stale answer keeps none: an old announcement on the map reads as current.
  */
-export function parseAtlasIncidents(json: unknown): { incidents: AtlasIncident[]; unlocated: number } | null {
+export function parseAtlasIncidents(json: unknown): AtlasIncidents | null {
   if (!json || typeof json !== 'object') return null;
-  const j = json as { features?: unknown; unlocated_count?: unknown };
+  const j = json as { features?: unknown; unlocated_count?: unknown; stale?: unknown; source_status?: unknown };
   if (!Array.isArray(j.features)) return null;
+  const unlocated = isNum(j.unlocated_count) ? j.unlocated_count : 0;
+  if (j.stale === true || (j.source_status !== undefined && j.source_status !== 'ok')) return { incidents: [], unlocated: 0, stale: true };
   const incidents: AtlasIncident[] = [];
-  for (const f of j.features as { geometry?: { type?: string; coordinates?: unknown }; properties?: Record<string, unknown> }[]) {
+  for (const f of j.features as { geometry?: { type?: string; coordinates?: unknown } | null; properties?: Record<string, unknown> }[]) {
     const p = f?.properties ?? {};
     const g = f?.geometry;
     const at = g?.type === 'Point' ? g.coordinates : g?.type === 'LineString' || g?.type === 'MultiPoint' ? (g.coordinates as unknown[])?.[0] : undefined;
@@ -183,9 +199,9 @@ export function parseAtlasIncidents(json: unknown): { incidents: AtlasIncident[]
       description: str(p.description),
       location: str(p.location_description),
       direction: str(p.direction_description),
-      announcedAt: typeof p.announced_at === 'string' && !Number.isNaN(Date.parse(p.announced_at)) ? p.announced_at : null,
+      announcedAt: announcedIso(p.announced_at),
       at: [at[0], at[1]],
     });
   }
-  return { incidents, unlocated: isNum(j.unlocated_count) ? j.unlocated_count : 0 };
+  return { incidents, unlocated, stale: false };
 }

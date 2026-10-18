@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   atlasClockOffset,
@@ -113,25 +115,36 @@ describe('atlas incidents', () => {
       'https://a.test/api/v1/incidents?key=k&bbox=113.85021,22.23,114.29,22.55&limit=500',
     );
   });
-  it('keeps located, open announcements and counts the unlocated ones', () => {
+  it('keeps located announcements that are not closed and counts the unlocated ones', () => {
     const r = parseAtlasIncidents({
       type: 'FeatureCollection',
       unlocated_count: 1,
       features: [
         {
           geometry: { type: 'Point', coordinates: [114.2, 22.34] },
-          properties: { incident_id: 'a', type: 'Traffic Accident', description: 'Two lanes blocked', location_description: 'Lung Cheung Road', direction_description: 'Kowloon bound', status: 'open', announced_at: '2026-10-18T06:00:00Z', start_time: null, severity: null },
+          properties: { incident_id: 'a', type: 'Traffic Accident', description: 'Two lanes blocked', location_description: 'Lung Cheung Road', direction_description: 'Kowloon bound', status: 'active', announced_at: 1792215000, start_time: null, severity: null },
         },
         { geometry: { type: 'Point', coordinates: [114.2, 22.34] }, properties: { incident_id: 'b', type: 'Road Closure', status: 'closed' } },
-        { geometry: null, properties: { incident_id: 'c', type: 'Road Closure', status: 'open' } },
-        { geometry: { type: 'Point', coordinates: [500, 22] }, properties: { incident_id: 'd', status: 'open' } },
+        { geometry: null, properties: { incident_id: 'c', type: 'Road Closure', status: 'active' } },
+        { geometry: { type: 'Point', coordinates: [500, 22] }, properties: { incident_id: 'd', status: 'unknown' } },
       ],
     })!;
     expect(r.unlocated).toBe(1);
     expect(r.incidents).toEqual([
-      { id: 'a', category: 1, heading: 'Traffic Accident', description: 'Two lanes blocked', location: 'Lung Cheung Road', direction: 'Kowloon bound', announcedAt: '2026-10-18T06:00:00Z', at: [114.2, 22.34] },
+      { id: 'a', category: 1, heading: 'Traffic Accident', description: 'Two lanes blocked', location: 'Lung Cheung Road', direction: 'Kowloon bound', announcedAt: '2026-10-17T05:30:00.000Z', at: [114.2, 22.34] },
     ]);
+    expect(r.stale).toBe(false);
     expect(parseAtlasIncidents({ error: { code: 'unavailable' } })).toBeNull();
+  });
+  it('shows nothing from a stale incidents answer', () => {
+    const one = { geometry: { type: 'Point', coordinates: [114.2, 22.34] }, properties: { incident_id: 'a', type: 'Traffic Accident', status: 'active' } };
+    expect(parseAtlasIncidents({ features: [one], stale: true, source_status: 'ok', unlocated_count: 2 })).toEqual({ incidents: [], unlocated: 0, stale: true });
+    expect(parseAtlasIncidents({ features: [one], stale: false, source_status: 'error' })?.stale).toBe(true);
+    expect(parseAtlasIncidents({ features: [one], stale: false, source_status: 'ok' })?.incidents).toHaveLength(1);
+  });
+  it('reads the e2e incidents fixture (OpenAPI shape)', () => {
+    const r = parseAtlasIncidents(JSON.parse(readFileSync(new URL('../../../e2e/atlas/incidents.json', import.meta.url), 'utf8')))!;
+    expect(r).toMatchObject({ unlocated: 1, stale: false, incidents: [{ id: 'test-1', category: 1, announcedAt: '2026-10-17T05:30:00.000Z' }] });
   });
   it('maps source headings to our categories only on clear words', () => {
     expect(atlasIncidentCategory('Road Closure')).toBe(8);
@@ -139,5 +152,31 @@ describe('atlas incidents', () => {
     expect(atlasIncidentCategory('Road Works')).toBe(9);
     expect(atlasIncidentCategory('Traffic Congestion')).toBe(6);
     expect(atlasIncidentCategory('Special Traffic Arrangement')).toBe(0);
+  });
+});
+
+/** Atlas's own v4 offline fixture pack (e2e/atlas/v4), unchanged: checked against its manifest. */
+describe('atlas v4 fixture pack', () => {
+  const dir = new URL('../../../e2e/atlas/v4/', import.meta.url);
+  const read = (name: string) => readFileSync(new URL(name, dir));
+  const status = (name: string) => parseAtlasStatus(JSON.parse(read(`status-${name}.json`).toString('utf8')));
+  it('matches the manifest hashes', () => {
+    const manifest = JSON.parse(read('manifest.json').toString('utf8')) as { fixture_version: number; files: { name: string; bytes: number; sha256: string }[] };
+    expect(manifest.fixture_version).toBe(4);
+    for (const f of manifest.files) {
+      const b = read(f.name);
+      expect([f.name, b.length, createHash('sha256').update(b).digest('hex')]).toEqual([f.name, f.bytes, f.sha256]);
+    }
+  });
+  it('draws only from the ok status, and hides at its stale_after on Atlas clock', () => {
+    const ok = status('ok')!;
+    expect(atlasUsable(ok)).toBe(true);
+    expect(ok.staleAfter! - ok.serverTime!).toBe(480);
+    // Device clock one hour behind Atlas: hiding still comes 480 s after the read.
+    const at = (ok.serverTime! - 3600) * 1000;
+    expect(atlasHideAt(ok, atlasClockOffset(ok.serverTime!, at, at))! - at).toBe(480_000);
+    for (const n of ['stale', 'error']) expect([n, atlasUsable(status(n))]).toEqual([n, false]);
+    const off = status('unavailable')!;
+    expect([off.sourceStatus, off.coverage, off.tilesVersion, off.staleAfter, atlasUsable(off)]).toEqual(['unavailable', null, null, null, false]);
   });
 });
