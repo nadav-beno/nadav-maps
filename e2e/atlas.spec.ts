@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { atlasStatus, SEGMENT_AT, stubAtlas } from './atlas-scene.ts';
+import { atlasStatus, INCIDENTS, SEGMENT_AT, stubAtlas } from './atlas-scene.ts';
 import { stubNetwork } from './stubs.ts';
 
 /** Atlas, our own traffic service, with all its requests answered from its archived fixtures. */
@@ -76,6 +76,46 @@ test('atlas: stale tile features and a stale snapshot are hidden', async ({ page
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   await expect(page.getByText('Atlas לא זמין כרגע, ולכן הנתונים שלו לא מוצגים.')).toBeVisible();
   expect(await hasLayer(page)).toBe(false);
+});
+
+test('atlas: a stale first read is retried soon, and a snapshot hides at stale_after on Atlas clock even when reads fail', async ({ page }) => {
+  test.setTimeout(60_000);
+  // Atlas's clock is an hour ahead of the device's: hiding by the device clock would never happen.
+  const ahead = { aheadS: 3600 };
+  const atlas = await stubAtlas(page, { status: atlasStatus({ stale: true, source_status: 'stale' }, ahead), tiles: 'fresh' });
+  await page.goto(`./?atlas=test${kowloon}`);
+  await trafficOn(page);
+  await expect(page.getByText(/הנתונים של Atlas לא עדכניים/)).toBeVisible();
+
+  // The read that found it stale started a refresh on Atlas; the next read, sooner than a minute, sees it.
+  atlas.status = () => atlasStatus({}, { ...ahead, freshS: 8 });
+  await expect.poll(() => hasLayer(page), { timeout: 20_000 }).toBe(true);
+  await expect(page.getByText('Atlas: מהירות נמדדת בקמ״ש')).toBeVisible();
+
+  // From now on Atlas cannot be reached, and the snapshot still hides on time.
+  atlas.status = 503;
+  await expect.poll(() => hasLayer(page), { timeout: 12_000 }).toBe(false);
+  await expect(page.getByText(/הנתונים של Atlas לא עדכניים/)).toBeVisible();
+});
+
+test('atlas: official incident announcements as icons with their details', async ({ page }) => {
+  const atlas = await stubAtlas(page, { status: atlasStatus(), tiles: 'fresh', incidents: INCIDENTS });
+  await page.goto(`./?atlas=test${kowloon}`);
+  await trafficOn(page);
+  await expect(page.getByText('הודעת תנועה רשמית אחת בלי מיקום, ולכן לא על המפה.')).toBeVisible();
+  const inc = atlas.requests.filter((r) => r.path === '/api/v1/incidents');
+  expect(inc.length).toBe(1);
+  expect(inc[0]).toMatchObject({ key: 'test', bbox: '113.85,22.23,114.29,22.55', credentials: false });
+  await page.getByRole('region', { name: 'לוח מידע' }).getByLabel('חזרה').click();
+
+  await page.waitForFunction(() => (window as unknown as W).map.queryRenderedFeatures({ layers: ['atlas-incidents'] }).length > 0);
+  const at = await page.evaluate((p) => (window as unknown as { map: { project(p: number[]): { x: number; y: number } } }).map.project(p), SEGMENT_AT);
+  const box = (await page.locator('.maplibregl-canvas').boundingBox())!;
+  await page.mouse.click(box.x + at.x, box.y + at.y);
+  await expect(page.getByRole('heading', { name: 'תאונה' })).toBeVisible();
+  await expect(page.getByText('Test announcement: one lane of the road is closed.')).toBeVisible();
+  await expect(page.getByText('Test Road · Kowloon bound')).toBeVisible();
+  await expect(page.getByText(/^הוכרז ב-/)).toBeVisible();
 });
 
 test('atlas: Israel has no Atlas coverage and asks for no tiles', async ({ page }) => {

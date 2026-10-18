@@ -1,0 +1,27 @@
+{
+  "type": "FeatureCollection",
+  "unlocated_count": 1,
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [114.2038, 22.3408] },
+      "properties": {
+        "incident_id": "test-1",
+        "provider_id": "hk-td-stn",
+        "provider_incident_id": "test-1",
+        "message_id": "test-1",
+        "type": "Traffic Accident",
+        "description": "Test announcement: one lane of the road is closed.",
+        "location_description": "Test Road",
+        "direction_description": "Kowloon bound",
+        "provider_status": "NEW",
+        "status": "open",
+        "announced_at": "2026-10-18T05:30:00Z",
+        "start_time": null,
+        "end_time": null,
+        "severity": null,
+        "location_status": "provided"
+      }
+    }
+  ]
+}

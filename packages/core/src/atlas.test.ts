@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { atlasCovers, atlasCoversPoint, atlasFlowTiles, atlasRetryDelay, atlasStatusUrl, atlasUsable, parseAtlasStatus } from './atlas.ts';
+import {
+  atlasClockOffset,
+  atlasCovers,
+  atlasCoversPoint,
+  atlasFlowTiles,
+  atlasHideAt,
+  atlasIncidentCategory,
+  atlasIncidentsUrl,
+  atlasRetryDelay,
+  atlasStatusUrl,
+  atlasUsable,
+  parseAtlasIncidents,
+  parseAtlasStatus,
+} from './atlas.ts';
 import { providersFromEnv, withDevOverrides } from './config.ts';
 
 /** The public status Atlas published on 2026-10-17 (shape and values as returned). */
@@ -77,5 +90,54 @@ describe('atlasRetryDelay', () => {
     expect(atlasRetryDelay(0, null, () => 0)).toBe(30_000);
     expect(atlasRetryDelay(2, null, () => 0)).toBe(120_000);
     expect(atlasRetryDelay(20, null, () => 0)).toBe(15 * 60_000);
+  });
+});
+
+describe('atlas v4 timing', () => {
+  it('reads server_time and stale_after, and hides on our clock', () => {
+    const s = parseAtlasStatus({ ...STATUS, server_time: 1792245300, stale_after: 1792245780 })!;
+    expect(s).toMatchObject({ serverTime: 1792245300, staleAfter: 1792245780 });
+    expect(parseAtlasStatus(STATUS)).toMatchObject({ serverTime: null, staleAfter: null });
+    // Our clock is an hour behind Atlas's; the request took 200 ms.
+    const sent = 1792245300_000 - 3_600_000 - 100;
+    const offset = atlasClockOffset(1792245300, sent, sent + 200);
+    expect(offset).toBe(3_600_000);
+    expect(atlasHideAt(s, offset)).toBe(1792245780_000 - 3_600_000);
+    expect(atlasHideAt(parseAtlasStatus(STATUS)!, offset)).toBeNull();
+  });
+});
+
+describe('atlas incidents', () => {
+  it('builds the bbox URL with the key', () => {
+    expect(atlasIncidentsUrl('https://a.test/', 'k', [113.850214, 22.23, 114.29, 22.55])).toBe(
+      'https://a.test/api/v1/incidents?key=k&bbox=113.85021,22.23,114.29,22.55&limit=500',
+    );
+  });
+  it('keeps located, open announcements and counts the unlocated ones', () => {
+    const r = parseAtlasIncidents({
+      type: 'FeatureCollection',
+      unlocated_count: 1,
+      features: [
+        {
+          geometry: { type: 'Point', coordinates: [114.2, 22.34] },
+          properties: { incident_id: 'a', type: 'Traffic Accident', description: 'Two lanes blocked', location_description: 'Lung Cheung Road', direction_description: 'Kowloon bound', status: 'open', announced_at: '2026-10-18T06:00:00Z', start_time: null, severity: null },
+        },
+        { geometry: { type: 'Point', coordinates: [114.2, 22.34] }, properties: { incident_id: 'b', type: 'Road Closure', status: 'closed' } },
+        { geometry: null, properties: { incident_id: 'c', type: 'Road Closure', status: 'open' } },
+        { geometry: { type: 'Point', coordinates: [500, 22] }, properties: { incident_id: 'd', status: 'open' } },
+      ],
+    })!;
+    expect(r.unlocated).toBe(1);
+    expect(r.incidents).toEqual([
+      { id: 'a', category: 1, heading: 'Traffic Accident', description: 'Two lanes blocked', location: 'Lung Cheung Road', direction: 'Kowloon bound', announcedAt: '2026-10-18T06:00:00Z', at: [114.2, 22.34] },
+    ]);
+    expect(parseAtlasIncidents({ error: { code: 'unavailable' } })).toBeNull();
+  });
+  it('maps source headings to our categories only on clear words', () => {
+    expect(atlasIncidentCategory('Road Closure')).toBe(8);
+    expect(atlasIncidentCategory('Lane Closure')).toBe(7);
+    expect(atlasIncidentCategory('Road Works')).toBe(9);
+    expect(atlasIncidentCategory('Traffic Congestion')).toBe(6);
+    expect(atlasIncidentCategory('Special Traffic Arrangement')).toBe(0);
   });
 });

@@ -28,7 +28,7 @@ import {
 } from '@nm/core';
 import { back, ICONS, Icon, isDark, load, open, providers, region, save, units, type FeatureContext, type ViewProps } from '@nm/core/app';
 import { tools, trafficIncidents, type TrafficIncident } from '@nm/tools';
-import { atlasConfigured, syncAtlas } from './atlas.tsx';
+import { atlasConfigured, atlasIncidents, syncAtlas } from './atlas.tsx';
 
 /**
  * Live traffic from HERE or TomTom (whichever covers the region on screen and has a key), drawn in
@@ -82,6 +82,41 @@ async function addIncidentImages(m: MapT) {
   );
 }
 
+const ATLAS_INC_SRC = 'atlas-incidents';
+const ATLAS_INC_LAYER = 'atlas-incidents';
+
+/** Atlas's official announcements as tappable icons, in our incident categories' icons. */
+function syncAtlasIncidents(m: MapT, on: boolean) {
+  const list = atlasIncidents.peek().incidents;
+  if (!on || !list.length) {
+    if (m.getLayer(ATLAS_INC_LAYER)) m.removeLayer(ATLAS_INC_LAYER);
+    if (m.getSource(ATLAS_INC_SRC)) m.removeSource(ATLAS_INC_SRC);
+    return;
+  }
+  const data = {
+    type: 'FeatureCollection' as const,
+    features: list.map((x) => ({ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: x.at }, properties: { id: x.id, category: x.category } })),
+  };
+  const src = m.getSource(ATLAS_INC_SRC) as { setData?: (d: unknown) => unknown } | undefined;
+  if (src) src.setData?.(data);
+  else m.addSource(ATLAS_INC_SRC, { type: 'geojson', data });
+  void addIncidentImages(m).then(() => {
+    if (m.getLayer(ATLAS_INC_LAYER) || !m.getSource(ATLAS_INC_SRC)) return;
+    m.addLayer({
+      id: ATLAS_INC_LAYER,
+      type: 'symbol',
+      source: ATLAS_INC_SRC,
+      minzoom: 9,
+      layout: {
+        'icon-image': ['concat', 'tt-inc-', ['to-string', ['get', 'category']]] as never,
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 9, 0.7, 14, 1] as never,
+        'icon-allow-overlap': true,
+        'icon-padding': 0,
+      },
+    });
+  });
+}
+
 function removeTraffic(m: MapT) {
   for (const id of [...FLOW_LAYERS, INC_LAYER]) if (m.getLayer(id)) m.removeLayer(id);
   for (const id of [FLOW_SRC, INC_SRC, HERE_SRC]) if (m.getSource(id)) m.removeSource(id);
@@ -96,6 +131,7 @@ const offsetBy = (side: unknown) => ['interpolate', ['exponential', 1.5], ['zoom
 export function syncTraffic(m: MapT) {
   // Our own Atlas speeds first where it covers the screen; HERE/TomTom flow would draw over them.
   const atlas = syncAtlas(m, trafficOn.peek(), beforeOverlays(m));
+  syncAtlasIncidents(m, atlas);
   const choice = trafficOn.peek() && !atlas ? trafficProvider(region.peek(), providers.peek()) : null;
   const want = choice?.id;
   // Switching provider (panning from Israel to Britain with both keys): start over.
@@ -246,6 +282,12 @@ type IncidentProps = {
 };
 
 export function onTrafficClick(m: MapT, features: { layer: { id: string }; properties: Record<string, unknown>; geometry: { type: string; coordinates?: unknown } }[]): boolean | void {
+  const a = features.find((x) => x.layer.id === ATLAS_INC_LAYER);
+  const incident = a && atlasIncidents.peek().incidents.find((x) => x.id === a.properties.id);
+  if (incident) {
+    open({ kind: 'atlas-incident', props: incident });
+    return true;
+  }
   const f = features.find((x) => x.layer.id === INC_LAYER);
   if (!f) return;
   const p = f.properties;
