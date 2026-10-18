@@ -73,6 +73,9 @@ jobs:
           VITE_TOMTOM_KEY: ${{ vars.VITE_TOMTOM_KEY }}
           # Optional. Empty = no HERE traffic (HERE covers Israel). Same place as above.
           VITE_HERE_KEY: ${{ vars.VITE_HERE_KEY }}
+          # Optional. Empty = no Atlas (our own traffic service, Hong Kong today). Same place as above:
+          # Atlas's publishable read key for https://nadav-beno.github.io.
+          VITE_ATLAS_KEY: ${{ vars.VITE_ATLAS_KEY }}
       - name: Add geodata to the site
         run: |
           if ls geodata-out/*/manifest.json >/dev/null 2>&1; then
