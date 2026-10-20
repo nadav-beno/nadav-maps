@@ -3,7 +3,7 @@ import type {
   LayerSpecification,
   StyleSpecification,
 } from 'maplibre-gl';
-import { BASEMAP_SOURCE, OVERTURE_SOURCE, PROMINENT_GROUPS } from '@nm/core';
+import { BASEMAP_SOURCE, COUNTRY_NAMES, MERGED_TERRITORIES, OVERTURE_SOURCE, PROMINENT_GROUPS } from '@nm/core';
 import { POI_GROUPS, overtureCategoriesIn, overtureColorExpression, overtureIconExpression, poiIconExpression, poiColorExpression } from './poi.ts';
 
 /**
@@ -203,6 +203,26 @@ const zoomExp = (...stops: number[]): ExpressionSpecification =>
   ['interpolate', ['exponential', 1.5], ['zoom'], ...stops] as unknown as ExpressionSpecification;
 
 const cls = (...values: string[]): ExpressionSpecification => ['match', ['get', 'class'], values, true, false];
+// Territories shown as part of another country (packages/core/src/territory.ts): no border
+// between the two and no label of their own.
+const nameIn = (names: string[], ...keys: string[]): ExpressionSpecification =>
+  ['any', ...keys.map((k): ExpressionSpecification => ['in', ['coalesce', ['get', k], ''], ['literal', names]])];
+const mergedBorder: ExpressionSpecification = [
+  'any',
+  ...MERGED_TERRITORIES.flatMap((t): ExpressionSpecification[] => {
+    const other = [...Object.values(COUNTRY_NAMES[t.into] ?? {}), ''];
+    return [
+      ['all', nameIn(t.names, 'adm0_l'), nameIn(other, 'adm0_r')],
+      ['all', nameIn(t.names, 'adm0_r'), nameIn(other, 'adm0_l')],
+      ['all', ['==', ['get', 'disputed'], 1], ['any', ...t.area.map(([w, s, e, n]): ExpressionSpecification => ['within', { type: 'Polygon', coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] }])]],
+    ];
+  }),
+];
+const mergedLabel: ExpressionSpecification = [
+  'any',
+  ['in', ['upcase', ['coalesce', ['get', 'iso_a2'], '']], ['literal', MERGED_TERRITORIES.map((t) => t.code.toUpperCase())]],
+  nameIn(MERGED_TERRITORIES.flatMap((t) => t.names), 'name', 'name:en', 'name_en', 'name:he', 'name:ar', 'name:latin'),
+];
 const notTunnel: ExpressionSpecification = ['!=', ['get', 'brunnel'], 'tunnel'];
 const isBridge: ExpressionSpecification = ['==', ['get', 'brunnel'], 'bridge'];
 
@@ -478,7 +498,7 @@ export function buildStyle(theme: 'light' | 'dark', src: BasemapSources, lang = 
     source: SRC,
     'source-layer': 'boundary',
     minzoom: 4,
-    filter: ['all', ['in', ['get', 'admin_level'], ['literal', [3, 4]]], ['!=', ['get', 'maritime'], 1]],
+    filter: ['all', ['in', ['get', 'admin_level'], ['literal', [3, 4]]], ['!=', ['get', 'maritime'], 1], ['!', mergedBorder]],
     paint: { 'line-color': c.boundary, 'line-opacity': 0.5, 'line-width': zoomLinear(4, 0.6, 12, 1.4), 'line-dasharray': [3, 2] },
   });
   add({
@@ -486,7 +506,7 @@ export function buildStyle(theme: 'light' | 'dark', src: BasemapSources, lang = 
     type: 'line',
     source: SRC,
     'source-layer': 'boundary',
-    filter: ['all', ['==', ['get', 'admin_level'], 2], ['!=', ['get', 'maritime'], 1]],
+    filter: ['all', ['==', ['get', 'admin_level'], 2], ['!=', ['get', 'maritime'], 1], ['!', mergedBorder]],
     paint: {
       'line-color': c.boundary,
       'line-width': zoomLinear(1, 0.8, 6, 1.4, 12, 2.4),
@@ -752,7 +772,7 @@ export function buildStyle(theme: 'light' | 'dark', src: BasemapSources, lang = 
     'source-layer': 'place',
     minzoom: 5,
     maxzoom: 8,
-    filter: cls('state', 'province'),
+    filter: ['all', cls('state', 'province'), ['!', mergedLabel]],
     layout: { 'text-field': name, 'text-font': FONT.regular, 'text-size': 11, 'text-transform': 'uppercase', 'text-letter-spacing': 0.1, 'text-max-width': 8 },
     paint: { 'text-color': c.labelMuted, ...halo },
   });
@@ -762,7 +782,7 @@ export function buildStyle(theme: 'light' | 'dark', src: BasemapSources, lang = 
     source: SRC,
     'source-layer': 'place',
     maxzoom: 9,
-    filter: cls('country'),
+    filter: ['all', cls('country'), ['!', mergedLabel]],
     layout: {
       'text-field': name,
       'text-font': FONT.bold,

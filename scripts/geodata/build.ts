@@ -34,6 +34,7 @@ import {
   type SearchRecord,
 } from '../../packages/core/src/geoindex.ts';
 import { REGIONS, type Region, type RegionGeodata } from '../../packages/core/src/region.ts';
+import { isMergedTerritoryName } from '../../packages/core/src/territory.ts';
 import type { BBox, LngLat } from '../../packages/core/src/types.ts';
 
 // ---------------------------------------------------------------- limits
@@ -474,6 +475,8 @@ export async function buildGeodata(lines: LineSource, opts: BuildOptions): Promi
     if (!point || !Number.isFinite(point[0]) || !inRegion(point)) continue;
 
     const placeKind = tags.place ? PLACE_KIND[tags.place] : undefined;
+    // A territory the map shows as part of its country is not a place of its own (territory.ts).
+    if (placeKind === 'region' && (isMergedTerritoryName(name) || isMergedTerritoryName(tags['name:en']))) continue;
     if (placeKind && name && !isLine && !seen.place.has(sid)) {
       seen.place.add(sid);
       settlements.push({ sid, name, tags: trimTags(tags), kind: placeKind, point, bbox: isArea ? bboxOfPositions(allPositions(g)) : undefined, isArea });

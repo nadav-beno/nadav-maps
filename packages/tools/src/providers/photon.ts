@@ -1,4 +1,4 @@
-import { osmPlaceId, type BBox, type OsmType, type Place } from '@nm/core';
+import { countryName, displayCountry, isMergedTerritoryName, osmPlaceId, type BBox, type OsmType, type Place } from '@nm/core';
 import { getJson, type ToolContext } from '../define.ts';
 
 interface PhotonFeature {
@@ -26,8 +26,22 @@ interface PhotonFeature {
 
 const OSM_TYPE: Record<string, OsmType> = { N: 'node', W: 'way', R: 'relation' };
 
-export function photonToPlace(f: PhotonFeature): Place {
-  const p = f.properties;
+/** A territory the map shows as part of another country (territory.ts) gets that country's name. */
+function asDisplayed(p: PhotonFeature['properties'], lang: string): PhotonFeature['properties'] {
+  const code = p.countrycode?.toLowerCase();
+  const shown = displayCountry(code);
+  if (!code || shown === code) return p;
+  const out = { ...p, countrycode: shown, country: countryName(shown!, lang) ?? p.country };
+  if (isMergedTerritoryName(out.state)) delete out.state;
+  return out;
+}
+
+/** The territory itself (its country or region entry), which the map does not show as a place. */
+const isMergedTerritory = (f: PhotonFeature): boolean =>
+  ['country', 'state', 'region'].includes(f.properties.type ?? f.properties.osm_value ?? '') && isMergedTerritoryName(f.properties.name);
+
+export function photonToPlace(f: PhotonFeature, lang = 'he'): Place {
+  const p = asDisplayed(f.properties, lang);
   const [lng, lat] = f.geometry.coordinates;
   const streetLine = p.street ? `${p.street}${p.housenumber ? ` ${p.housenumber}` : ''}` : undefined;
   const name = p.name ?? streetLine ?? p.city ?? p.state ?? p.country ?? 'מקום';
@@ -72,7 +86,7 @@ export async function photonSearch(
   }
   if (opts.bbox) u.searchParams.set('bbox', opts.bbox.map((n) => n.toFixed(4)).join(','));
   const data = await getJson<{ features: PhotonFeature[] }>(ctx, u.toString(), {}, 'photon');
-  return dedupe(data.features.map(photonToPlace));
+  return dedupe(data.features.filter((f) => !isMergedTerritory(f)).map((f) => photonToPlace(f, ctx.lang)));
 }
 
 export async function photonReverse(ctx: ToolContext, lng: number, lat: number): Promise<Place | null> {
@@ -82,7 +96,7 @@ export async function photonReverse(ctx: ToolContext, lng: number, lat: number):
   u.searchParams.set('limit', '1');
   u.searchParams.set('lang', PHOTON_LANGS.has(ctx.lang) ? ctx.lang : 'default');
   const data = await getJson<{ features: PhotonFeature[] }>(ctx, u.toString(), {}, 'photon');
-  return data.features[0] ? photonToPlace(data.features[0]) : null;
+  return data.features[0] && !isMergedTerritory(data.features[0]) ? photonToPlace(data.features[0], ctx.lang) : null;
 }
 
 /** Photon often returns the same street several times (one per OSM way). */

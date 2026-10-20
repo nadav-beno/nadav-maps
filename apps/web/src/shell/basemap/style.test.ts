@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateStyleMin } from '@maplibre/maplibre-gl-style-spec';
+import { featureFilter, validateStyleMin, type FilterSpecification } from '@maplibre/maplibre-gl-style-spec';
 import { DEFAULT_PROVIDERS } from '@nm/core';
 import { buildStyle } from './style.ts';
 import { overtureIconExpression, poiImageList, POI_GROUPS } from './poi.ts';
@@ -61,6 +61,26 @@ describe('base map style', () => {
     const style = buildStyle('light', DEFAULT_PROVIDERS, 'he');
     const city = style.layers.find((l) => l.id === 'place-city') as { layout: { 'text-field': unknown } };
     expect(JSON.stringify(city.layout['text-field'])).toContain('"name:he"');
+  });
+
+  it('draws no border or label for the Palestinian territories (shown as part of Israel)', () => {
+    const style = buildStyle('light', DEFAULT_PROVIDERS, 'he');
+    const shows = (id: string, properties: Record<string, unknown>, type: 1 | 2 = 2) => {
+      const layer = style.layers.find((l) => l.id === id) as { filter: FilterSpecification };
+      return featureFilter(layer.filter, 'layers[0].filter').filter({ zoom: 8 }, { type, properties, geometry: [] } as never);
+    };
+    const border = (adm0_l: string, adm0_r: string) => shows('boundary-country', { admin_level: 2, maritime: 0, disputed: 0, adm0_l, adm0_r });
+    expect(border('Israel', 'Palestine')).toBe(false);
+    expect(border('Palestinian Territories', 'Israel')).toBe(false);
+    expect(border('ישראל', 'פלסטין')).toBe(false);
+    expect(border('Palestine', 'Jordan')).toBe(true); // the Jordan valley border stays
+    expect(border('Egypt', 'Palestine')).toBe(true); // and so does Gaza's border with Egypt
+    expect(border('Israel', 'Lebanon')).toBe(true);
+    expect(shows('place-country', { class: 'country', iso_a2: 'PS', name: 'فلسطين' }, 1)).toBe(false);
+    expect(shows('place-country', { class: 'country', 'name:en': 'Palestine', name: 'x' }, 1)).toBe(false);
+    expect(shows('place-country', { class: 'country', iso_a2: 'IL', name: 'ישראל' }, 1)).toBe(true);
+    expect(shows('place-state', { class: 'state', name: 'West Bank' }, 1)).toBe(false);
+    expect(shows('place-state', { class: 'state', name: 'Gaza Strip' }, 1)).toBe(false);
   });
 
   it('can run without hill shading', () => {
