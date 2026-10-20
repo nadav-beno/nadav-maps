@@ -7,8 +7,8 @@
 Reads Overture's public GeoParquet (anonymous S3, CDLA-Permissive-2.0; Foursquare rows Apache-2.0)
 with DuckDB, keeps places that are not closed and that Overture is reasonably sure exist, and writes
 the same properties as Overture's own places PMTiles (`@name`, basic_category, confidence, phones...),
-so the app reads both the same way. Adds `name_he` (Hebrew name when known) and a per-feature
-minzoom: well-known kinds of places appear earlier than offices and services.
+so the app reads both the same way. Adds `mz`, the first zoom a place is tiled at (build-all.sh
+filters on it): well-known kinds of places appear earlier than offices and services.
 """
 import argparse
 import json
@@ -99,10 +99,10 @@ with open(a.out, 'w', encoding='utf-8') as f:
                 props['addresses'] = json.dumps(ad, ensure_ascii=False)
             # Well-known places that Overture is sure about first, then the other well-known kinds,
             # then offices and services (the map's own layers add their own zoom limits on top).
-            minzoom = 13 if cat in prom and conf >= 0.7 else 14 if cat in prom else 15
+            # Not tippecanoe's own per-feature minzoom: with it, tippecanoe 2.49 keeps one place per tile.
+            props['mz'] = 13 if cat in prom and conf >= 0.7 else 14 if cat in prom else 15
             f.write(json.dumps({
                 'type': 'Feature',
-                'tippecanoe': {'minzoom': minzoom},
                 'properties': props,
                 'geometry': {'type': 'Point', 'coordinates': [round(row['lng'], 6), round(row['lat'], 6)]},
             }, ensure_ascii=False, default=str))

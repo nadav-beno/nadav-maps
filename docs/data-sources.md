@@ -108,8 +108,9 @@ PMTiles file we build ourselves, not from Overture's unsupported tiles.
   `build.py` (DuckDB) reads the region's bbox, keeps places with a name, `confidence >= 0.4` and not
   `permanently_closed`, writes the same properties as Overture's tiles (`id`, `@name`, `basic_category`,
   `confidence`, phones, websites, socials, emails, brand, first address) with `@name` in Hebrew when Overture
-  has one (`name` keeps the original), and a per-place minzoom (well-known kinds sure to exist at z13, the
-  other well-known kinds at z14, offices and services at z15). `tippecanoe` (Ubuntu package) builds
+  has one (`name` keeps the original), and `mz`, the first zoom a place is tiled at (well-known kinds sure to exist at z13, the
+  other well-known kinds at z14, offices and services at z15; a `-j` zoom filter, because tippecanoe's own
+  per-feature minzoom kept one place per tile). `tippecanoe` (Ubuntu package) builds
   `places.pmtiles` (z13–z15; the map stretches z15 tiles above that). Cached by Overture release + builder
   hash, so it rebuilds once a month; on failure the newest older build is deployed.
 - **On the map** (`apps/web/src/shell/map.ts`, `basemap/style.ts`): the app checks that

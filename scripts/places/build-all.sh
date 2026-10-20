@@ -24,9 +24,10 @@ while read -r id bbox; do
   echo "::group::places $id"
   python3 -I "$ROOT/scripts/places/build.py" $([ -n "${PLACES_INPUT:-}" ] && echo --input "$PLACES_INPUT" || echo --release "$RELEASE") --bbox "$bbox" --prominent "$WORK/prominent.json" --out "$WORK/$id.geojsonseq"
   mkdir -p "$OUT/$id"
-  # Every place is kept from its own minzoom on (-r1); only an over-full tile (a dense mall at z13)
-  # sheds its least important places. Above z15 the map stretches the z15 tiles.
+  # Every place is kept from its own first zoom (`mz`) on (-r1 and the -j filter); only an over-full
+  # tile (a dense mall at z13) sheds places. Above z15 the map stretches the z15 tiles.
   tippecanoe -q --force -o "$OUT/$id/places.pmtiles" -l place -Z13 -z15 -r1 --drop-densest-as-needed \
+    -j '{"place":["any",["<=","mz",13],["all",["==","mz",14],[">=","$zoom",14]],[">=","$zoom",15]]}' \
     --no-tile-stats --attribution='© Overture Maps Foundation' "$WORK/$id.geojsonseq"
   printf '{"release":"%s","built":"%s"}\n' "$RELEASE" "$(date -u +%FT%TZ)" > "$OUT/$id/places.json"
   ls -l "$OUT/$id"

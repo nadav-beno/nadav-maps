@@ -43,5 +43,8 @@ jobs:
             tippecanoe-decode --stats "$f" | python3 -c 'import json,sys,collections
           t = json.load(sys.stdin); z = collections.Counter(x["zoom"] for x in t)
           print("tiles per zoom", dict(sorted(z.items())))
-          print("largest tile", max(x["bytes"] for x in t), "bytes; most places", max(x["layers"]["place"]["points"] for x in t))'
+          most = max(x["layers"]["place"]["points"] for x in t)
+          print("largest tile", max(x["bytes"] for x in t), "bytes; most places", most)
+          # A city tile holds hundreds of places; a handful means tippecanoe dropped them.
+          sys.exit(0 if most >= 50 else "::error::at most %d places in one tile" % most)'
           done
