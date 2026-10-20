@@ -755,3 +755,58 @@ test.describe('our own map data (geodata)', () => {
     expect(external).toEqual([]);
   });
 });
+
+test('our own places tiles replace Overture inside Israel', async ({ page }, info) => {
+  test.skip(info.project.name !== 'desktop', 'the visual centre is easy to compute beside the side panel');
+  await stubGeodata(page, { places: true });
+  await page.goto('./#18/32.0801/34.7792');
+  type Q = { map: { queryRenderedFeatures(b: [[number, number], [number, number]], o: { layers: string[] }): unknown[] } };
+  const drawn = (layer: string) => page.evaluate((l) => (window as unknown as Q).map.queryRenderedFeatures([[426, 390], [446, 410]], { layers: [l] }).length, layer);
+  await expect.poll(() => drawn('places-il'), { timeout: 15_000 }).toBeGreaterThan(0);
+  // Overture's own copy of the same place is not drawn on top of ours.
+  expect(await drawn('ovt-poi')).toBe(0);
+  await page.waitForTimeout(300);
+  await page.mouse.click(436, 400);
+  await expect(page.getByRole('heading', { name: 'ביסטרו הכרמל' })).toBeVisible();
+  await expect(page).toHaveURL(/place=ovt:aaaaaaaa-0000-4000-8000-000000000001/);
+});
+
+test('layers: bright map stays bright in dark mode, and the theme is one tap away', async ({ page }) => {
+  type Q = { map: { getPaintProperty(l: string, p: string): unknown } };
+  // Reads null while the new style is still loading (a theme or map type switch swaps it).
+  const background = () =>
+    page.evaluate(() => {
+      try {
+        return String((window as unknown as Q).map.getPaintProperty('background', 'background-color'));
+      } catch {
+        return null;
+      }
+    });
+  await page.goto('./');
+  await page.getByRole('button', { name: 'שכבות' }).click();
+  await page.getByRole('group', { name: 'מצב תצוגה' }).getByRole('button', { name: 'כהה' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.getByRole('radio', { name: 'בהיר וצבעוני' }).click();
+  await expect.poll(background).toBe('#f8f4ee');
+  await page.getByRole('group', { name: 'מצב תצוגה' }).getByRole('button', { name: 'בהיר' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.reload();
+  await expect.poll(background).toBe('#f8f4ee');
+});
+
+test('location: once allowed, it turns on by itself at launch', async ({ page, context }) => {
+  await context.grantPermissions(['geolocation']);
+  await context.setGeolocation({ latitude: 32.0801, longitude: 34.7792, accuracy: 20 });
+  // An installed iPhone app often reports "prompt" even after you allowed it: our memory decides.
+  await page.addInitScript(() => {
+    localStorage.setItem('nm:location:granted', 'true');
+    const query = navigator.permissions.query.bind(navigator.permissions);
+    navigator.permissions.query = (d) => (d.name === 'geolocation' ? Promise.resolve({ state: 'prompt', onchange: null } as PermissionStatus) : query(d));
+  });
+  await page.goto('./');
+  await expect(page.getByRole('button', { name: /המפה עוקבת אחריך|מרכוז על המיקום שלי/ })).toBeVisible();
+  await page.getByRole('button', { name: 'תפריט' }).click();
+  await page.getByRole('button', { name: 'הרשאות מיקום ותנועה' }).click();
+  await expect(page.getByRole('heading', { name: 'הרשאות מיקום ותנועה' })).toBeVisible();
+  await expect(page.locator('.perm-row').first()).toContainText('מאושר');
+});

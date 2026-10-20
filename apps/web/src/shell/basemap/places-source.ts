@@ -77,3 +77,13 @@ export function placesSourceUrl(template: string): string {
   urls.set(template, url);
   return url;
 }
+
+/** True when a PMTiles archive answers at `url` (our own places file may not be built yet). */
+export async function archiveExists(url: string): Promise<boolean> {
+  try {
+    await new PMTiles(url).getHeader();
+    return true;
+  } catch {
+    return false;
+  }
+}

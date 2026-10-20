@@ -6,7 +6,6 @@ import {
   distance,
   formatDistance,
   nearbySearchCategory,
-  OVERTURE_SOURCE,
   overturePlace,
   placeVisual,
   similarCategories,
@@ -14,7 +13,7 @@ import {
   type InfoItem,
   type Place,
 } from '@nm/core';
-import { Icon, openPlace, toast, units } from '@nm/core/app';
+import { Icon, openPlace, queryPlaceFeatures, toast, units } from '@nm/core/app';
 import { categoryLabel, searchNearby, tools } from '@nm/tools';
 
 /** Google's "לאכול במקום · איסוף עצמי · משלוחים" line. */
@@ -105,15 +104,9 @@ const CLOSED = new Set(['permanently_closed', 'temporarily_closed', 'closed']);
 
 /** Overture places of the same kind within `radius` metres, from the tiles the map has loaded. */
 function fromTiles(map: MapLibreMap, p: Place, cats: Set<string>, radius: number): Similar[] {
-  if (!map.getSource(OVERTURE_SOURCE)) return [];
   const seen = new Set<string>();
   const out: Similar[] = [];
-  let features;
-  try {
-    features = map.querySourceFeatures(OVERTURE_SOURCE, { sourceLayer: 'place' });
-  } catch {
-    return [];
-  }
+  const features = queryPlaceFeatures(map);
   for (const f of features) {
     const props = f.properties ?? {};
     const id = String(props.id ?? '');

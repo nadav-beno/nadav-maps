@@ -8,6 +8,17 @@ import type { Place } from './types.ts';
 /** Map style source id for Overture places; features use it to recognise taps on them. */
 export const OVERTURE_SOURCE = 'overture';
 
+/**
+ * Our own places tiles for a region with geodata (scripts/places, same properties as Overture's):
+ * source id `places-<region>`. Where one is loaded it replaces the Overture tiles.
+ */
+export const localPlacesSource = (region: string): string => `places-${region}`;
+
+/** True for every map source that carries Overture-style places (ours and Overture's). */
+export function isPlacesSource(id: string | undefined): boolean {
+  return id === OVERTURE_SOURCE || !!id?.startsWith('places-');
+}
+
 /** Map style source id of the base map vector tiles (OpenMapTiles schema); search reads its labels. */
 export const BASEMAP_SOURCE = 'omt';
 

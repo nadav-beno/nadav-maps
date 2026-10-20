@@ -1,7 +1,7 @@
 import { signal } from '@preact/signals';
 import type { Map as MapLibreMap } from 'maplibre-gl';
-import { distance, OVERTURE_SOURCE, overturePlace, pointPlaceId, type Place } from '@nm/core';
-import { load, save } from '@nm/core/app';
+import { distance, overturePlace, pointPlaceId, type Place } from '@nm/core';
+import { load, queryPlaceFeatures, save } from '@nm/core/app';
 import { reverseGeocode, tools } from '@nm/tools';
 import { getCachedPlace, getEdit, putCachedPlace } from './db.ts';
 import type { PlaceRef, Stay } from './types.ts';
@@ -47,11 +47,11 @@ function near<T extends { lng: number; lat: number }>(items: T[], lng: number, l
 
 /** Businesses from the Overture tiles the map has already loaded (no network). */
 export function mapPlacesNear(map: MapLibreMap | undefined, lng: number, lat: number, maxM: number): PlaceRef[] {
-  if (!map?.getSource(OVERTURE_SOURCE)) return [];
+  if (!map) return [];
   const seen = new Set<string>();
   const out: PlaceRef[] = [];
   try {
-    for (const f of map.querySourceFeatures(OVERTURE_SOURCE, { sourceLayer: 'place' })) {
+    for (const f of queryPlaceFeatures(map)) {
       if (f.geometry.type !== 'Point' || !f.properties?.id) continue;
       const [x, y] = f.geometry.coordinates as [number, number];
       const p = overturePlace(f.properties, x, y);

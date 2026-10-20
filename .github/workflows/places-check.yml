@@ -1,0 +1,50 @@
+name: Places check
+
+# Builds the real places tiles from the newest Overture release on pull requests that change the
+# builder, so the pipeline is proven before it reaches the deploy workflow. Nothing is deployed.
+on:
+  pull_request:
+    paths:
+      - 'scripts/places/**'
+      - 'packages/core/src/overture.ts'
+      - 'packages/core/src/region.ts'
+      - '.github/workflows/places-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  places:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build places from Overture
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tippecanoe
+          python3 -m venv "$RUNNER_TEMP/venv"
+          . "$RUNNER_TEMP/venv/bin/activate"
+          pip install --quiet duckdb==1.5.6
+          bash scripts/places/build-all.sh "$RUNNER_TEMP/places"
+      - name: Probe the result
+        run: |
+          for f in "$RUNNER_TEMP"/places/*/places.pmtiles; do
+            ls -l "$f"
+            [ "$(stat -c %s "$f")" -le 95000000 ] || { echo "::error::$f is over 95 MB"; exit 1; }
+            # Tiles per zoom, largest tile and the most places in one tile.
+            tippecanoe-decode --stats "$f" | python3 -c 'import json,sys,collections
+          t = json.load(sys.stdin); z = collections.Counter(x["zoom"] for x in t)
+          print("tiles per zoom", dict(sorted(z.items())))
+          most = max(x["layers"]["place"]["points"] for x in t)
+          print("largest tile", max(x["bytes"] for x in t), "bytes; most places", most)
+          # A city tile holds hundreds of places; a handful means tippecanoe dropped them.
+          sys.exit(0 if most >= 50 else "::error::at most %d places in one tile" % most)'
+          done

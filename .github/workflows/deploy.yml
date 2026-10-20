@@ -65,6 +65,42 @@ jobs:
           path: geodata-out
           key: ${{ steps.geocache.outputs.cache-primary-key }}
 
+      # Our own places tiles (restaurants, shops, attractions...) for the same regions, from the newest
+      # monthly Overture Maps release (which merges Meta, Microsoft and Foursquare open places;
+      # scripts/places). Rebuilt when Overture publishes a release or the builder changes; on failure the
+      # newest older build is deployed, and with none the map reads Overture's own tiles.
+      - name: Places cache key
+        id: plkey
+        continue-on-error: true
+        run: echo "release=$(curl -fsSL --retry 3 https://stac.overturemaps.org/catalog.json | jq -r .latest)" >> "$GITHUB_OUTPUT"
+      - name: Restore places
+        id: plcache
+        uses: actions/cache/restore@v4
+        with:
+          path: places-out
+          key: places-v1-${{ steps.plkey.outputs.release || 'unknown' }}-${{ hashFiles('scripts/places/*', 'packages/core/src/overture.ts', 'packages/core/src/region.ts') }}
+          restore-keys: places-v1-
+      - name: Build places from Overture
+        id: plbuild
+        if: steps.plcache.outputs.cache-hit != 'true' && steps.plkey.outputs.release != ''
+        continue-on-error: true
+        timeout-minutes: 45
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tippecanoe
+          python3 -m venv "$RUNNER_TEMP/venv"
+          . "$RUNNER_TEMP/venv/bin/activate"
+          pip install --quiet duckdb==1.5.6
+          bash scripts/places/build-all.sh "$RUNNER_TEMP/places-new" "${{ steps.plkey.outputs.release }}"
+          rm -rf places-out
+          mv "$RUNNER_TEMP/places-new" places-out
+      - name: Save places
+        if: steps.plbuild.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: places-out
+          key: ${{ steps.plcache.outputs.cache-primary-key }}
+
       # The site lives at /<repository name>/ (from GITHUB_REPOSITORY, which scheduled runs have too).
       - run: BASE_PATH="/${GITHUB_REPOSITORY#*/}/" pnpm build
         env:
@@ -87,6 +123,20 @@ jobs:
             if [ -n "$big" ]; then echo "::error::geodata files over 20 MB: $big"; exit 1; fi
           else
             echo "::warning::No geodata built or cached: the site falls back to Photon and Overpass."
+          fi
+      - name: Add places to the site
+        run: |
+          if ls places-out/*/places.pmtiles >/dev/null 2>&1; then
+            # One range-read file per region; a file Pages would refuse (100 MB) is left out, not deployed.
+            for f in places-out/*/places.pmtiles; do
+              if [ "$(stat -c %s "$f")" -gt 95000000 ]; then echo "::error::$f is over 95 MB, skipped"; continue; fi
+              d="apps/web/dist/data/$(basename "$(dirname "$f")")"
+              mkdir -p "$d"
+              cp "$f" "$(dirname "$f")/places.json" "$d/"
+            done
+            du -sh apps/web/dist/data/*/places.pmtiles || true
+          else
+            echo "::warning::No places built or cached: the map reads Overture's own tiles everywhere."
           fi
       - uses: actions/upload-pages-artifact@v3
         with:
