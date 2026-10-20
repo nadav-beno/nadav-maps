@@ -3,7 +3,7 @@ import type {
   LayerSpecification,
   StyleSpecification,
 } from 'maplibre-gl';
-import { BASEMAP_SOURCE, COUNTRY_NAMES, MERGED_TERRITORIES, OVERTURE_SOURCE, PROMINENT_GROUPS } from '@nm/core';
+import { BASEMAP_SOURCE, COUNTRY_NAMES, localPlacesSource, MERGED_TERRITORIES, OVERTURE_SOURCE, PROMINENT_GROUPS, type BBox } from '@nm/core';
 import { POI_GROUPS, overtureCategoriesIn, overtureColorExpression, overtureIconExpression, poiIconExpression, poiColorExpression } from './poi.ts';
 
 /**
@@ -24,13 +24,19 @@ export interface BasemapSources {
   terrain: string;
   /** Overture places as a vector source URL (pmtiles://...); empty or missing = off. */
   places?: string;
+  /**
+   * Our own places tiles (scripts/places), one per region that has them: inside `bbox` they are
+   * drawn instead of Overture's (fresher filters, Hebrew names, more places at lower zooms).
+   */
+  localPlaces?: { region: string; url: string; bbox: BBox }[];
   /** Satellite raster XYZ template, used by the "satellite" map type. */
   satellite?: string;
   /** Contour line vector tile template (generated from the elevation tiles), for "terrain". */
   contours?: string;
 }
 
-export type MapType = 'default' | 'satellite' | 'terrain';
+/** bright: a vivid, high-contrast daytime map (always light, whatever the app theme). */
+export type MapType = 'default' | 'bright' | 'satellite' | 'terrain';
 
 export interface StyleOptions {
   mapType?: MapType;
@@ -145,6 +151,54 @@ export const LIGHT: Palette = {
   hillHighlight: 'rgba(255, 255, 255, 0.2)',
 };
 
+/**
+ * "Bright": the colourful daytime map people know from OSM Bright: warm land, saturated
+ * water and parks, orange highways, tinted districts. Easier to read in strong sunlight.
+ */
+export const BRIGHT: Palette = {
+  land: '#f8f4ee',
+  water: '#6fb6ec',
+  waterLabel: '#1c5d9c',
+  park: '#b4e19a',
+  wood: '#9fd385',
+  grass: '#c8eaa9',
+  sand: '#f7e6b5',
+  ice: '#f4fbff',
+  residential: '#f0e8dc',
+  commercial: '#f9e2e3',
+  industrial: '#eadff1',
+  hospital: '#fcd2d2',
+  school: '#f6ecc4',
+  cemetery: '#c3e0b1',
+  airport: '#e4e1f5',
+  building: '#e3d5c6',
+  buildingTop: '#ede2d5',
+  buildingLine: '#cdbba8',
+  road: '#ffffff',
+  roadCasing: '#d8cbbd',
+  majorCasing: '#e0a96b',
+  minorRoad: '#ffffff',
+  path: '#c09c78',
+  highway: '#ff9c3f',
+  highwayCasing: '#d9661a',
+  trunk: '#ffc95c',
+  trunkCasing: '#e29a2c',
+  rail: '#9d968e',
+  boundary: '#9b6fb3',
+  label: '#24272b',
+  labelMuted: '#4f5357',
+  roadLabel: '#4f5357',
+  halo: '#ffffff',
+  shield: '#ffffff',
+  shieldLine: '#b5aca2',
+  shieldText: '#2b2f33',
+  shieldMajorText: '#4a2300',
+  peak: '#6a4625',
+  oneway: '#7a7f85',
+  hillShadow: 'rgba(90, 64, 40, 0.22)',
+  hillHighlight: 'rgba(255, 255, 255, 0.28)',
+};
+
 /** Dark palette after Google's night map: charcoal land, deep navy water, muted labels. */
 export const DARK: Palette = {
   land: '#202124',
@@ -229,9 +283,10 @@ const isBridge: ExpressionSpecification = ['==', ['get', 'brunnel'], 'bridge'];
 export function buildStyle(theme: 'light' | 'dark', src: BasemapSources, lang = 'he', opts: StyleOptions = {}): StyleSpecification {
   const mapType = opts.mapType === 'satellite' && !src.satellite ? 'default' : (opts.mapType ?? 'default');
   const satellite = mapType === 'satellite';
-  // Over a photo, labels read best light on dark, so satellite uses the dark palette.
-  theme = satellite ? 'dark' : theme;
-  const c = theme === 'dark' ? DARK : LIGHT;
+  // Over a photo, labels read best light on dark, so satellite uses the dark palette; the bright
+  // map is a daytime map, so it is always light.
+  theme = satellite ? 'dark' : mapType === 'bright' ? 'light' : theme;
+  const c = mapType === 'bright' ? BRIGHT : theme === 'dark' ? DARK : LIGHT;
   const name = nameExpr(lang);
   const layers: LayerSpecification[] = [];
   const add = (l: LayerSpecification) => layers.push(l);
@@ -605,17 +660,21 @@ export function buildStyle(theme: 'light' | 'dark', src: BasemapSources, lang = 
   });
 
   // Businesses from Overture (phone, website, category) fill in what OSM lacks. They sit
-  // under the OSM POI layer, so where both have a place the curated OSM one wins.
-  if (src.places) {
+  // under the OSM POI layer, so where both have a place the curated OSM one wins. Where our own
+  // places tiles exist, they replace Overture's: kept to the same properties, built with Hebrew
+  // names and already filtered (not closed, confidence >= 0.4), so they can show sooner.
+  const local = src.localPlaces ?? [];
+  if (src.places || local.length) {
     const ovtColor = overtureColorExpression(theme);
     const open: ExpressionSpecification = ['!=', ['get', 'operating_status'], 'permanently_closed'];
-    const prominent = overtureCategoriesIn(PROMINENT_GROUPS);
+    const prominent: ExpressionSpecification = ['in', ['coalesce', ['get', 'basic_category'], ''], ['literal', overtureCategoriesIn(PROMINENT_GROUPS)]];
+    const confidence = (min: number): ExpressionSpecification => ['>=', ['coalesce', ['get', 'confidence'], 0], min];
     const ovtLayout = {
       'icon-image': overtureIconExpression(),
-      'icon-size': zoomLinear(15, 0.8, 18, 1),
+      'icon-size': zoomLinear(14, 0.75, 18, 1),
       'text-field': ['get', '@name'],
       'text-font': FONT.bold,
-      'text-size': zoomLinear(15, 10.5, 18, 12),
+      'text-size': zoomLinear(14, 10, 18, 12),
       'text-max-width': 8,
       'text-anchor': 'top',
       'text-offset': [0, 1.0],
@@ -623,26 +682,26 @@ export function buildStyle(theme: 'light' | 'dark', src: BasemapSources, lang = 
       'symbol-sort-key': ['-', 1, ['coalesce', ['get', 'confidence'], 0]],
       'text-padding': 2,
     } as const;
-    add({
-      id: 'ovt-poi-minor',
+    const placeLayer = (id: string, source: string, minzoom: number, filter: ExpressionSpecification): LayerSpecification => ({
+      id,
       type: 'symbol',
-      source: OVERTURE_SOURCE,
+      source,
       'source-layer': 'place',
-      minzoom: 17,
-      filter: ['all', open, ['>=', ['coalesce', ['get', 'confidence'], 0], 0.5], ['!', ['in', ['coalesce', ['get', 'basic_category'], ''], ['literal', prominent]]]],
+      minzoom,
+      filter,
       layout: ovtLayout as never,
       paint: { 'text-color': ovtColor, ...halo, 'text-halo-width': 1.6 },
     });
-    add({
-      id: 'ovt-poi',
-      type: 'symbol',
-      source: OVERTURE_SOURCE,
-      'source-layer': 'place',
-      minzoom: 15,
-      filter: ['all', open, ['>=', ['coalesce', ['get', 'confidence'], 0], 0.6], ['in', ['coalesce', ['get', 'basic_category'], ''], ['literal', prominent]]],
-      layout: ovtLayout as never,
-      paint: { 'text-color': ovtColor, ...halo, 'text-halo-width': 1.6 },
-    });
+    if (src.places) {
+      const outsideLocal: ExpressionSpecification[] = local.map(({ bbox: [w, s, e, n] }) => ['!', ['within', { type: 'Polygon', coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] }]]);
+      add(placeLayer('ovt-poi-minor', OVERTURE_SOURCE, 16, ['all', open, confidence(0.5), ['!', prominent], ...outsideLocal]));
+      add(placeLayer('ovt-poi', OVERTURE_SOURCE, 15, ['all', open, confidence(0.5), prominent, ...outsideLocal]));
+    }
+    for (const l of local) {
+      const source = localPlacesSource(l.region);
+      add(placeLayer(`${source}-minor`, source, 16, ['all', open, ['!', prominent]]));
+      add(placeLayer(source, source, 14, ['all', open, prominent]));
+    }
   }
 
   // Places of interest: coloured round icon + name in the category colour, like Google.
@@ -657,7 +716,8 @@ export function buildStyle(theme: 'light' | 'dark', src: BasemapSources, lang = 
       'all',
       ['==', ['geometry-type'], 'Point'],
       ['has', 'name'],
-      ['<=', ['coalesce', ['get', 'rank'], 99], ['step', ['zoom'], 6, 15, 14, 16, 30, 17, 99]],
+      // More named places sooner than before (attractions, cafés): rank 1 is the most important.
+      ['<=', ['coalesce', ['get', 'rank'], 99], ['step', ['zoom'], 10, 15, 30, 16, 99]],
     ],
     layout: {
       'icon-image': poiIconExpression(),
@@ -807,13 +867,9 @@ export function buildStyle(theme: 'light' | 'dark', src: BasemapSources, lang = 
     };
   }
 
-  if (src.places) {
-    sources[OVERTURE_SOURCE] = {
-      type: 'vector',
-      url: src.places,
-      attribution: 'מקומות © <a href="https://overturemaps.org" target="_blank">Overture Maps Foundation</a>',
-    };
-  }
+  const placesCredit = 'מקומות © <a href="https://overturemaps.org" target="_blank">Overture Maps Foundation</a>';
+  if (src.places) sources[OVERTURE_SOURCE] = { type: 'vector', url: src.places, attribution: placesCredit };
+  for (const l of src.localPlaces ?? []) sources[localPlacesSource(l.region)] = { type: 'vector', url: l.url, attribution: placesCredit };
   if (mapType === 'terrain' && src.contours) {
     sources.contours = { type: 'vector', tiles: [src.contours], maxzoom: 15 };
   }

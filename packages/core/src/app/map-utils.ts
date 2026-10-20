@@ -1,4 +1,5 @@
-import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl';
+import type { FilterSpecification, GeoJSONFeature, GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl';
+import { isPlacesSource } from '../overture.ts';
 
 type GeoJSON = Parameters<GeoJSONSource['setData']>[0];
 export const EMPTY: GeoJSON = { type: 'FeatureCollection', features: [] };
@@ -25,4 +26,34 @@ export function firstSymbolLayer(map: MapLibreMap): string | undefined {
 export function cssVar(name: string, fallback: string): string {
   if (typeof getComputedStyle !== 'function') return fallback;
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+}
+
+/**
+ * Businesses and attractions from every places source the map has loaded (our own tiles and
+ * Overture's), one feature per place id. No network: only what the loaded tiles hold.
+ */
+export function queryPlaceFeatures(map: MapLibreMap, filter?: FilterSpecification): GeoJSONFeature[] {
+  const out: GeoJSONFeature[] = [];
+  const seen = new Set<string>();
+  let ids: string[];
+  try {
+    ids = Object.keys(map.getStyle()?.sources ?? {}).filter(isPlacesSource);
+  } catch {
+    return out;
+  }
+  for (const id of ids) {
+    let features: GeoJSONFeature[];
+    try {
+      features = map.querySourceFeatures(id, { sourceLayer: 'place', filter });
+    } catch {
+      continue; // style switching
+    }
+    for (const f of features) {
+      const key = String(f.properties?.id ?? '');
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(f);
+    }
+  }
+  return out;
 }

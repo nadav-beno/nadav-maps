@@ -14,6 +14,7 @@ region with full coverage). The full product spec lives in a Claude Doc; this fi
 | `packages/features/*` | One package per feature (search, place, location, directions, navigation, transit, measure, layers, flight, saved, contribute, photos, settings). |
 | `e2e` | Playwright tests with all network stubbed (`e2e/stubs.ts`); `e2e/geodata/` is a tiny generated geodata set. |
 | `scripts/geodata` | Builds our own search/address/reverse/details files from an OSM extract (CI: `build-all.sh`, then `build.ts`). |
+| `scripts/places` | Builds our own places tiles (`data/<region>/places.pmtiles`) from the newest Overture release with DuckDB + tippecanoe (CI: `build-all.sh`). |
 
 ## Rules
 
@@ -28,10 +29,11 @@ region with full coverage). The full product spec lives in a Claude Doc; this fi
 - The base map style is ours: `apps/web/src/shell/basemap/` (layers, palette, POI categories, icons drawn from Maki). Icons: add the Maki name in `poi.ts`, then `node --experimental-strip-types scripts/gen-maki.mjs`.
 - Map layers must be re-added in `ctx.onStyle` (dark mode and the map type swap the style).
 - **Icons:** `<Icon name="…">` from `@nm/core/app` draws Material Symbols (rounded). Only icons listed in `scripts/gen-icons.mjs` are bundled; add a name there and run `node scripts/gen-icons.mjs`. Map POI icons are Maki (`apps/web/src/shell/basemap/maki-paths.ts`).
-- **Businesses:** Overture places are read straight from Overture's public PMTiles (`{release}` in the URL resolves to the newest release, see `places-source.ts`). Their ids are `ovt:<uuid>`; categories, colours and icons live in `packages/core/src/overture.ts`.
+- **Businesses:** in regions with geodata (Israel) they come from our own `places.pmtiles` (`scripts/places`, source `places-<region>`); elsewhere straight from Overture's public PMTiles (`{release}` resolves to the newest release, see `places-source.ts`). Both have the same properties and ids `ovt:<uuid>`; read them with `queryPlaceFeatures(map)` / `isPlacesSource(id)`, never one source by name. Categories, colours and icons live in `packages/core/src/overture.ts`.
 - **Incognito** (`incognito` in `@nm/core/app`): while on, nothing is remembered (search recents, history, recent routes, timeline). Check it before saving anything about what the user did.
 - **Embed:** `?embed=1` shows only the map and the card (`embedded` signal); the URL sync keeps the flag.
-- **Location:** fixes that jump impossibly fast are dropped as GPS jamming (`plausibleFix` in `core/src/nav.ts`). The first location request shows our own explanation first; e2e tests skip it (`stubNetwork` sets `nm:location:explained`).
+- **Location:** fixes that jump impossibly fast are dropped as GPS jamming (`plausibleFix` in `core/src/nav.ts`). The first location request shows our own explanation first; e2e tests skip it (`stubNetwork` sets `nm:location:explained`). Granted location/motion are remembered (`nm:location:granted`, `nm:motion:granted`): location restarts at launch, and on iPhone motion is re-requested on the first tap (it must come from a tap). The "הרשאות" screen explains how to make it permanent in the phone's settings.
+- **Map types:** `default`, `bright` (vivid `BRIGHT` palette, always light), `satellite` (always dark labels), `terrain`.
 - **UI:** Google-Maps-style shell: bottom tabs (`registerTab`), floating map controls (`registerSlot('controls', …)`), views can hide the search bar (`registerView(kind, View, { hideTop: true })`).
 
 ## Adding a feature

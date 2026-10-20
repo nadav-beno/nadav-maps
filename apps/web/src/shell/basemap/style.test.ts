@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { featureFilter, validateStyleMin, type FilterSpecification } from '@maplibre/maplibre-gl-style-spec';
 import { DEFAULT_PROVIDERS } from '@nm/core';
-import { buildStyle } from './style.ts';
+import { BRIGHT, buildStyle } from './style.ts';
 import { overtureIconExpression, poiImageList, POI_GROUPS } from './poi.ts';
 import { parseReleases } from './places-source.ts';
 import { MAKI } from './maki-paths.ts';
@@ -17,7 +17,7 @@ describe('base map style', () => {
   }
 
   const SRC = { ...DEFAULT_PROVIDERS, places: 'pmtiles://example/places', contours: 'contour://{z}/{x}/{y}' };
-  for (const mapType of ['default', 'satellite', 'terrain'] as const) {
+  for (const mapType of ['default', 'bright', 'satellite', 'terrain'] as const) {
     it(`is valid with every option on (${mapType})`, () => {
       const style = buildStyle('light', SRC, 'he', { mapType, transit: true, bike: true, buildings3d: false });
       expect(validateStyleMin(style)).toEqual([]);
@@ -44,6 +44,28 @@ describe('base map style', () => {
     const style = buildStyle('light', { ...SRC, places: '' });
     expect(style.sources.overture).toBeUndefined();
     expect(style.layers.some((l) => l.id.startsWith('ovt-'))).toBe(false);
+  });
+
+  it('draws the bright map light and colourful even in dark mode', () => {
+    const style = buildStyle('dark', SRC, 'he', { mapType: 'bright' });
+    const bg = style.layers.find((l) => l.id === 'background') as { paint: Record<string, unknown> };
+    expect(bg.paint['background-color']).toBe(BRIGHT.land);
+    expect(style.name).toBe('nadav-maps-light');
+  });
+
+  it('draws our own places inside their region and Overture only outside it', () => {
+    const local = [{ region: 'il', url: 'pmtiles://example/il', bbox: [34.2, 29.45, 35.95, 33.35] as [number, number, number, number] }];
+    const style = buildStyle('light', { ...SRC, localPlaces: local });
+    expect(validateStyleMin(style)).toEqual([]);
+    expect(style.sources['places-il']).toMatchObject({ type: 'vector', url: 'pmtiles://example/il' });
+    const byId = Object.fromEntries(style.layers.map((l) => [l.id, l as { filter?: unknown; minzoom?: number }]));
+    expect(byId['places-il'].minzoom).toBe(14);
+    expect(byId['places-il-minor'].minzoom).toBe(16);
+    expect(JSON.stringify(byId['ovt-poi'].filter)).toContain('"within"');
+    // Without our tiles, Overture is drawn everywhere.
+    expect(JSON.stringify(buildStyle('light', SRC).layers.find((l) => l.id === 'ovt-poi'))).not.toContain('within');
+    // Our tiles alone (Overture's switched off) still draw.
+    expect(buildStyle('light', { ...SRC, places: '', localPlaces: local }).layers.some((l) => l.id === 'places-il')).toBe(true);
   });
 
   it('finds the newest Overture release in a bucket listing', () => {

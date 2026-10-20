@@ -19,7 +19,6 @@ import {
   nameIndex,
   nameIndexNow,
   openNowStates,
-  OVERTURE_SOURCE,
   parseFilters,
   parseMapLink,
   suggestCorrections,
@@ -46,6 +45,7 @@ import {
   open,
   openPlace,
   providers,
+  queryPlaceFeatures,
   save,
   selectedPlace,
   setGeoJSON,
@@ -178,19 +178,12 @@ function searchArea() {
 // Businesses from the Overture tiles the map has loaded (Photon only knows OpenStreetMap).
 
 function localMatches(text: string, existing: Place[], limit = 3): Place[] {
-  if (!map.getSource(OVERTURE_SOURCE)) return [];
-  let features: LocalFeature[];
-  try {
-    features = map
-      .querySourceFeatures(OVERTURE_SOURCE, { sourceLayer: 'place' })
-      .filter((f) => f.geometry.type === 'Point')
-      .map((f) => {
-        const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates;
-        return { properties: f.properties ?? {}, lng, lat };
-      });
-  } catch {
-    return [];
-  }
+  const features: LocalFeature[] = queryPlaceFeatures(map)
+    .filter((f) => f.geometry.type === 'Point')
+    .map((f) => {
+      const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates;
+      return { properties: f.properties ?? {}, lng, lat };
+    });
   const c = map.getCenter();
   return matchLocalPlaces(features, text, [c.lng, c.lat], existing, limit);
 }
@@ -212,7 +205,12 @@ function mapNames(): string[] {
     }
   };
   for (const layer of ['transportation_name', 'place', 'poi']) read(BASEMAP_SOURCE, layer, ['name', 'name:he', 'name:en', 'name_en']);
-  read(OVERTURE_SOURCE, 'place', ['@name']);
+  for (const f of queryPlaceFeatures(map)) {
+    for (const k of ['@name', 'name']) {
+      const v = f.properties?.[k];
+      if (typeof v === 'string' && v.length >= 2 && v.length < 60) out.add(v);
+    }
+  }
   return [...out];
 }
 

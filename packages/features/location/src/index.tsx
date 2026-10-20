@@ -1,7 +1,8 @@
 import { signal } from '@preact/signals';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { circle, formatDistance, plausibleFix, type Fix } from '@nm/core';
-import { cssVar, defineFeature, ensureLayer, EMPTY, Icon, immersive, load, locationRequests, save, setGeoJSON, toast, units, userLocation } from '@nm/core/app';
+import { cssVar, defineFeature, ensureLayer, EMPTY, Icon, immersive, load, locationRequests, open, save, setGeoJSON, toast, units, userLocation } from '@nm/core/app';
+import { PermissionsView } from './permissions.tsx';
 
 /**
  * The "my location" button, six states (see spec):
@@ -18,6 +19,21 @@ const gpsSuspect = signal(false);
 const prePrompt = signal<null | (() => void)>(null);
 const approxDismissed = signal(false);
 let lastGood: Fix | null = null;
+
+/**
+ * Permissions we remember on the device. A web app cannot grant itself permissions (only the
+ * user can, in the phone's settings); what we can do is ask again at the right moment by itself,
+ * so once allowed, location and the compass simply work on every launch.
+ */
+const LOC_OK = 'location:granted';
+const MOTION_OK = 'motion:granted';
+export type PermState = 'granted' | 'denied' | 'ask';
+export const locPermission = signal<PermState>(load<boolean | null>(LOC_OK, null) === false ? 'denied' : load(LOC_OK, false) ? 'granted' : 'ask');
+export const motionPermission = signal<PermState>(load<boolean | null>(MOTION_OK, null) === false ? 'denied' : load(MOTION_OK, false) ? 'granted' : 'ask');
+function rememberLocation(v: PermState) {
+  locPermission.value = v;
+  if (v !== 'ask') save(LOC_OK, v === 'granted');
+}
 let suspectSince = 0;
 
 let map: MapLibreMap;
@@ -70,6 +86,7 @@ function onPosition(pos: GeolocationPosition) {
   }
   gpsSuspect.value = false;
   lastGood = fix;
+  if (locPermission.peek() !== 'granted') rememberLocation('granted');
   userLocation.value = { lng: c.longitude, lat: c.latitude, accuracy: c.accuracy, heading: c.heading, speed: c.speed, timestamp: pos.timestamp };
   errorKind.value = null;
   if (locState.value === 'locating' || locState.value === 'error') {
@@ -89,6 +106,7 @@ function onPosition(pos: GeolocationPosition) {
 
 function onError(err: GeolocationPositionError) {
   errorKind.value = err.code === 1 ? 'denied' : err.code === 3 ? 'timeout' : 'unavailable';
+  if (err.code === 1) rememberLocation('denied');
   if (err.code === 3 && userLocation.value) return; // a slow fix after a good one is fine
   locState.value = 'error';
   stopWatch();
@@ -100,9 +118,9 @@ function explainError() {
   if (errorKind.value === 'denied') {
     toast(
       isIOS
-        ? 'אין הרשאת מיקום. בהגדרות האייפון: פרטיות ואבטחה ← שירותי מיקום ← Safari (או האפליקציה) ← בזמן השימוש.'
+        ? 'אין הרשאת מיקום. בהגדרות האייפון: פרטיות ואבטחה ← שירותי מיקום ← אתרי Safari ← בזמן השימוש.'
         : 'אין הרשאת מיקום. אפשר לאשר אותה בהגדרות האתר בדפדפן (סמל המנעול ליד הכתובת).',
-      undefined,
+      { label: 'איך מאשרים', run: () => open({ kind: 'permissions' }) },
       8000,
     );
   } else if (errorKind.value === 'timeout') toast('לא הצלחנו למצוא את המיקום. נסו שוב במקום פתוח יותר.');
@@ -148,35 +166,70 @@ function stopWatch() {
 }
 
 // --- compass (device orientation) ---
+// Once motion is allowed the blue dot shows which way you face (a beam, like Google Maps);
+// compass mode also turns the map. Redraws are limited, the sensor fires ~60 times a second.
+let lastBeam = { h: -999, at: 0 };
 function onOrientation(e: DeviceOrientationEvent) {
   const ios = (e as DeviceOrientationEvent & { webkitCompassHeading?: number }).webkitCompassHeading;
   const h = ios ?? (e.absolute && e.alpha !== null ? (360 - e.alpha) % 360 : null);
   if (h === null || h === undefined) return;
   compassHeading = h;
   if (locState.value === 'compass' && !immersive.value) map.setBearing(h);
+  const now = performance.now();
+  const turned = Math.abs(((h - lastBeam.h + 540) % 360) - 180);
+  if (turned < 3 || now - lastBeam.at < 100) return;
+  lastBeam = { h, at: now };
   render();
 }
 
-async function startCompass(): Promise<boolean> {
-  const DOE = DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<'granted' | 'denied'> };
-  try {
-    if (typeof DOE.requestPermission === 'function') {
-      if ((await DOE.requestPermission()) !== 'granted') return false;
-    }
-  } catch {
-    return false;
-  }
+let listening = false;
+function listenOrientation() {
+  if (listening) return;
+  listening = true;
   addEventListener('deviceorientationabsolute' as 'deviceorientation', onOrientation);
   addEventListener('deviceorientation', onOrientation);
+}
+
+type MotionAPI = { requestPermission?: () => Promise<'granted' | 'denied'> };
+const motionApi = () => (typeof DeviceOrientationEvent === 'undefined' ? null : (DeviceOrientationEvent as unknown as MotionAPI));
+
+/** Ask for motion sensors (iPhone asks the user; must run inside a tap) and start listening. */
+export async function requestMotion(): Promise<boolean> {
+  const api = motionApi();
+  if (!api) return false;
+  try {
+    if (typeof api.requestPermission === 'function' && (await api.requestPermission()) !== 'granted') {
+      motionPermission.value = 'denied';
+      save(MOTION_OK, false);
+      return false;
+    }
+  } catch {
+    // Not inside a tap (iPhone) or no sensor: nothing remembered, we try again on the next tap.
+    return false;
+  }
+  motionPermission.value = 'granted';
+  save(MOTION_OK, true);
+  listenOrientation();
   return true;
 }
 
+async function startCompass(): Promise<boolean> {
+  return listening || (await requestMotion());
+}
+
 function stopCompass() {
-  removeEventListener('deviceorientationabsolute' as 'deviceorientation', onOrientation);
-  removeEventListener('deviceorientation', onOrientation);
-  compassHeading = null;
   map.easeTo({ bearing: 0, duration: 400 });
   render();
+}
+
+/** Ask for location now (from a tap in the permissions screen): no explanation card first. */
+export function requestLocation() {
+  save('location:explained', true);
+  if (errorKind.peek() || watchId === null) {
+    stopWatch();
+    stateAfterFix = 'follow';
+    startWatch();
+  }
 }
 
 async function onButton() {
@@ -333,20 +386,50 @@ export default defineFeature({
       }
     });
 
-    // Resume quietly if permission was already granted, so the dot is there on launch.
-    navigator.permissions
-      ?.query({ name: 'geolocation' as PermissionName })
-      .then((st) => {
-        if (st.state === 'granted') {
-          startWatch();
-          // Don't steal the view from a shared link.
-          if (ctx.initialUrl.view || ctx.initialUrl.place || ctx.initialUrl.route) {
-            firstFix = false;
-            stateAfterFix = 'shown';
-          }
-        }
-      })
-      .catch(() => {});
+    // Resume quietly if permission was granted before, so the dot is there on launch. The
+    // browser may say "granted" itself; an installed iPhone app often forgets and says "prompt",
+    // so we also trust our own memory of the last answer (iPhone then asks again, at launch).
+    const resume = (state: PermissionState | 'unknown') => {
+      if (state === 'denied') return rememberLocation('denied');
+      if (state !== 'granted' && locPermission.peek() !== 'granted') return;
+      startWatch();
+      // Don't steal the view from a shared link.
+      if (ctx.initialUrl.view || ctx.initialUrl.place || ctx.initialUrl.route) {
+        firstFix = false;
+        stateAfterFix = 'shown';
+      }
+    };
+    if (navigator.permissions?.query) {
+      navigator.permissions
+        .query({ name: 'geolocation' as PermissionName })
+        .then((st) => {
+          resume(st.state);
+          // Changed in the browser's own settings while the app is open.
+          st.onchange = () => {
+            if (st.state === 'denied') rememberLocation('denied');
+            else if (st.state === 'granted' && watchId === null && locPermission.peek() !== 'granted') startWatch();
+          };
+        })
+        .catch(() => resume('unknown'));
+    } else resume('unknown');
+
+    // Motion sensors (the direction beam and compass mode). Android and desktop need no prompt;
+    // an iPhone only lets a page ask inside a tap, so once allowed we ask again on the first tap
+    // of each launch, and the beam is back without going through any menu.
+    const api = motionApi();
+    if (api && typeof api.requestPermission !== 'function') listenOrientation();
+    else if (api && motionPermission.peek() === 'granted') {
+      const onTap = () => {
+        document.removeEventListener('click', onTap, true);
+        document.removeEventListener('touchend', onTap, true);
+        void requestMotion();
+      };
+      document.addEventListener('click', onTap, true);
+      document.addEventListener('touchend', onTap, true);
+    }
+
+    ctx.registerView('permissions', PermissionsView, { title: 'הרשאות' });
+    ctx.registerMenuItem({ id: 'permissions', label: 'הרשאות מיקום ותנועה', icon: 'my_location', order: 58, run: () => open({ kind: 'permissions' }) });
 
     // Save battery: stop GPS when the app is in the background, unless navigating.
     document.addEventListener('visibilitychange', () => {

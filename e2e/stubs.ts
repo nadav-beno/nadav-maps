@@ -99,14 +99,34 @@ const PIXEL = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQ
 /** Our own geodata (`<base>data/<region>/…`), served by the site itself. */
 const GEODATA = /^http:\/\/localhost:\d+\/data\//;
 
+/** HTTP range reads of a PMTiles archive, the way S3 and GitHub Pages answer them. */
+function serveRange(r: Route, file: Buffer) {
+  const m = /bytes=(\d+)-(\d+)/.exec(r.request().headers()['range'] ?? '');
+  const start = m ? +m[1] : 0;
+  const end = Math.min(m ? +m[2] : file.length - 1, file.length - 1);
+  return r.fulfill({
+    status: 206,
+    body: file.subarray(start, end + 1),
+    headers: {
+      'content-type': 'application/octet-stream',
+      'content-range': `bytes ${start}-${end}/${file.length}`,
+      'access-control-allow-origin': '*',
+      'access-control-expose-headers': 'ETag, Content-Length, Content-Range',
+      etag: '"fixture"',
+    },
+  });
+}
+
 /**
  * Serve the tiny Tel Aviv dataset (e2e/geodata, built by `pnpm geodata:fixture` from
  * scripts/geodata/fixtures) instead of the default "no local data" 404s. Call after stubNetwork.
+ * With `places`, also our own places tiles (the Overture fixture: the builder keeps its format).
  */
-export async function stubGeodata(page: Page): Promise<void> {
+export async function stubGeodata(page: Page, opts: { places?: boolean } = {}): Promise<void> {
   const root = join(import.meta.dirname, 'geodata');
   await page.route(GEODATA, (r) => {
     const rel = new URL(r.request().url()).pathname.replace(/^\/data\//, '');
+    if (rel === 'il/places.pmtiles') return opts.places ? serveRange(r, PLACES_PMTILES) : r.fulfill({ status: 404, body: '' });
     try {
       return r.fulfill({ body: readFileSync(join(root, rel)), contentType: 'application/json' });
     } catch {
@@ -134,20 +154,7 @@ export async function stubNetwork(page: Page): Promise<void> {
     const url = new URL(r.request().url());
     if (url.searchParams.get('list-type') === '2') return r.fulfill({ body: PLACES_LISTING, contentType: 'application/xml' });
     if (url.pathname !== `/tiles/${PLACES_RELEASE}/places.pmtiles`) return r.fulfill({ status: 404, body: '' });
-    const m = /bytes=(\d+)-(\d+)/.exec(r.request().headers()['range'] ?? '');
-    const start = m ? +m[1] : 0;
-    const end = Math.min(m ? +m[2] : PLACES_PMTILES.length - 1, PLACES_PMTILES.length - 1);
-    return r.fulfill({
-      status: 206,
-      body: PLACES_PMTILES.subarray(start, end + 1),
-      headers: {
-        'content-type': 'application/octet-stream',
-        'content-range': `bytes ${start}-${end}/${PLACES_PMTILES.length}`,
-        'access-control-allow-origin': '*',
-        'access-control-expose-headers': 'ETag, Content-Length, Content-Range',
-        etag: '"fixture"',
-      },
-    });
+    return serveRange(r, PLACES_PMTILES);
   });
   await page.route('https://photon.komoot.io/api**', (r) => {
     const q = new URL(r.request().url()).searchParams.get('q') ?? '';

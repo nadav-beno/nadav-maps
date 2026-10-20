@@ -8,7 +8,7 @@ import {
   cuisineLabel,
   distance,
   kosherBadge,
-  OVERTURE_SOURCE,
+  isPlacesSource,
   overturePlace,
   parsePlaceId,
   placeAttributes,
@@ -31,6 +31,7 @@ import {
   openPlace,
   placeActions,
   placeSections,
+  queryPlaceFeatures,
   selectedPlace,
   SendToPhone,
   setGeoJSON,
@@ -513,7 +514,7 @@ export default defineFeature({
 
     // Tap a label on the base map (shop, café, town) to open its card.
     ctx.onMapClick((e, features) => {
-      const o = features.find((x) => x.source === OVERTURE_SOURCE && x.properties?.id);
+      const o = features.find((x) => isPlacesSource(x.source) && x.properties?.id);
       if (o) {
         const [lng, lat] = o.geometry.type === 'Point' ? (o.geometry.coordinates as [number, number]) : [e.lngLat.lng, e.lngLat.lat];
         openPlace(overturePlace(o.properties, lng, lat));
@@ -551,7 +552,7 @@ export default defineFeature({
       else if (parsed.overture) {
         // Overture has no lookup API: find the place in the loaded tiles around the shared view.
         const find = () => {
-          const hit = ctx.map.querySourceFeatures(OVERTURE_SOURCE, { sourceLayer: 'place', filter: ['==', ['get', 'id'], parsed.overture!] })[0];
+          const hit = queryPlaceFeatures(ctx.map, ['==', ['get', 'id'], parsed.overture!])[0];
           if (!hit || hit.geometry.type !== 'Point') return false;
           const [lng, lat] = hit.geometry.coordinates as [number, number];
           openPlace(overturePlace(hit.properties, lng, lat));

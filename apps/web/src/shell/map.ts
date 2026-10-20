@@ -1,14 +1,14 @@
 import * as maplibregl from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { effect } from '@preact/signals';
-import { regionAt, type ProviderConfig, type UrlState } from '@nm/core';
+import { effect, signal } from '@preact/signals';
+import { REGIONS, regionAt, type BBox, type ProviderConfig, type UrlState } from '@nm/core';
 import mlcontour from 'maplibre-contour';
-import { basemapOffline, isDark, mapLayers, mapType, region, toast, worldUrl } from '@nm/core/app';
+import { basemapOffline, isDark, load, mapLayers, mapType, region, save, toast, worldUrl } from '@nm/core/app';
 import { dispatchClick, dispatchLongPress, runStyleHooks } from './registry.ts';
 import { addBasemapImages, addMissingImage } from './basemap/images.ts';
 import { buildStyle } from './basemap/style.ts';
-import { placesSourceUrl } from './basemap/places-source.ts';
+import { archiveExists, placesSourceUrl } from './basemap/places-source.ts';
 import { setupOfflineWorld } from './basemap/offline.ts';
 
 // MapLibre 6 ships its web worker as a separate file; let Vite serve it.
@@ -27,14 +27,34 @@ function contourTiles(terrain: string): string {
   });
 }
 
+/**
+ * Our own places tiles (scripts/places) for regions with geodata, once we know the file exists.
+ * The last answer is remembered so the map starts with the right sources (no restyle on launch).
+ */
+function localPlaces(cfg: ProviderConfig) {
+  const all = cfg.geodataUrl
+    ? REGIONS.filter((r) => r.geodata && r.bbox).map((r) => ({ region: r.geodata!.id, file: new URL(`${cfg.geodataUrl}${r.geodata!.id}/places.pmtiles`, location.href).href, bbox: r.bbox as BBox }))
+    : [];
+  const known = signal<string[]>(load<string[]>('places:local', []).filter((id) => all.some((r) => r.region === id)));
+  void Promise.all(all.map(async (r) => ((await archiveExists(r.file)) ? r.region : null))).then((found) => {
+    const ids = found.filter((x): x is string => !!x);
+    save('places:local', ids);
+    if (ids.join() !== known.peek().join()) known.value = ids;
+  });
+  return () => all.filter((r) => known.value.includes(r.region)).map((r) => ({ region: r.region, url: placesSourceUrl(r.file), bbox: r.bbox }));
+}
+
 export function createMap(container: HTMLElement, cfg: ProviderConfig, initial: UrlState): maplibregl.Map {
   const r = initial.view ? regionAt(initial.view.center) : region.value;
   const theme = () => (isDark.value ? 'dark' : 'light');
+  // Satellite always uses the dark-palette images (light labels over the photo); bright is always light.
+  const imageThemeOf = (): 'light' | 'dark' => (mapType.value === 'satellite' ? 'dark' : mapType.value === 'bright' ? 'light' : theme());
   const contours = contourTiles(cfg.terrain);
   const sources = { ...cfg, places: placesSourceUrl(cfg.places), contours };
+  const local = localPlaces(cfg);
   const style = () => {
     const l = mapLayers.value;
-    return buildStyle(theme(), sources, 'he', { mapType: mapType.value, buildings3d: l.buildings3d, transit: l.transit, bike: l.bike });
+    return buildStyle(theme(), { ...sources, localPlaces: local() }, 'he', { mapType: mapType.value, buildings3d: l.buildings3d, transit: l.transit, bike: l.bike });
   };
   const map = new maplibregl.Map({
     container,
@@ -98,14 +118,13 @@ export function createMap(container: HTMLElement, cfg: ProviderConfig, initial: 
     if (shownOffline) retry();
   });
   worldUrl.value = `${import.meta.env.BASE_URL}offline/world-1.json`;
-  const addWorld = setupOfflineWorld(map, () => (mapType.value === 'satellite' ? 'dark' : theme()));
+  const addWorld = setupOfflineWorld(map, imageThemeOf);
   map.on('style.load', () => {
     addBasemapImages(map, imageTheme());
     addWorld(map);
     runStyleHooks(map);
   });
-  // Satellite always uses the dark-palette images (light labels over the photo).
-  const imageTheme = () => (mapType.value === 'satellite' ? 'dark' : theme());
+  const imageTheme = imageThemeOf;
   map.on('styleimagemissing', (e) => addMissingImage(map, imageTheme(), e.id));
 
   // Theme switch = new base style; features re-add their layers in their style hooks.

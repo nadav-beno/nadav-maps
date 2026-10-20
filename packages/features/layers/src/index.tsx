@@ -1,5 +1,5 @@
 import { signal } from '@preact/signals';
-import { back, defineFeature, Icon, mapLayers, mapType, open, region, type FeatureContext, type MapLayers, type MapTypePref, type ViewProps } from '@nm/core/app';
+import { back, defineFeature, Icon, mapLayers, mapType, open, region, theme, type FeatureContext, type MapLayers, type MapTypePref, type ThemePref, type ViewProps } from '@nm/core/app';
 import { addAirLayers, AirLegend, airOn, hasAir, refreshAir } from './air.tsx';
 import { AtlasIncidentView, AtlasNote, atlasConfigured, atlasInView, atlasState, initAtlas, setAtlasRunning } from './atlas.tsx';
 import { currentTraffic, hasTraffic, onTrafficClick, PROVIDER_NAME, syncTraffic, TrafficIncidentView, trafficOn, TrafficToggle } from './traffic.tsx';
@@ -10,8 +10,15 @@ const pitch = signal(0);
 
 const TYPES: { id: MapTypePref; label: string }[] = [
   { id: 'default', label: 'ברירת מחדל' },
+  { id: 'bright', label: 'בהיר וצבעוני' },
   { id: 'satellite', label: 'לוויין' },
   { id: 'terrain', label: 'פני שטח' },
+];
+
+const THEMES: { id: ThemePref; label: string; icon: string }[] = [
+  { id: 'light', label: 'בהיר', icon: 'light_mode' },
+  { id: 'dark', label: 'כהה', icon: 'dark_mode' },
+  { id: 'system', label: 'אוטומטי', icon: 'brightness_auto' },
 ];
 
 const DETAILS: { id: keyof MapLayers; label: string; thumb: string }[] = [
@@ -37,10 +44,19 @@ function LayersView(_: ViewProps) {
         <h2>שכבות</h2>
       </header>
       <h3 class="section-title">סוג מפה</h3>
-      <div class="layer-grid" role="radiogroup" aria-label="סוג מפה">
+      <div class="layer-grid four" role="radiogroup" aria-label="סוג מפה">
         {TYPES.map((t) => (
           <button key={t.id} class="layer-opt" role="radio" aria-checked={mapType.value === t.id} aria-pressed={mapType.value === t.id} onClick={() => (mapType.value = t.id)}>
             <span class={`layer-thumb thumb-${t.id}`} />
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <h3 class="section-title">מצב תצוגה</h3>
+      <div class="segmented layer-theme" role="group" aria-label="מצב תצוגה">
+        {THEMES.map((t) => (
+          <button key={t.id} aria-pressed={theme.value === t.id} onClick={() => (theme.value = t.id)}>
+            <Icon name={t.icon} size={18} />
             {t.label}
           </button>
         ))}
@@ -83,6 +99,7 @@ function LayersView(_: ViewProps) {
           תצלומי לוויין Sentinel-2 (רזולוציה של 10 מטר לפיקסל): מתאימים למבט על אזורים, לא לזיהוי בתים. תצלומים מפורטים יותר דורשים רישיון בתשלום.
         </p>
       )}
+      {mapType.value === 'bright' && <p class="muted small">מפה צבעונית בניגודיות גבוהה, נוחה לקריאה גם בשמש חזקה. תמיד בהירה, גם כשהאפליקציה במצב כהה.</p>}
       {mapType.value === 'terrain' && <p class="muted small">הצללת תבליט וקווי גובה כל 10 עד 100 מטר, לפי רמת הזום.</p>}
     </div>
   );

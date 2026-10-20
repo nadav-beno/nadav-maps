@@ -30,7 +30,7 @@ traffic car_crash warning foggy rainy ac_unit air flood block
 speed height flight_land flight_takeoff radar timer
 timeline calendar_month upload_file delete_sweep
 two_wheeler toll add_road drag_indicator bolt straight mic favorite label north_west code sort visibility_off stairs stars location_off
-mobile_arrow_right qr_code_2 grid_4x4 menu_book table_restaurant wifi smoke_free payments eco room_service travel_explore verified
+brightness_auto explore my_location mobile_arrow_right qr_code_2 grid_4x4 menu_book table_restaurant wifi smoke_free payments eco room_service travel_explore verified
 `.trim().split(/\s+/);
 // Icons drawn filled (selected / solid look), as Google does for these.
 const FILLED = new Set(['navigation', 'location_on', 'bookmark', 'star', 'home', 'work', 'directions', 'trip_origin', 'explore', 'person', 'account_circle', 'bookmarks']);

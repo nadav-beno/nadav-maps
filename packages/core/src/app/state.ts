@@ -46,7 +46,7 @@ export const unitsPref = signal<Units | 'auto'>(load<Units | 'auto'>('units', 'a
 unitsPref.subscribe((v) => save('units', v));
 
 /** Base map look, chosen in the layers sheet. */
-export type MapTypePref = 'default' | 'satellite' | 'terrain';
+export type MapTypePref = 'default' | 'bright' | 'satellite' | 'terrain';
 export const mapType = signal<MapTypePref>(load<MapTypePref>('mapType', 'default'));
 mapType.subscribe((v) => save('mapType', v));
 export interface MapLayers {
