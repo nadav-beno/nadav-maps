@@ -36,6 +36,13 @@ export interface ProviderConfig {
    * traffic (Israel). Public in the browser build too; limit it with HERE's trusted domains.
    */
   hereKey: string;
+  /** Atlas, our own traffic service (measured speeds, Hong Kong today), '' = off. See atlas.ts. */
+  atlasUrl: string;
+  /**
+   * Atlas publishable read key ('' = off). Public in the browser build by design: Atlas binds each
+   * key to the site's origin and rate-limits it.
+   */
+  atlasKey: string;
   /**
    * Live aircraft positions by callsign (adsb.lol's readsb-style API, open data under ODbL),
    * '' = no "find my flight". Only the flight number is sent, never the user's location.
@@ -75,6 +82,8 @@ export const DEFAULT_PROVIDERS: ProviderConfig = {
   transitUrl: 'https://api.transitous.org',
   tomtomKey: '',
   hereKey: '',
+  atlasUrl: 'https://atlas-traffic-command.nadav747710.chatgpt.site',
+  atlasKey: '',
   flightsUrl: 'https://api.adsb.lol',
   // Off unless configured: the web build sets it to its own <base>data/ (providersFromEnv).
   geodataUrl: '',
@@ -97,6 +106,8 @@ export function providersFromEnv(env: Record<string, string | undefined>, prefix
     transitUrl: env[prefix + 'TRANSIT_URL'] ?? DEFAULT_PROVIDERS.transitUrl,
     tomtomKey: (env[prefix + 'TOMTOM_KEY'] ?? '').trim(),
     hereKey: (env[prefix + 'HERE_KEY'] ?? '').trim(),
+    atlasUrl: env[prefix + 'ATLAS_URL'] ?? DEFAULT_PROVIDERS.atlasUrl,
+    atlasKey: (env[prefix + 'ATLAS_KEY'] ?? '').trim(),
     flightsUrl: env[prefix + 'FLIGHTS_URL'] ?? DEFAULT_PROVIDERS.flightsUrl,
     // Vite's BASE_URL is set in the browser build: default to the data published with the site.
     geodataUrl: withSlash(env[prefix + 'GEODATA_URL'] ?? (env.BASE_URL !== undefined ? `${env.BASE_URL}data/` : DEFAULT_PROVIDERS.geodataUrl)),
@@ -113,7 +124,7 @@ function withSlash(u: string): string {
 
 /**
  * Lets tests (and developers) switch on key-based sources without a build: `?tomtom=<key>`,
- * `?here=<key>`.
+ * `?here=<key>`, `?atlas=<key>`.
  * Honoured only on localhost, so the public site can't be pointed at someone else's key.
  */
 export function withDevOverrides(cfg: ProviderConfig, href: string): ProviderConfig {
@@ -126,6 +137,7 @@ export function withDevOverrides(cfg: ProviderConfig, href: string): ProviderCon
   if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) return cfg;
   const tomtom = url.searchParams.get('tomtom');
   const here = url.searchParams.get('here');
-  if (!tomtom && !here) return cfg;
-  return { ...cfg, ...(tomtom ? { tomtomKey: tomtom } : {}), ...(here ? { hereKey: here } : {}) };
+  const atlas = url.searchParams.get('atlas');
+  if (!tomtom && !here && !atlas) return cfg;
+  return { ...cfg, ...(tomtom ? { tomtomKey: tomtom } : {}), ...(here ? { hereKey: here } : {}), ...(atlas ? { atlasKey: atlas } : {}) };
 }

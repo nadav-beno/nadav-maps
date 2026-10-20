@@ -1,0 +1,48 @@
+{
+  "fixture_version": 4,
+  "test_only": true,
+  "description": "Recorded real road/speed sample with controlled freshness states for offline tests. Not live observations. Production tiles always have stale=false; stale fixture exercises legacy client filtering.",
+  "tile": {
+    "z": 14,
+    "x": 13389,
+    "y": 7148,
+    "layer": "traffic_flow"
+  },
+  "files": [
+    {
+      "name": "flow-empty.pbf",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "flow-fresh.pbf",
+      "bytes": 210,
+      "sha256": "a5fd70baedabb4286cd5098d5236725b17d425a33dc0fb93cdde85f5b6fe8200"
+    },
+    {
+      "name": "flow-stale.pbf",
+      "bytes": 210,
+      "sha256": "b1928e47d3fd9d4505a3153f327b9a864f78c7ea37e3d47fffc448533a98f0db"
+    },
+    {
+      "name": "status-error.json",
+      "bytes": 2051,
+      "sha256": "cc6223da691280c9df54a08da89192db6f05a05792c97897d2039bb144a590fe"
+    },
+    {
+      "name": "status-ok.json",
+      "bytes": 2027,
+      "sha256": "7cd8299f26cd2001fe56cd527ce5db9b8e35ff9e9ea23743709e50a91345a2e4"
+    },
+    {
+      "name": "status-stale.json",
+      "bytes": 2029,
+      "sha256": "ea64368de3a407491e62c17e68c2288a8b00ae7fd0c9ea4c08de1294ca005e4d"
+    },
+    {
+      "name": "status-unavailable.json",
+      "bytes": 1679,
+      "sha256": "1c2e32ce3cb0d2d01ac56b636fd6d71669a83ea22ffb71f2f72f7ea286976ed8"
+    }
+  ]
+}

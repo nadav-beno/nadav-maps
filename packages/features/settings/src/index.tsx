@@ -178,6 +178,12 @@ function AboutView(_: ViewProps) {
             תנועה בזמן אמת ואירועי תנועה: <a href="https://www.here.com" target="_blank" rel="noopener noreferrer">© {new Date().getFullYear()} HERE</a>
           </li>
         )}
+        {providers.value.atlasKey && (
+          <li>
+            מהירויות נמדדות בהונג קונג: Atlas, על בסיס נתוני Transport Department של ממשלת הונג קונג (
+            <a href="https://data.gov.hk/en/terms-and-conditions" target="_blank" rel="noopener noreferrer">DATA.GOV.HK</a> ו-CSDI Portal), ללא אישור ממשלתי
+          </li>
+        )}
         <li>
           תבליט וקווי גובה: נתוני גובה של Mapzen Terrain Tiles (AWS Open Data)
         </li>
