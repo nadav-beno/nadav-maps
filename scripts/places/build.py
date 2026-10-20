@@ -44,8 +44,9 @@ def col(name: str, expr: str, default: str = 'NULL') -> str:
     return expr if name in cols else default
 
 
-# basic_category is newer than categories.primary; prefer it when the release has it.
-category = 'coalesce(basic_category, categories.primary)' if 'basic_category' in cols else 'categories.primary'
+print('columns:', ', '.join(sorted(cols)), file=sys.stderr)
+# basic_category replaced categories.primary (which newer releases no longer have); use what exists.
+category = 'coalesce(' + ', '.join([e for c, e in (('basic_category', 'basic_category'), ('categories', 'categories.primary')) if c in cols] + ['NULL']) + ')'
 status = col('operating_status', 'operating_status')
 sql = f"""
   SELECT
@@ -108,7 +109,7 @@ with open(a.out, 'w', encoding='utf-8') as f:
             f.write('\n')
             count += 1
             kinds[cat or '-'] = kinds.get(cat or '-', 0) + 1
-print(f'{count} places; columns: {"basic_category" if "basic_category" in cols else "categories.primary"}', file=sys.stderr)
+print(f'{count} places', file=sys.stderr)
 print('top categories:', ', '.join(f'{k} {v}' for k, v in sorted(kinds.items(), key=lambda x: -x[1])[:25]), file=sys.stderr)
 if count == 0:
     sys.exit('no places: wrong release or bbox?')
