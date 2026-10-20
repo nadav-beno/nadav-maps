@@ -1,5 +1,5 @@
 import { test } from '@playwright/test';
-import { stubNetwork } from './stubs.ts';
+import { stubGeodata, stubNetwork } from './stubs.ts';
 import { adsbResponse, fakeGps, FLIGHT_FIXES } from './flight-fixture.ts';
 import { TAKEOUT_DAY, TAKEOUT_FIXTURE } from './timeline-fixture.ts';
 
@@ -320,4 +320,23 @@ test('place card google', async ({ page }, info) => {
   if (phone) await page.locator('.sheet-handle').click();
   await page.waitForTimeout(600);
   await shot('6-directions');
+});
+
+test('places, bright map and permissions', async ({ page, context }, info) => {
+  await stubNetwork(page);
+  await stubGeodata(page, { places: true });
+  await context.grantPermissions(['geolocation']);
+  await context.setGeolocation({ latitude: 32.0801, longitude: 34.7792, accuracy: 15 });
+  const shot = (n: string) => page.screenshot({ path: `${dir}/${info.project.name}-round6-${n}.png` });
+  await page.goto('./?panel=layers#16.5/32.0805/34.779');
+  await page.getByRole('radio', { name: 'בהיר וצבעוני' }).click();
+  await page.waitForTimeout(2000);
+  await shot('1-layers-bright');
+  await page.goto('./#16.5/32.0805/34.779');
+  await page.waitForTimeout(2500);
+  await shot('2-bright-map');
+  await page.getByRole('button', { name: 'תפריט' }).click();
+  await page.getByRole('button', { name: 'הרשאות מיקום ותנועה' }).click();
+  await page.waitForTimeout(500);
+  await shot('3-permissions');
 });
