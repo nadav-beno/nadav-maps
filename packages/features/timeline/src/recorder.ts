@@ -1,5 +1,5 @@
 import { signal } from '@preact/signals';
-import { load, requestLocation, save, toast, userLocation } from '@nm/core/app';
+import { incognito, load, requestLocation, save, simulatingLocation, toast, userLocation } from '@nm/core/app';
 import { lastPoint, putPoints } from './db.ts';
 import { keepPoint } from './segment.ts';
 import type { TrackPoint } from './types.ts';
@@ -31,7 +31,7 @@ let lastShared = 0;
 const simulated = typeof location !== 'undefined' && new URLSearchParams(location.search).has('simulate');
 
 async function record(p: TrackPoint): Promise<void> {
-  if (!recording.value || document.hidden) return;
+  if (!recording.value || document.hidden || incognito.peek()) return;
   prevLoaded ??= lastPoint()
     .then((lp) => {
       if (lp && (!prev || lp.t > prev.t)) prev = lp;
@@ -136,7 +136,7 @@ export function initRecorder(): void {
   if (started) return;
   started = true;
   userLocation.subscribe((u) => {
-    if (!u || simulated) return;
+    if (!u || simulated || simulatingLocation.peek()) return;
     lastShared = Date.now();
     if (ownWatch === null) recordShared();
   });

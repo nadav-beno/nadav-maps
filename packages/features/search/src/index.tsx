@@ -3,6 +3,8 @@ import { useEffect, useRef } from 'preact/hooks';
 import type { Map as MapLibreMap, LngLatBoundsLike } from 'maplibre-gl';
 import {
   BASEMAP_SOURCE,
+  cuisineLabel,
+  cuisinesOf,
   distance,
   droppedPin,
   filterOpenNow,
@@ -18,8 +20,11 @@ import {
   nameIndexNow,
   openNowStates,
   OVERTURE_SOURCE,
+  parseFilters,
   parseMapLink,
   suggestCorrections,
+  toggleFilter,
+  topCuisines,
   type BBox,
   type Camera,
   type LocalFeature,
@@ -34,6 +39,7 @@ import {
   directionsTo,
   ensureLayer,
   Icon,
+  incognito,
   PlaceBadge,
   EMPTY,
   load,
@@ -43,6 +49,7 @@ import {
   save,
   selectedPlace,
   setGeoJSON,
+  toast,
   units,
   userLocation,
   viewStack,
@@ -55,6 +62,7 @@ let map: MapLibreMap;
 const RECENT_KEY = 'search:recent';
 const recent = signal<string[]>(load(RECENT_KEY, []));
 function remember(q: string) {
+  if (incognito.peek()) return;
   const next = [q, ...recent.value.filter((r) => r !== q)].slice(0, 8);
   recent.value = next;
   save(RECENT_KEY, next);
@@ -152,7 +160,10 @@ function checkArea() {
   const pad = map.getPadding();
   const width = Math.max(200, (el.clientWidth || 400) - (pad.left ?? 0) - (pad.right ?? 0));
   const height = Math.max(200, (el.clientHeight || 600) - (pad.top ?? 0) - (pad.bottom ?? 0));
-  areaPill.value = movedEnough(anchor, camera(), { width, height });
+  const moved = movedEnough(anchor, camera(), { width, height });
+  // "Update results when the map moves": search again instead of offering to.
+  if (moved && parseFilters(p.filter).has('auto')) searchArea();
+  else areaPill.value = moved;
 }
 
 function searchArea() {
@@ -366,6 +377,50 @@ async function openLink(link: Extract<MapLink, { kind: 'point' }>) {
     }
   } catch {
     /* the coordinates alone are still useful */
+  }
+}
+
+type Recognition = {
+  lang: string;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onerror: ((e: { error: string }) => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  abort(): void;
+};
+const SpeechRec = (globalThis as unknown as { SpeechRecognition?: new () => Recognition; webkitSpeechRecognition?: new () => Recognition }).SpeechRecognition ??
+  (globalThis as unknown as { webkitSpeechRecognition?: new () => Recognition }).webkitSpeechRecognition;
+
+/** Voice search in Hebrew with the browser's speech recognition (Chrome, Safari), where it exists. */
+const listening = signal(false);
+let recognition: Recognition | null = null;
+function listen(onText: (t: string) => void) {
+  if (!SpeechRec) return;
+  if (listening.peek()) {
+    recognition?.abort();
+    return;
+  }
+  const r = new SpeechRec();
+  recognition = r;
+  r.lang = 'he-IL';
+  r.interimResults = false;
+  r.maxAlternatives = 1;
+  r.onresult = (e) => {
+    const t = e.results[0]?.[0]?.transcript?.trim();
+    if (t) onText(t);
+  };
+  r.onerror = (e) => {
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') toast('אין הרשאה למיקרופון. אפשר לאשר אותה בהגדרות האתר בדפדפן.');
+    else if (e.error === 'no-speech') toast('לא שמענו כלום. נסו שוב.');
+  };
+  r.onend = () => (listening.value = false);
+  listening.value = true;
+  try {
+    r.start();
+  } catch {
+    listening.value = false;
   }
 }
 
@@ -587,6 +642,23 @@ function SearchBar() {
           }}
         />
         {loading.value && <span class="search-spinner" aria-hidden="true" />}
+        {SpeechRec && !q.value && (
+          <button
+            type="button"
+            class={`icon-btn mic ${listening.value ? 'listening' : ''}`}
+            aria-label={listening.value ? 'מקשיב… לחיצה לעצירה' : 'חיפוש קולי'}
+            aria-pressed={listening.value}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() =>
+              listen((t) => {
+                q.value = t;
+                void submit();
+              })
+            }
+          >
+            <Icon name="mic" />
+          </button>
+        )}
         {q.value ? (
           <button type="button" class="icon-btn" aria-label="ניקוי" onMouseDown={(e) => e.preventDefault()} onClick={clear}>
             <Icon name="close" />
@@ -635,6 +707,20 @@ function SearchBar() {
                       </span>
                       <span class="li-sub">{[categoryLabel(p.category), p.address].filter(Boolean).join(' · ')}</span>
                     </span>
+                    <span class="sugg-dist small muted">{formatDistance(distance(origin(), [p.lng, p.lat]), units.value)}</span>
+                  </button>
+                  <button
+                    class="icon-btn small sugg-fill"
+                    aria-label={`השלמה: ${p.name}`}
+                    title="השלמה בתיבה"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      q.value = p.name;
+                      suggest(p.name);
+                      inputRef.current?.focus();
+                    }}
+                  >
+                    <Icon name="north_west" size={18} />
                   </button>
                 </li>
               ))}
@@ -714,10 +800,29 @@ function hiddenNote(n: number): string {
   return n === 1 ? 'תוצאה אחת ללא שעות פתיחה ידועות הוסתרה' : `${n} תוצאות ללא שעות פתיחה ידועות הוסתרו`;
 }
 
+/** Grey placeholder rows while results load, instead of a lone spinner. */
+function ResultsSkeleton() {
+  return (
+    <ul class="list skeleton-list" role="progressbar" aria-label="טוען">
+      {[0, 1, 2, 3].map((i) => (
+        <li key={i} class="skeleton-row">
+          <span class="skeleton line w60" />
+          <span class="skeleton line w40" />
+          <span class="skeleton line w30" />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function ResultsView({ view }: ViewProps<ResultsProps>) {
   const p = view.props!;
   const o = origin();
-  const openOnly = p.filter === 'open';
+  const filters = parseFilters(p.filter);
+  const openOnly = filters.has('open');
+  const accessOnly = filters.has('access');
+  const byDistance = filters.has('near');
+  const cuisine = [...filters].find((f) => f.startsWith('c-'))?.slice(2);
   const states = useSignal<Map<string, boolean | null> | null>(null);
 
   useEffect(() => {
@@ -731,18 +836,25 @@ function ResultsView({ view }: ViewProps<ResultsProps>) {
     };
   }, [p.places]);
 
-  const all = p.places ?? [];
-  const hasHours = all.some((x) => (x as WithHours).openingHours);
+  const places = p.places ?? [];
+  const hasHours = places.some((x) => (x as WithHours).openingHours);
+  type Tagged = Place & { wheelchair?: string; cuisine?: string };
+  const hasAccess = places.some((x) => (x as Tagged).wheelchair);
+  const cuisines = topCuisines(places.map((x) => (x as Tagged).cuisine));
+  let all = places;
+  if (accessOnly) all = all.filter((x) => (x as Tagged).wheelchair === 'yes' || (x as Tagged).wheelchair === 'limited');
+  if (cuisine) all = all.filter((x) => cuisinesOf((x as Tagged).cuisine).includes(cuisine));
+  if (byDistance) all = [...all].sort((a, b) => distance(o, [a.lng, a.lat]) - distance(o, [b.lng, b.lat]));
   const filtered = openOnly && states.value ? filterOpenNow(all, states.value) : null;
   const shown = openOnly ? filtered?.places ?? [] : all;
 
   // The map shows what the list shows.
   useEffect(() => {
     if (currentView.peek().kind === 'results') showResults(shown);
-  }, [shown.length, openOnly, states.value, p.places]);
+  }, [shown.length, p.filter, states.value, p.places]);
 
-  const toggleOpen = () => {
-    const filter = openOnly ? undefined : 'open';
+  const toggle = (token: string) => {
+    const filter = toggleFilter(p.filter, token);
     open({ kind: 'results', props: { ...p, filter, url: { ...p.url, filter } } }, { replace: true });
   };
 
@@ -761,11 +873,35 @@ function ResultsView({ view }: ViewProps<ResultsProps>) {
         </button>
         <h2>{p.title}</h2>
       </header>
-      {(hasHours || openOnly) && !p.loading && (
+      {!p.loading && !p.error && places.length > 0 && (
         <div class="chips result-filters" role="toolbar" aria-label="סינון תוצאות">
-          <button class="chip" aria-pressed={openOnly} onClick={toggleOpen}>
-            <Icon name={openOnly ? 'check' : 'schedule'} size={18} />
-            פתוח עכשיו
+          {(hasHours || openOnly) && (
+            <button class="chip" aria-pressed={openOnly} onClick={() => toggle('open')}>
+              <Icon name={openOnly ? 'check' : 'schedule'} size={18} />
+              פתוח עכשיו
+            </button>
+          )}
+          {!p.category && (
+            <button class="chip" aria-pressed={byDistance} onClick={() => toggle('near')}>
+              <Icon name={byDistance ? 'check' : 'sort'} size={18} />
+              הכי קרוב
+            </button>
+          )}
+          {(hasAccess || accessOnly) && (
+            <button class="chip" aria-pressed={accessOnly} onClick={() => toggle('access')}>
+              <Icon name={accessOnly ? 'check' : 'accessible'} size={18} />
+              נגיש
+            </button>
+          )}
+          {[...new Set([...(cuisine ? [cuisine] : []), ...cuisines])].map((c) => (
+            <button key={c} class="chip" aria-pressed={cuisine === c} onClick={() => toggle(`c-${c}`)}>
+              {cuisine === c && <Icon name="check" size={18} />}
+              {cuisineLabel(c) ?? c.replace(/_/g, ' ')}
+            </button>
+          ))}
+          <button class="chip" aria-pressed={filters.has('auto')} title="חיפוש מחדש כשמזיזים את המפה" onClick={() => toggle('auto')}>
+            <Icon name={filters.has('auto') ? 'check' : 'refresh'} size={18} />
+            עדכון לפי המפה
           </button>
         </div>
       )}
@@ -785,7 +921,7 @@ function ResultsView({ view }: ViewProps<ResultsProps>) {
           {categoryById(p.category)?.label} ליד {p.near}
         </p>
       )}
-      {p.loading && <div class="spinner" role="progressbar" aria-label="טוען" />}
+      {p.loading && <ResultsSkeleton />}
       {p.error && <p class="error">{p.error}</p>}
       {openOnly && !states.value && all.length > 0 && <div class="spinner" role="progressbar" aria-label="טוען" />}
       {p.places && p.places.length === 0 && (
@@ -799,6 +935,7 @@ function ResultsView({ view }: ViewProps<ResultsProps>) {
           <p>אין כאן מקומות שפתוחים עכשיו.</p>
         </div>
       )}
+      {places.length > 0 && all.length === 0 && <p class="muted">אין תוצאות שמתאימות לסינון.</p>}
       <ul class="list">
         {shown.map((pl) => {
           const state = states.value?.get(pl.id);

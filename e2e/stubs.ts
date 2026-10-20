@@ -62,7 +62,7 @@ export const ROUTE_LINE: [number, number][] = [
   [34.7918, 32.0745],
 ];
 
-function valhallaTrip(line: [number, number][], seconds: number) {
+function valhallaTrip(line: [number, number][], seconds: number, summary: Record<string, boolean> = {}) {
   return {
     legs: [
       {
@@ -74,9 +74,27 @@ function valhallaTrip(line: [number, number][], seconds: number) {
         ],
       },
     ],
-    summary: { length: 1.55, time: seconds },
+    summary: { length: 1.55, time: seconds, ...summary },
   };
 }
+
+/** Valhalla's OSRM-format answer, which is where lane arrows come from: two lanes before the right turn. */
+const OSRM_LANES = {
+  routes: [{ legs: [{ steps: [{ intersections: [{ location: ROUTE_LINE[2], lanes: [{ indications: ['straight'], valid: false }, { indications: ['right'], valid: true }] }] }] }] }],
+};
+
+/** Free photos near Azrieli (Wikimedia Commons geosearch). */
+const COMMONS = {
+  query: {
+    pages: {
+      '1': { index: 1, title: 'File:Azrieli towers.jpg', imageinfo: [{ url: 'https://upload.wikimedia.org/a.jpg', thumburl: 'https://upload.wikimedia.org/a-640.jpg', descriptionurl: 'https://commons.wikimedia.org/wiki/File:Azrieli_towers.jpg', mime: 'image/jpeg', extmetadata: { Artist: { value: 'דנה כהן' }, LicenseShortName: { value: 'CC BY-SA 4.0' } } }] },
+      '2': { index: 2, title: 'File:Azrieli mall.jpg', imageinfo: [{ url: 'https://upload.wikimedia.org/b.jpg', thumburl: 'https://upload.wikimedia.org/b-640.jpg', descriptionurl: 'https://commons.wikimedia.org/wiki/File:Azrieli_mall.jpg', mime: 'image/jpeg', extmetadata: { LicenseShortName: { value: 'CC0' } } }] },
+    },
+  },
+};
+
+/** A 1×1 PNG for any photo the page shows. */
+const PIXEL = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkqPhfDwAEhgIAAOCzvQAAAABJRU5ErkJggg==', 'base64');
 
 /** Our own geodata (`<base>data/<region>/…`), served by the site itself. */
 const GEODATA = /^http:\/\/localhost:\d+\/data\//;
@@ -98,6 +116,8 @@ export async function stubGeodata(page: Page): Promise<void> {
 }
 
 export async function stubNetwork(page: Page): Promise<void> {
+  // The "why we ask for your location" card shows once; tests that cover it clear this.
+  await page.addInitScript(() => localStorage.setItem('nm:location:explained', 'true'));
   // Anything else external fails fast. (Registered first: later routes take priority.)
   await page.route(/^https:\/\/(?!localhost)/, (r) => r.abort());
   // No local geodata unless a test opts in with stubGeodata: the other tests exercise Photon/Overpass.
@@ -143,9 +163,26 @@ export async function stubNetwork(page: Page): Promise<void> {
     return r.fulfill({ json: { type: 'FeatureCollection', features } });
   });
   await page.route('https://photon.komoot.io/reverse**', (r) => r.fulfill({ json: { type: 'FeatureCollection', features: [PLACES.dizengoff] } }));
-  await page.route('https://valhalla1.openstreetmap.de/route', (r) =>
-    r.fulfill({ json: { trip: valhallaTrip(ROUTE_LINE, 240), alternates: [{ trip: valhallaTrip([ROUTE_LINE[0], [34.78, 32.083], ROUTE_LINE[3]], 330) }] } }),
+  await page.route('https://valhalla1.openstreetmap.de/route', (r) => {
+    if ((r.request().postData() ?? '').includes('"format":"osrm"')) return r.fulfill({ json: OSRM_LANES });
+    return r.fulfill({ json: { trip: valhallaTrip(ROUTE_LINE, 240, { has_toll: true, has_highway: true }), alternates: [{ trip: valhallaTrip([ROUTE_LINE[0], [34.78, 32.083], ROUTE_LINE[3]], 330) }] } });
+  });
+  // Speed limits along the route (50 km/h all the way).
+  await page.route('https://valhalla1.openstreetmap.de/trace_attributes', (r) =>
+    r.fulfill({ json: { edges: [{ speed_limit: 50, begin_shape_index: 0, end_shape_index: ROUTE_LINE.length - 1 }] } }),
   );
+  await page.route('https://commons.wikimedia.org/w/api.php**', (r) => {
+    const url = new URL(r.request().url());
+    // Only around Azrieli; elsewhere no photos.
+    const near = url.searchParams.get('ggscoord')?.startsWith('32.0745');
+    return r.fulfill({ json: near ? COMMONS : { batchcomplete: '' }, headers: { 'access-control-allow-origin': '*' } });
+  });
+  await page.route('https://upload.wikimedia.org/**', (r) => r.fulfill({ body: PIXEL, contentType: 'image/png' }));
+  await page.route('https://air-quality-api.open-meteo.com/**', (r) => {
+    const n = (new URL(r.request().url()).searchParams.get('latitude') ?? '').split(',').length;
+    const list = Array.from({ length: n }, (_, i) => ({ latitude: 32, longitude: 34.8, current: { time: '2026-10-17T06:00', european_aqi: 20 + ((i * 13) % 60), pm2_5: 8, pm10: 18 } }));
+    return r.fulfill({ json: n === 1 ? list[0] : list, headers: { 'access-control-allow-origin': '*' } });
+  });
   await page.route('https://api.transitous.org/api/**', (r) => {
     const path = new URL(r.request().url()).pathname;
     if (path.endsWith('/plan')) return r.fulfill({ json: motisPlan(), headers: { 'access-control-allow-origin': '*' } });
@@ -204,12 +241,31 @@ export async function stubNetwork(page: Page): Promise<void> {
     if (body.includes('"name"="ביסטרו הכרמל"')) {
       return r.fulfill({ json: { elements: [{ type: 'node', id: 5005, lat: 32.0801, lon: 34.7792, tags: BISTRO_TAGS }] } });
     }
+    // A mall mapped as an area, and its directory (shops inside it, with floors).
+    if (body.includes('way(7007);map_to_area')) {
+      return r.fulfill({
+        json: {
+          elements: [
+            { type: 'node', id: 7101, lat: 32.0746, lon: 34.7917, tags: { name: 'זארה', shop: 'clothes', level: '1' } },
+            { type: 'node', id: 7102, lat: 32.0746, lon: 34.7919, tags: { name: 'ארומה', amenity: 'cafe', level: '0' } },
+            { type: 'node', id: 7103, lat: 32.0744, lon: 34.7918, tags: { name: 'סופר-פארם', shop: 'chemist', level: '-1' } },
+          ],
+        },
+      });
+    }
+    if (body.includes('way(7007)')) {
+      return r.fulfill({ json: { elements: [{ type: 'way', id: 7007, center: { lat: 32.0745, lon: 34.7918 }, tags: { name: 'קניון הדגמה', shop: 'mall' } }] } });
+    }
+    // Fuel along the route (search along the route uses "around" with the route line).
+    if (body.includes('around:') && body.includes('"amenity"="fuel"')) {
+      return r.fulfill({ json: { elements: [{ type: 'node', id: 8008, lat: 32.0768, lon: 34.7852, tags: { name: 'פז בגין', amenity: 'fuel', brand: 'פז' } }] } });
+    }
     if (body.includes('"amenity"="cafe"')) {
       return r.fulfill({
         json: {
           elements: [
-            { type: 'node', id: 4004, lat: 32.0805, lon: 34.7745, tags: { name: 'קפה לנדוור', amenity: 'cafe' } },
-            { type: 'node', id: 4005, lat: 32.0812, lon: 34.7802, tags: { name: 'קפה תמיד', amenity: 'cafe', opening_hours: '24/7' } },
+            { type: 'node', id: 4004, lat: 32.0805, lon: 34.7745, tags: { name: 'קפה לנדוור', amenity: 'cafe', cuisine: 'coffee_shop;breakfast' } },
+            { type: 'node', id: 4005, lat: 32.0812, lon: 34.7802, tags: { name: 'קפה תמיד', amenity: 'cafe', opening_hours: '24/7', cuisine: 'coffee_shop', wheelchair: 'yes' } },
             { type: 'node', id: 4006, lat: 32.0791, lon: 34.7768, tags: { name: 'קפה אף פעם', amenity: 'cafe', opening_hours: 'off' } },
           ],
         },

@@ -1,7 +1,7 @@
 import { render } from 'preact';
 import { effect } from '@preact/signals';
 import { parseUrl, providersFromEnv, withDevOverrides } from '@nm/core';
-import { applyUrlFlags, featureCatalog, isEnabled, providers, sheet, viewStack } from '@nm/core/app';
+import { applyUrlFlags, embedded, featureCatalog, isEnabled, providers, sheet, viewStack } from '@nm/core/app';
 import { createToolClient, setToolClient } from '@nm/tools';
 import { FEATURES } from './features.ts';
 import { App, isWide } from './shell/App.tsx';
@@ -21,6 +21,8 @@ providers.value = config;
 
 applyUrlFlags(location.search);
 const initialUrl = parseUrl(location.href);
+embedded.value = !!initialUrl.embed;
+if (initialUrl.embed) document.documentElement.classList.add('embedded');
 const map = createMap(document.getElementById('map')!, config, initialUrl);
 // Handy when debugging on a phone: window.map in the console.
 (window as unknown as { map: typeof map }).map = map;

@@ -46,10 +46,19 @@ test('save a place to favorites and see it in the saved list', async ({ page }) 
   await page.goto('./');
   await page.getByRole('searchbox', { name: 'חיפוש מקום או כתובת' }).fill('עזריאלי');
   await page.getByRole('option').first().click();
+  // One tap saves to favorites (the last list used) and offers to change the list.
   await page.getByRole('button', { name: 'שמירה' }).click();
-  await page.getByRole('checkbox', { name: /מועדפים/ }).check();
+  await expect(page.getByText('נשמר במועדפים')).toBeVisible();
+  await page.getByRole('button', { name: 'שינוי' }).click();
+  await expect(page.getByRole('checkbox', { name: /מועדפים/ })).toBeChecked();
+  await page.getByRole('checkbox', { name: /תוכניות נסיעה/ }).check();
   await page.getByRole('button', { name: 'סיום' }).click();
   await expect(page.getByRole('button', { name: 'נשמר' })).toBeVisible();
+  // A private label and a note on the card.
+  await page.getByRole('button', { name: 'הוספת תווית פרטית' }).click();
+  await page.getByRole('textbox', { name: /תווית פרטית/ }).fill('הקניון שלי');
+  await page.getByRole('textbox', { name: /תווית פרטית/ }).press('Enter');
+  await expect(page.getByText('תווית: הקניון שלי')).toBeVisible();
   await page.goBack();
   await page.getByRole('navigation', { name: 'ניווט ראשי' }).getByRole('button', { name: 'שמורים' }).click();
   await page.getByRole('button', { name: /מועדפים/ }).click();
@@ -434,14 +443,14 @@ test.describe('with location', () => {
 test('dark mode and units from settings persist across reloads', async ({ page }) => {
   await page.goto('./');
   await page.getByRole('button', { name: 'תפריט' }).click();
-  await page.getByRole('button', { name: 'הגדרות' }).click();
+  await page.getByRole('button', { name: 'הגדרות', exact: true }).click();
   await page.getByRole('button', { name: 'כהה' }).click();
   await page.getByRole('button', { name: 'מיילים' }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await page.getByRole('button', { name: 'תפריט' }).click();
-  await page.getByRole('button', { name: 'הגדרות' }).click();
+  await page.getByRole('button', { name: 'הגדרות', exact: true }).click();
   await expect(page.getByRole('button', { name: 'מיילים' })).toHaveAttribute('aria-pressed', 'true');
 });
 

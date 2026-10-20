@@ -8,6 +8,7 @@ import type { DirectionsMode, LngLat } from './types.ts';
  *   ?route=lng,lat;lng,lat&mode=walk  directions (first = origin, last = destination)
  *   ?list=<base64 GeoJSON>          shared list (no account needed)
  *   ?panel=timeline&day=2026-10-10  a screen by name, and the day it shows
+ *   ?embed=1                        inside an iframe on another site: map and card only
  */
 export interface UrlState {
   view?: { zoom: number; center: LngLat; bearing?: number; pitch?: number };
@@ -15,7 +16,7 @@ export interface UrlState {
   q?: string;
   /** Category search ("cafe"), see CATEGORIES in @nm/tools. */
   cat?: string;
-  /** Result filters, comma separated ("open" = open now). */
+  /** Result filters, comma separated ("open" = open now, "access" = wheelchair, "near" = by distance, "auto" = follow the map, "c-pizza" = a cuisine). */
   filter?: string;
   route?: LngLat[];
   /** route starts at the user's current location ("route=me;lng,lat"). */
@@ -25,9 +26,11 @@ export interface UrlState {
   panel?: string;
   /** A calendar day for screens that show one (timeline), "YYYY-MM-DD". */
   day?: string;
+  /** Shown inside another site's iframe ("?embed=1"): just the map and the card. */
+  embed?: boolean;
 }
 
-const MODES: DirectionsMode[] = ['car', 'walk', 'bike', 'transit'];
+const MODES: DirectionsMode[] = ['car', 'walk', 'bike', 'transit', 'motorcycle'];
 
 export function parseUrl(href: string): UrlState {
   const url = new URL(href);
@@ -50,7 +53,7 @@ export function parseUrl(href: string): UrlState {
   const cat = p.get('cat');
   if (cat && /^[a-z_]{1,32}$/.test(cat)) out.cat = cat;
   const filter = p.get('filter');
-  if (filter && /^[a-z,]{1,64}$/.test(filter)) out.filter = filter;
+  if (filter && /^[a-z_,-]{1,64}$/.test(filter)) out.filter = filter;
   const route = p.get('route');
   if (route) {
     const tokens = route.split(';');
@@ -72,6 +75,7 @@ export function parseUrl(href: string): UrlState {
   if (panel) out.panel = panel;
   const day = p.get('day');
   if (day && /^\d{4}-\d{2}-\d{2}$/.test(day)) out.day = day;
+  if (p.get('embed') === '1') out.embed = true;
   return out;
 }
 
@@ -102,6 +106,7 @@ export function buildUrl(base: string, s: UrlState): string {
   if (s.list) p.set('list', s.list);
   if (s.panel) p.set('panel', s.panel);
   if (s.day) p.set('day', s.day);
+  if (s.embed) p.set('embed', '1');
   url.hash = s.view ? viewHash(s.view.zoom, s.view.center, s.view.bearing, s.view.pitch) : url.hash;
   // URLSearchParams encodes ';' and ','; keep them readable.
   return url.toString().replace(/%3B/g, ';').replace(/%2C/g, ',').replace(/%3A/g, ':');

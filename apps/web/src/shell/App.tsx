@@ -1,6 +1,6 @@
 import { signal, useSignal, useSignalEffect } from '@preact/signals';
 import { useLayoutEffect, useRef } from 'preact/hooks';
-import { back, currentView, home, Icon, immersive, isDark, open, sheet, toastMessage, viewStack, type SheetSize } from '@nm/core/app';
+import { back, currentView, embedded, home, Icon, immersive, isDark, open, sheet, toastMessage, viewStack, type SheetSize } from '@nm/core/app';
 import { fabs, homeSections, menuItems, slots, tabs, views } from './registry.ts';
 
 const wide = signal(typeof matchMedia === 'function' && matchMedia('(min-width: 768px)').matches);
@@ -245,6 +245,26 @@ function Toast() {
   );
 }
 
+/** Inside another site's iframe: the map, the card for a shared place, and a way out to the full app. */
+function Embedded() {
+  const full = () => {
+    const u = new URL(location.href);
+    u.searchParams.delete('embed');
+    return u.toString().replace(/%3A/g, ':');
+  };
+  const hasView = currentView.value.kind !== 'home';
+  return (
+    <>
+      {hasView && (wide.value ? <SidePanel /> : <Sheet />)}
+      <a class="embed-open" href={full()} target="_blank" rel="noopener noreferrer" onClick={(e) => ((e.currentTarget as HTMLAnchorElement).href = full())}>
+        <Icon name="open_in_new" size={18} />
+        פתיחה במפות נדב
+      </a>
+      <Toast />
+    </>
+  );
+}
+
 export function App() {
   useSignalEffect(() => {
     document.documentElement.dataset.theme = isDark.value ? 'dark' : 'light';
@@ -257,7 +277,8 @@ export function App() {
   const top = slots.value.filter((s) => s.slot === 'top');
   const controls = slots.value.filter((s) => s.slot === 'controls');
   const overlay = slots.value.filter((s) => s.slot === 'overlay');
-  const showTabs = !wide.value && currentTab() !== null;
+  const showTabs = !wide.value && currentTab() !== null && !embedded.value;
+  if (embedded.value) return <Embedded />;
   return (
     <>
       {!immersive.value && (

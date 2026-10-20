@@ -43,6 +43,7 @@ import { categoryLabel, identifyPlace, placeDetails, placeSummary, reverseGeocod
 import { parseHours, type HoursInfo } from '@nm/core';
 import { displayPhone, socialLabel } from './contact.ts';
 import { Attributes, PlusCodeRow, ServiceOptions, SimilarPlaces } from './sections.tsx';
+import { DirectoryButton, DirectoryView, hasDirectory, openGallery, PhotosView, usePhotos } from './extras.tsx';
 
 let map: MapLibreMap;
 
@@ -228,8 +229,10 @@ function PlaceView({ view }: ViewProps<{ place: Place }>) {
   const address = p.address ?? d?.address;
   const phone = d?.phone ?? c?.phone;
   const website = d?.website ?? c?.website;
-  const photos = [summary.value?.imageUrl, d?.imageUrl].filter((x, i, a): x is string => !!x && a.indexOf(x) === i);
-  const sources = [p.osm || d ? 'OpenStreetMap' : null, p.id.startsWith('ovt:') ? 'Overture Maps' : null, summary.value ? 'ויקיפדיה' : null].filter(Boolean);
+  const own = [summary.value?.imageUrl, d?.imageUrl].filter((x, i, a): x is string => !!x && a.indexOf(x) === i);
+  const commons = usePhotos(p, d, !loading.value);
+  const photos = [...own, ...commons.map((x) => x.thumbUrl).filter((x) => !own.includes(x))].slice(0, 8);
+  const sources = [p.osm || d ? 'OpenStreetMap' : null, p.id.startsWith('ovt:') ? 'Overture Maps' : null, summary.value ? 'ויקיפדיה' : null, commons.length ? 'ויקישיתוף' : null].filter(Boolean);
   const isPin = p.id.startsWith('pt:') && !category;
   const services = isPin ? [] : serviceOptions(tags, category);
   const kosher = kosherBadge(tags);
@@ -247,9 +250,22 @@ function PlaceView({ view }: ViewProps<{ place: Place }>) {
     <article class="view place">
       {photos.length > 0 && (
         <div class="photo-strip">
-          {photos.map((src) => (
-            <img key={src} src={src} alt="" loading="lazy" referrerpolicy="no-referrer" onError={(e) => ((e.target as HTMLElement).style.display = 'none')} />
-          ))}
+          {photos.map((src) => {
+            const i = commons.findIndex((x) => x.thumbUrl === src);
+            return i >= 0 ? (
+              <button key={src} class="photo-btn" aria-label="תמונות" onClick={() => openGallery(p.name, commons, i)}>
+                <img src={src} alt="" loading="lazy" referrerpolicy="no-referrer" onError={(e) => ((e.target as HTMLElement).style.display = 'none')} />
+              </button>
+            ) : (
+              <img key={src} src={src} alt="" loading="lazy" referrerpolicy="no-referrer" onError={(e) => ((e.target as HTMLElement).style.display = 'none')} />
+            );
+          })}
+          {commons.length > 0 && (
+            <button class="photo-more" onClick={() => openGallery(p.name, commons)}>
+              <Icon name="photo_library" size={22} />
+              {commons.length} תמונות
+            </button>
+          )}
         </div>
       )}
       <div class="place-head">
@@ -351,6 +367,7 @@ function PlaceView({ view }: ViewProps<{ place: Place }>) {
 
           <div class="details">
             {address && <Row icon="location_on">{address}</Row>}
+            {hasDirectory(p, d) && <DirectoryButton p={p} />}
             {hours.value && <Hours info={hours.value} />}
             {links.reservation && (
               <Row icon="table_restaurant" href={links.reservation}>
@@ -476,6 +493,8 @@ export default defineFeature({
   setup(ctx) {
     map = ctx.map;
     ctx.registerView('place', PlaceView);
+    ctx.registerView('place-photos', PhotosView);
+    ctx.registerView('directory', DirectoryView);
 
     ctx.onStyle(async (m) => {
       await addPinImage(m);

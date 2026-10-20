@@ -110,3 +110,14 @@ export function filterOpenNow<T extends { id: string }>(places: T[], states: Map
   });
   return { places: kept, unknown };
 }
+
+/**
+ * Open at a given time (e.g. the arrival time of a route)? true / false, or null when
+ * unknown. Also says when it next changes, for "closes 10 minutes after you arrive".
+ */
+export async function openAt(value: string, lat: number, lng: number, at: Date, countryCode = 'il'): Promise<{ open: boolean | null; next: Date | null }> {
+  const Ctor = await loadOpeningHours();
+  const oh = Ctor && evaluate(Ctor, value, lat, lng, countryCode);
+  if (!oh || oh.getUnknown(at)) return { open: null, next: null };
+  return { open: oh.getState(at), next: oh.getNextChange(at) ?? null };
+}
