@@ -20,6 +20,7 @@ import {
   parseAtlasIncidents,
   parseAtlasStatus,
   type AtlasIncident,
+  type AtlasIncidents,
   type AtlasStatus,
   type BBox,
 } from '@nm/core';
@@ -47,7 +48,7 @@ export const atlasState = signal<AtlasState>({ kind: 'loading' });
 /** Atlas coverage is on screen (only meaningful while the status is ok). */
 export const atlasInView = signal(false);
 /** Located, open announcements in Atlas coverage, and how many Atlas had no location for. */
-export const atlasIncidents = signal<{ incidents: AtlasIncident[]; unlocated: number }>({ incidents: [], unlocated: 0 });
+export const atlasIncidents = signal<AtlasIncidents>({ incidents: [], unlocated: 0, stale: false });
 
 export const atlasConfigured = () => !!(providers.peek().atlasKey && providers.peek().atlasUrl);
 
@@ -100,7 +101,8 @@ function accept(s: AtlasStatus | null, offsetMs: number | null) {
       return schedule(ATLAS_POLL_MS);
     }
   }
-  if (s && (atlasUsable(s) || s.stale || s.sourceStatus === 'stale')) {
+  // 'unavailable' (no data at all) also says stale=true, but there is nothing old to speak of.
+  if (s && s.sourceStatus !== 'unavailable' && (atlasUsable(s) || s.stale || s.sourceStatus === 'stale')) {
     setState({ kind: 'stale', status: s });
     return scheduleAfterStale();
   }
@@ -158,7 +160,7 @@ async function readIncidents() {
     const res = await fetch(atlasIncidentsUrl(atlasUrl, atlasKey, st.status.coverage.bbox), { credentials: 'omit', signal: ac.signal, headers: { Accept: 'application/geo+json, application/json' } });
     if (res.status === 401 || res.status === 403) {
       incidentsDenied = true;
-      atlasIncidents.value = { incidents: [], unlocated: 0 };
+      atlasIncidents.value = { incidents: [], unlocated: 0, stale: false };
       return resync();
     }
     // 503 + Retry-After on the very first read while Atlas fetches the feed; 429 when over quota.
@@ -169,7 +171,8 @@ async function readIncidents() {
       atlasIncidents.value = r;
       resync();
     }
-    scheduleIncidents(ATLAS_INCIDENTS_POLL_MS);
+    // A stale feed: Atlas refreshes on read, so ask again within a minute rather than in five.
+    scheduleIncidents(r?.stale ? ATLAS_POLL_MS : ATLAS_INCIDENTS_POLL_MS);
   } catch {
     if (running && document.visibilityState === 'visible') scheduleIncidents(atlasRetryDelay(incAttempt++, null));
   } finally {
@@ -340,6 +343,7 @@ export function AtlasNote() {
           );
         })}
       </ul>
+      {atlasIncidents.value.stale && <p class="muted small">הודעות התנועה הרשמיות לא עדכניות כרגע, ולכן לא מוצגות.</p>}
       {atlasIncidents.value.unlocated > 0 && (
         <p class="muted small">
           {atlasIncidents.value.unlocated === 1 ? 'הודעת תנועה רשמית אחת' : `${atlasIncidents.value.unlocated} הודעות תנועה רשמיות`} בלי מיקום, ולכן לא על המפה.
