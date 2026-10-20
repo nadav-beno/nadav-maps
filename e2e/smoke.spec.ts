@@ -773,7 +773,15 @@ test('our own places tiles replace Overture inside Israel', async ({ page }, inf
 
 test('layers: bright map stays bright in dark mode, and the theme is one tap away', async ({ page }) => {
   type Q = { map: { getPaintProperty(l: string, p: string): unknown } };
-  const background = () => page.evaluate(() => String((window as unknown as Q).map.getPaintProperty('background', 'background-color')));
+  // Reads null while the new style is still loading (a theme or map type switch swaps it).
+  const background = () =>
+    page.evaluate(() => {
+      try {
+        return String((window as unknown as Q).map.getPaintProperty('background', 'background-color'));
+      } catch {
+        return null;
+      }
+    });
   await page.goto('./');
   await page.getByRole('button', { name: 'שכבות' }).click();
   await page.getByRole('group', { name: 'מצב תצוגה' }).getByRole('button', { name: 'כהה' }).click();
