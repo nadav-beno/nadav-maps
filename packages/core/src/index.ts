@@ -3,6 +3,7 @@ export * from './geo.ts';
 export * from './polyline.ts';
 export * from './hebrew.ts';
 export * from './region.ts';
+export * from './territory.ts';
 export * from './format.ts';
 export * from './ids.ts';
 export * from './url-state.ts';

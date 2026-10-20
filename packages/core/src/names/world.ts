@@ -1556,7 +1556,6 @@ export const WORLD_NAMES = `
 לבנון|Lebanon|country
 קוסובו|Kosovo|country
 ג׳מייקה|Jamaica|country
-השטחים הפלסטיניים|Palestine|country
 גמביה|Gambia|country
 הטריטוריות הדרומיות של צרפת|Fr. S. Antarctic Lands|country
 קפריסין|Cyprus|country

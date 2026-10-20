@@ -26,6 +26,22 @@ describe('offline world map', () => {
     expect(countryAt(world, [-185, 65])?.code).toBe('RU');
   });
 
+  it('shows the West Bank and Gaza as part of Israel (territory.ts)', () => {
+    expect(world.countries.some((c) => c.code === 'PS')).toBe(false);
+    expect(countryAt(world, [35.2, 31.9])?.code).toBe('IL'); // Ramallah
+    expect(countryAt(world, [35.27, 32.22])?.code).toBe('IL'); // Nablus
+    expect(countryAt(world, [34.45, 31.5])?.code).toBe('IL'); // Gaza
+    expect(countryAt(world, [35.9, 31.95])?.code).toBe('JO'); // Amman stays Jordan
+    expect(countryAt(world, [31.24, 30.04])?.code).toBe('EG');
+    expect(world.borders.length).toBe(file.borders.length - 2);
+    const il = world.countries.find((c) => c.code === 'IL')!;
+    for (const poly of il.polygons) expect(poly[0][0]).toEqual(poly[0][poly[0].length - 1]);
+    expect(world.cities.find((c) => c.name === 'Gaza')?.country).toBe('IL');
+    const labels = worldGeoJSON(world).features.filter((f) => f.properties.kind === 'country').map((f) => f.properties.name);
+    expect(labels).toContain('ישראל');
+    expect(labels).not.toContain('השטחים הפלסטיניים');
+  });
+
   it('says null over the sea', () => {
     expect(countryAt(world, [-40, 40])).toBeNull(); // mid Atlantic
     expect(countryAt(world, [33, 34])).toBeNull(); // Mediterranean, off Cyprus

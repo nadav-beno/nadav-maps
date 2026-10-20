@@ -1,4 +1,5 @@
 import { bearing, distance } from './geo.ts';
+import { mergeWorldFile } from './territory.ts';
 import type { BBox, LngLat } from './types.ts';
 
 /**
@@ -61,7 +62,8 @@ export interface World {
   attribution: string;
 }
 
-export function decodeWorld(f: WorldFile): World {
+export function decodeWorld(file: WorldFile): World {
+  const f = mergeWorldFile(file);
   const arcs: LngLat[][] = f.arcs.map((a) => {
     const out: LngLat[] = [];
     let x = 0, y = 0;

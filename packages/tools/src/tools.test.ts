@@ -22,6 +22,12 @@ describe('photon mapping', () => {
     const p = photonToPlace(feature('קפה', 1, { street: 'דיזנגוף', housenumber: '50' }) as never);
     expect(p).toMatchObject({ id: 'osm:n1', name: 'קפה', address: 'דיזנגוף 50, תל אביב-יפו, ישראל', countryCode: 'il', category: { key: 'amenity', value: 'cafe' } });
   });
+  it('names Israel as the country of places in the West Bank and Gaza', () => {
+    const p = photonToPlace(feature('קפה', 2, { city: 'رام الله', state: 'الضفة الغربية', country: 'الأراضي الفلسطينية', countrycode: 'PS' }) as never);
+    expect(p.countryCode).toBe('il');
+    expect(p.address).toBe('رام الله, ישראל');
+    expect(photonToPlace(feature('Café', 3, { country: 'Palestinian Territories', countrycode: 'PS' }) as never, 'en').address).toBe('תל אביב-יפו, Israel');
+  });
   it('names an address by its street and converts extent', () => {
     const p = photonToPlace({ geometry: { coordinates: [1, 2] }, properties: { street: 'הרצל', housenumber: '3', city: 'חיפה', extent: [0, 3, 2, 1] } } as never);
     expect(p.name).toBe('הרצל 3');
