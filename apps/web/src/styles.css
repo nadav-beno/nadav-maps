@@ -511,6 +511,7 @@ a.detail-body { color: var(--text); }
 .dep-time.cancelled { color: var(--danger); }
 .dep-late, .dep-sched, .dep-clock { font-size: 11px; font-weight: 400; color: var(--text-3); }
 .dep-late { color: var(--warn); }
+.vehicle-facts .dep-late { font-size: inherit; }
 .is-cancelled .dep-headsign { text-decoration: line-through; color: var(--text-3); }
 
 /* elevation profile */
@@ -1010,3 +1011,12 @@ textarea.code { width: 100%; font-family: ui-monospace, monospace; font-size: 12
 .perm-state { font-weight: 500; }
 .perm-granted { color: var(--g-outdoor, #188038); }
 .perm-denied { color: #d93025; }
+
+/* Live vehicle card (transit feature) */
+.vehicle-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.vehicle-title > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vehicle-facts { list-style: none; margin: 4px 0 12px; padding: 0; display: grid; gap: 10px; }
+.vehicle-facts li { display: flex; align-items: flex-start; gap: 10px; }
+.vehicle-facts .icon { flex: none; color: var(--text-2); margin-top: 1px; }
+.vehicle-facts .live-icon { color: var(--ok); }
+.vehicle-actions { display: flex; gap: 8px; margin-bottom: 12px; }

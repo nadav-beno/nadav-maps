@@ -31,6 +31,11 @@ export interface Region {
    * `<GEODATA_URL><id>/`. Absent = the region uses the public providers (Photon, Overpass) only.
    */
   geodata?: RegionGeodata;
+  /**
+   * A source of measured bus positions here ('open-bus': Israel's SIRI feed through the Open Bus
+   * Stride API). Without one, live vehicles are computed from Transitous stop times.
+   */
+  busPositions?: 'open-bus';
 }
 
 export interface RegionGeodata {
@@ -57,6 +62,7 @@ export const REGIONS: Region[] = [
     units: 'metric',
     timeZone: 'Asia/Jerusalem',
     coverage: { search: true, routing: true, transit: false, traffic: ['here'] },
+    busPositions: 'open-bus',
     geodata: {
       id: 'il',
       extract: 'https://download.geofabrik.de/asia/israel-and-palestine-latest.osm.pbf',

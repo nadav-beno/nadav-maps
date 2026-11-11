@@ -1,4 +1,4 @@
-import { distance, fuzzyScore, lineLength, sampleLine, snapToLine, nameIndex, namesFileIndex, namesFileIndexNow, normalizeQuery, parsePlaceId, prepareQuery, queryVariants, regionAt, suggestCorrections, trafficProvider, type BBox, type Correction, type LngLat, type Place, type PreparedQuery } from '@nm/core';
+import { distance, fuzzyScore, lineLength, sampleLine, snapToLine, nameIndex, namesFileIndex, namesFileIndexNow, normalizeQuery, parsePlaceId, prepareQuery, queryVariants, regionAt, suggestCorrections, trafficProvider, type BBox, type Correction, type LiveVehicle, type LngLat, type Place, type PreparedQuery } from '@nm/core';
 import { z } from 'zod';
 import { CATEGORIES, categoryById } from '../categories.ts';
 import { defineTool, ProviderError, type ToolContext } from '../define.ts';
@@ -10,7 +10,8 @@ import { photonReverse, photonSearch } from '../providers/photon.ts';
 import { localgeoDetails, localgeoIdentify, localgeoNamesUrl, localgeoReverse, localgeoSearch, mergePlaces } from '../providers/localgeo.ts';
 import { hereIncidents, hereTrafficTime } from '../providers/here.ts';
 import { NO_KEY_MESSAGE, tomtomIncidents, tomtomTrafficTime } from '../providers/tomtom.ts';
-import { transitDepartures, transitPlan } from '../providers/transitous.ts';
+import { openBusVehicles } from '../providers/openbus.ts';
+import { transitDepartures, transitPlan, transitVehicles } from '../providers/transitous.ts';
 import { valhallaGuidance, valhallaRoute } from '../providers/valhalla.ts';
 import { wikipediaSummary } from '../providers/wikipedia.ts';
 
@@ -358,6 +359,47 @@ export const transitDeparturesTool = defineTool({
   run: (input, ctx) => transitDepartures(ctx, { stopId: input.stopId, center: input.near as LngLat | undefined, radiusM: input.radius }, input.limit, input.time),
 });
 
+export interface LiveVehicles {
+  vehicles: LiveVehicle[];
+  /** Who the positions come from, for the attribution line. */
+  sources: ('openbus' | 'transitous')[];
+}
+
+export const transitVehiclesTool = defineTool({
+  name: 'transit_vehicles',
+  title: 'תחבורה ציבורית בזמן אמת',
+  description:
+    'Public transport vehicles moving inside a bounding box (at most 1° by 1°) right now: line, mode, colour, position, heading and how it is known. source "gps" = a position the bus reported (Israel, Open Bus Stride API, a few minutes old at most); "realtime" = computed from live stop times; "schedule" = computed from the timetable. Computed vehicles carry legs (path + times) so a map can animate them.',
+  input: z.object({
+    bbox: z.tuple([lng, lat, lng, lat]).describe('[west, south, east, north]').refine(([w, s, e, n]) => e > w && n > s && e - w <= 1 && n - s <= 1, 'bbox must be at most 1° by 1°'),
+    zoom: z.number().min(0).max(22).default(14).describe('Map zoom: lower zooms return only rail and other major modes'),
+  }),
+  run: async (input, ctx): Promise<LiveVehicles> => {
+    const bbox = input.bbox as BBox;
+    const center: LngLat = [(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2];
+    const gps = regionAt(center).busPositions === 'open-bus' && !!ctx.config.openBusUrl;
+    const now = Date.now();
+    const [buses, computed] = await Promise.allSettled([
+      gps ? openBusVehicles(ctx, bbox, now) : Promise.resolve(null),
+      ctx.config.transitUrl ? transitVehicles(ctx, bbox, input.zoom, now) : Promise.reject(new ProviderError('תחבורה ציבורית לא מוגדרת בשרת הזה.', undefined, 'transit')),
+    ]);
+    const measured = buses.status === 'fulfilled' ? buses.value : null;
+    if (!measured && computed.status === 'rejected') throw computed.reason;
+    const sources: LiveVehicles['sources'] = [];
+    let vehicles: LiveVehicle[] = [];
+    if (measured) {
+      sources.push('openbus');
+      vehicles = measured;
+    }
+    if (computed.status === 'fulfilled') {
+      sources.push('transitous');
+      // Where buses report their own positions, computed buses would only be duplicates.
+      vehicles = vehicles.concat(measured ? computed.value.filter((v) => v.mode !== 'bus' && v.mode !== 'coach') : computed.value);
+    }
+    return { vehicles, sources };
+  },
+});
+
 /** The traffic provider for a place with the keys this client or server has (see trafficProvider). */
 function trafficAt(ctx: ToolContext, at: LngLat) {
   const choice = trafficProvider(regionAt(at), ctx.config);
@@ -402,7 +444,7 @@ export const flightPosition = defineTool({
   run: (input, ctx) => findFlight(ctx, input.callsign),
 });
 
-export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, routeGuidance, searchAlongRoute, placesInside, placePhotos, airQuality, transitDirections, transitDeparturesTool, placeSummary, trafficIncidents, trafficTravelTime, flightPosition];
+export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, routeGuidance, searchAlongRoute, placesInside, placePhotos, airQuality, transitDirections, transitDeparturesTool, transitVehiclesTool, placeSummary, trafficIncidents, trafficTravelTime, flightPosition];
 
 /**
  * Start loading the region's full names list (typo dictionary) in the background, e.g. in

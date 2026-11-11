@@ -2,9 +2,10 @@ import { useSignal } from '@preact/signals';
 import { useEffect } from 'preact/hooks';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { delayMinutes, formatClock, formatDeparture, type Departure, type LngLat, type Place } from '@nm/core';
-import { back, defineFeature, Icon, LineChip, open, region, userLocation, type ViewProps } from '@nm/core/app';
+import { back, defineFeature, Icon, LineChip, mapLayers, open, region, userLocation, type ViewProps } from '@nm/core/app';
 import { tools, transitDeparturesTool } from '@nm/tools';
 import { isTransitStop } from './stops.ts';
+import { onLiveClick, setupLive, VehicleView } from './live.tsx';
 
 /**
  * Public transport around you: next departures on a stop's place card, and a
@@ -96,7 +97,7 @@ function StopSection({ place }: { place: Place }) {
         <Icon name="departure_board" size={20} /> יציאות קרובות
       </h3>
       <DeparturesBody at={[place.lng, place.lat]} radius={120} limit={8} />
-      <p class="muted tiny">זמני אמת מסומנים בירוק. מקור: Transitous.</p>
+      <p class="muted tiny">זמני אמת מסומנים בירוק. מקור: Transitous. כדי לראות את האוטובוסים זזים על המפה, הפעילו את שכבת התחבורה הציבורית.</p>
     </section>
   );
 }
@@ -128,6 +129,20 @@ export default defineFeature({
     map = ctx.map;
     ctx.registerView('departures', NearbyView);
     ctx.registerPlaceSection({ id: 'transit-departures', order: 5, Component: StopSection });
+    ctx.registerView('vehicle', VehicleView);
+    setupLive(ctx.map, ctx.onStyle);
+    ctx.onMapClick((_e, features) => onLiveClick(features), 70);
+    ctx.registerMenuItem({
+      id: 'live-transit',
+      label: 'תחבורה ציבורית בזמן אמת',
+      icon: 'rss_feed',
+      order: 31,
+      run: () => {
+        mapLayers.value = { ...mapLayers.value, transit: true };
+        if (map.getZoom() < 14) map.easeTo({ zoom: 14, duration: 600 });
+        back();
+      },
+    });
     ctx.registerMenuItem({ id: 'departures', label: 'יציאות קרובות', icon: 'departure_board', order: 30, run: () => open({ kind: 'departures' }) });
   },
 });

@@ -1,4 +1,5 @@
-import { decodePolyline, type Departure, type LngLat, type TransitItinerary, type TransitLeg, type TransitMode, type TransitStop } from '@nm/core';
+import { decodePolyline, type BBox, type Departure, type LiveVehicle, type LngLat, type TransitItinerary, type TransitLeg, type TransitMode, type TransitStop } from '@nm/core';
+import { vehiclePositionAt } from '@nm/core';
 import { getJson, ProviderError, type ToolContext } from '../define.ts';
 
 /**
@@ -162,6 +163,79 @@ export function motisDeparture(st: MotisStopTime): Departure {
     textColor: hex(st.routeTextColor),
     agency: st.agencyName,
   };
+}
+
+interface MotisTripSegment {
+  trips: { tripId: string; routeShortName?: string; displayName?: string }[];
+  routeColor?: string;
+  mode: string;
+  distance?: number;
+  from: MotisPlace;
+  to: MotisPlace;
+  departure: string;
+  arrival: string;
+  scheduledDeparture?: string;
+  scheduledArrival?: string;
+  realTime?: boolean;
+  polyline: string;
+}
+
+/**
+ * Vehicles on the move inside `bbox` between `now` and `now + windowS`: MOTIS `map/trips` returns
+ * the stop-to-stop segments trips travel in that window (with live times where operators publish
+ * them); we group them by trip so the map can move each vehicle along its path.
+ */
+export function motisVehicles(segments: MotisTripSegment[], now: number): LiveVehicle[] {
+  const byTrip = new Map<string, MotisTripSegment[]>();
+  for (const s of segments) {
+    const id = s.trips?.[0]?.tripId;
+    if (!id || !s.polyline) continue;
+    const list = byTrip.get(id);
+    if (list) list.push(s);
+    else byTrip.set(id, [s]);
+  }
+  const out: LiveVehicle[] = [];
+  for (const [id, segs] of byTrip) {
+    segs.sort((a, b) => Date.parse(a.departure) - Date.parse(b.departure));
+    const legs = segs.map((s) => ({ geometry: decodePolyline(s.polyline, 5), start: s.departure, end: s.arrival, from: s.from?.name, to: s.to?.name }));
+    const first = segs[0];
+    const trip = first.trips[0];
+    const live = segs.some((s) => s.realTime);
+    const sched = first.scheduledDeparture ? Date.parse(first.scheduledDeparture) : NaN;
+    const v: LiveVehicle = {
+      id: `motis:${id}`,
+      mode: transitMode(first.mode),
+      line: (trip.displayName || trip.routeShortName || '').trim(),
+      color: hex(first.routeColor),
+      source: live ? 'realtime' : 'schedule',
+      lng: 0,
+      lat: 0,
+      at: new Date(now).toISOString(),
+      delayS: live && Number.isFinite(sched) ? Math.round((Date.parse(first.departure) - sched) / 1000) : undefined,
+      legs,
+    };
+    const p = vehiclePositionAt(v, now);
+    if (!p) continue;
+    v.lng = p.at[0];
+    v.lat = p.at[1];
+    v.bearing = p.bearing;
+    out.push(v);
+  }
+  return out;
+}
+
+export async function transitVehicles(ctx: ToolContext, bbox: BBox, zoom: number, now = Date.now(), windowS = 120): Promise<LiveVehicle[]> {
+  const [w, s, e, n] = bbox;
+  const params = new URLSearchParams({
+    zoom: String(Math.round(zoom)),
+    min: `${s.toFixed(5)},${w.toFixed(5)}`,
+    max: `${n.toFixed(5)},${e.toFixed(5)}`,
+    startTime: new Date(now).toISOString(),
+    endTime: new Date(now + windowS * 1000).toISOString(),
+    precision: '5',
+  });
+  const res = await motis<MotisTripSegment[]>(ctx, 'map/trips', params);
+  return motisVehicles(Array.isArray(res) ? res : [], now);
 }
 
 /** Calls /api/v6/<path>, falling back to v5 when the server is older. */

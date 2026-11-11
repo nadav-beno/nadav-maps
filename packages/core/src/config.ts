@@ -27,6 +27,12 @@ export interface ProviderConfig {
    */
   transitUrl: string;
   /**
+   * Open Bus Stride API (Hasadna's public archive of Israel's Ministry of Transport SIRI feed, no key)
+   * for live GPS positions of buses in regions with `busPositions: 'open-bus'`, '' = off (those
+   * regions then show positions computed from Transitous times, like everywhere else).
+   */
+  openBusUrl: string;
+  /**
    * TomTom API key ('' = off): live traffic layer, incidents and traffic-aware travel times.
    * In the browser build it is public by nature; restrict it to our domain in TomTom's dashboard.
    */
@@ -80,6 +86,7 @@ export const DEFAULT_PROVIDERS: ProviderConfig = {
   // Sentinel-2 cloudless 2016 by EOX (CC BY 4.0). Later editions are non-commercial only.
   satellite: 'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg',
   transitUrl: 'https://api.transitous.org',
+  openBusUrl: 'https://open-bus-stride-api.hasadna.org.il',
   tomtomKey: '',
   hereKey: '',
   atlasUrl: 'https://atlas-traffic-command.nadav747710.chatgpt.site',
@@ -104,6 +111,7 @@ export function providersFromEnv(env: Record<string, string | undefined>, prefix
     places: env[prefix + 'PLACES_URL'] ?? DEFAULT_PROVIDERS.places,
     satellite: env[prefix + 'SATELLITE_URL'] ?? DEFAULT_PROVIDERS.satellite,
     transitUrl: env[prefix + 'TRANSIT_URL'] ?? DEFAULT_PROVIDERS.transitUrl,
+    openBusUrl: env[prefix + 'OPEN_BUS_URL'] ?? DEFAULT_PROVIDERS.openBusUrl,
     tomtomKey: (env[prefix + 'TOMTOM_KEY'] ?? '').trim(),
     hereKey: (env[prefix + 'HERE_KEY'] ?? '').trim(),
     atlasUrl: env[prefix + 'ATLAS_URL'] ?? DEFAULT_PROVIDERS.atlasUrl,
