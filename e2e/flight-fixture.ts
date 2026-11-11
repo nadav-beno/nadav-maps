@@ -26,6 +26,32 @@ export function adsbResponse(callsign = 'ELY001') {
   };
 }
 
+/** An adsb.lol /v2/point response around Tel Aviv: El Al 1 climbing out, and one on the ground at TLV. */
+export function adsbAreaResponse() {
+  return {
+    ac: [
+      { hex: '738075', flight: 'ELY001  ', r: '4X-EDF', t: 'B789', desc: 'BOEING 787-9 Dreamliner', ownOp: 'El Al', alt_baro: 9000, alt_geom: 9150, gs: 300, track: 270, baro_rate: 2000, lat: 32.1, lon: 34.6, seen_pos: 0.5 },
+      { hex: '4ca123', flight: 'RYR1234 ', r: 'EI-ABC', t: 'B738', alt_baro: 'ground', gs: 4, track: 90, lat: 32.0055, lon: 34.8854, seen_pos: 2 },
+    ],
+    msg: 'No error',
+    now: 1760000000000,
+    total: 2,
+  };
+}
+
+/** An OpenSky /states/all response: three aircraft across the world. */
+export function openskyResponse(time = 1760000000) {
+  return {
+    time,
+    states: [
+      ['738075', 'ELY001  ', 'Israel', time - 2, time, 30.1, 34.5, 11000, false, 250, 292.4, 0, null, 11200, '1000', false, 0],
+      ['a1b2c3', 'UAL90   ', 'United States', time - 5, time, -74.1, 40.6, 3000, false, 140, 45, -6.5, null, 3050, '2000', false, 0],
+      ['abcdef', 'JAL5    ', 'Japan', null, time, 139.8, 35.5, null, true, 0, 0, null, null, null, null, false, 0],
+      ['bad', 'NOPOS', 'Nowhere', null, time, null, null, null, false, null, null, null, null, null, null, false, 0],
+    ],
+  };
+}
+
 export interface FakeFix {
   latitude: number;
   longitude: number;

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { stubGeodata, stubNetwork } from './stubs.ts';
 import { encodePlusCode } from '../packages/core/src/plus-code.ts';
-import { adsbResponse, fakeGps, FLIGHT_FIXES } from './flight-fixture.ts';
+import { adsbAreaResponse, adsbResponse, fakeGps, FLIGHT_FIXES, openskyResponse } from './flight-fixture.ts';
 import { TAKEOUT_DAY, TAKEOUT_FIXTURE } from './timeline-fixture.ts';
 
 test.beforeEach(async ({ page }) => {
@@ -603,6 +603,59 @@ test.describe('flight mode', () => {
     // Only the flight number left the device.
     expect(asked).toEqual(['ELY1', 'ELY001']);
   });
+});
+
+test('live flights: planes around the map close up, a plane card, and the whole world from OpenSky', async ({ page }) => {
+  test.setTimeout(90_000);
+  const cors = { 'access-control-allow-origin': '*' };
+  const asked: string[] = [];
+  await page.route('https://api.adsb.lol/**', (r) => {
+    asked.push(r.request().url());
+    return r.fulfill({ json: adsbAreaResponse(), headers: cors });
+  });
+  await page.route('https://opensky-network.org/**', (r) => {
+    asked.push(r.request().url());
+    return r.fulfill({ json: openskyResponse(Math.floor(Date.now() / 1000)), headers: cors });
+  });
+  await page.goto('./?panel=flights#9/32.05/34.75');
+  await expect(page.getByRole('heading', { name: 'טיסות בעולם' })).toBeVisible();
+  await expect(page.locator('.live-status')).toContainText('מטוס אחד באוויר במפה');
+  await expect(page.locator('.live-status')).toContainText('1 על הקרקע');
+  await expect(page.locator('.live-status')).toContainText('adsb.lol');
+  // Close up only the visible area goes to adsb.lol, as one circle.
+  expect(asked[0]).toMatch(/^https:\/\/api\.adsb\.lol\/v2\/point\/[\d.]+\/[\d.]+\/\d+$/);
+
+  // Tap the plane in the air.
+  const planeAt = () => page.evaluate(() => {
+    const map = (window as unknown as { map: MapLike & { project(p: number[]): { x: number; y: number }; getCanvas(): HTMLCanvasElement } }).map;
+    const f = map.queryRenderedFeatures({ layers: ['live-flights-planes'] }).find((x) => x.properties.cs === 'ELY001') as unknown as { geometry: { coordinates: number[] } } | undefined;
+    if (!f) return null;
+    const p = map.project(f.geometry.coordinates);
+    const r = map.getCanvas().getBoundingClientRect();
+    return { x: r.left + p.x, y: r.top + p.y };
+  });
+  await expect.poll(planeAt, { timeout: 15_000 }).not.toBeNull();
+  const at = (await planeAt())!;
+  await page.mouse.click(at.x, at.y);
+  await expect(page.locator('.live-callsign')).toHaveText('ELY001');
+  await expect(page.locator('.live-model')).toContainText('BOEING 787-9 Dreamliner');
+  await expect(page.locator('.live-model')).toContainText('4X-EDF');
+  await expect(page.locator('.flight-stat').filter({ hasText: 'גובה' })).toContainText('2,789');
+  await expect(page.locator('.flight-stat').filter({ hasText: 'גובה' })).toContainText('עולה');
+  await expect(page.getByRole('button', { name: 'המפה עוקבת' })).toBeVisible();
+  await page.getByRole('button', { name: 'סגירה' }).click();
+
+  // The whole world: OpenSky, one call without a box.
+  await page.getByRole('button', { name: 'כל העולם' }).click();
+  await expect(page.locator('.live-status')).toContainText('OpenSky', { timeout: 15_000 });
+  await expect(page.locator('.live-status')).toContainText('2 מטוסים באוויר במפה');
+  expect(asked.some((u) => u.startsWith('https://opensky-network.org/api/states/all'))).toBe(true);
+
+  // Closing the screen clears the planes.
+  await page.getByRole('button', { name: 'סגירה' }).click();
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { map: MapLike }).map.queryRenderedFeatures({ layers: ['live-flights-planes'] }).length))
+    .toBe(0);
 });
 
 test('timeline: importing a Google Takeout file shows the day, and a visit can be renamed', async ({ page }) => {

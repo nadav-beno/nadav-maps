@@ -49,6 +49,12 @@ export interface ProviderConfig {
    */
   flightsUrl: string;
   /**
+   * OpenSky Network REST API for the live flights map zoomed out ('' = far views show only the
+   * middle of the map from `flightsUrl`). Anonymous: 400 credits a day per IP, non-commercial.
+   * Only the visible map box is sent.
+   */
+  openskyUrl: string;
+  /**
    * Our own static geodata built from OpenStreetMap (scripts/geodata), '' = off. Folder URL ending
    * in "/", may be relative to the page (the web build defaults to the site's own `<base>data/`).
    * Regions with `geodata` in region.ts are answered from `<geodataUrl><region>/` first; Photon and
@@ -85,6 +91,7 @@ export const DEFAULT_PROVIDERS: ProviderConfig = {
   atlasUrl: 'https://atlas-traffic-command.nadav747710.chatgpt.site',
   atlasKey: '',
   flightsUrl: 'https://api.adsb.lol',
+  openskyUrl: 'https://opensky-network.org/api',
   // Off unless configured: the web build sets it to its own <base>data/ (providersFromEnv).
   geodataUrl: '',
   photosUrl: 'https://commons.wikimedia.org/w/api.php',
@@ -109,6 +116,7 @@ export function providersFromEnv(env: Record<string, string | undefined>, prefix
     atlasUrl: env[prefix + 'ATLAS_URL'] ?? DEFAULT_PROVIDERS.atlasUrl,
     atlasKey: (env[prefix + 'ATLAS_KEY'] ?? '').trim(),
     flightsUrl: env[prefix + 'FLIGHTS_URL'] ?? DEFAULT_PROVIDERS.flightsUrl,
+    openskyUrl: env[prefix + 'OPENSKY_URL'] ?? DEFAULT_PROVIDERS.openskyUrl,
     // Vite's BASE_URL is set in the browser build: default to the data published with the site.
     geodataUrl: withSlash(env[prefix + 'GEODATA_URL'] ?? (env.BASE_URL !== undefined ? `${env.BASE_URL}data/` : DEFAULT_PROVIDERS.geodataUrl)),
     photosUrl: env[prefix + 'PHOTOS_URL'] ?? DEFAULT_PROVIDERS.photosUrl,

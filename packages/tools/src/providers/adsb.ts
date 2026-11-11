@@ -23,6 +23,14 @@ export interface AircraftPosition {
   track: number | null;
   /** How old the position is, seconds. */
   ageS: number | null;
+  /** Climb (+) or descent (-), m/s; null or missing when unknown or on the ground. */
+  verticalRateMs?: number | null;
+  /** Aircraft model in words ("BOEING 787-9"), when the feed has it. */
+  description?: string;
+  /** Operator, when the feed has it. */
+  operator?: string;
+  /** Country the aircraft is registered in (OpenSky). */
+  country?: string;
 }
 
 export interface FlightLookup {
@@ -92,6 +100,7 @@ export function parseAdsb(json: unknown): AircraftPosition[] {
     const gsKt = num(a.gs);
     const track = num(a.track) ?? num(a.true_heading) ?? num(a.mag_heading);
     const age = num(a.seen_pos) ?? num(last.seen_pos) ?? num(a.seen);
+    const rateFpm = num(a.geom_rate) ?? num(a.baro_rate);
     out.push({
       callsign: str(a.flight) ?? str(a.callsign) ?? '',
       hex: str(a.hex)?.replace(/^~/, '') ?? '',
@@ -103,6 +112,9 @@ export function parseAdsb(json: unknown): AircraftPosition[] {
       groundSpeedKmh: gsKt === null ? null : Math.round(gsKt * 1.852),
       track: track === null ? null : ((track % 360) + 360) % 360,
       ageS: age,
+      verticalRateMs: onGround || rateFpm === null ? null : Math.round(rateFpm * 0.00508 * 10) / 10,
+      description: str(a.desc),
+      operator: str(a.ownOp),
     });
   }
   // Freshest first.
