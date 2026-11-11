@@ -24,7 +24,13 @@ jobs:
       - name: Boundaries, types, unit tests, build
         run: pnpm check
       - name: Install Chromium
-        run: pnpm exec playwright install --with-deps chromium
+        # The runner image already has Chromium's system libraries; --with-deps only adds extra fonts
+        # through apt. When the Ubuntu mirrors are unreachable, install the browser alone.
+        run: |
+          timeout 300 pnpm exec playwright install --with-deps chromium || {
+            echo "::warning::apt unreachable: installing Chromium without extra system packages"
+            pnpm exec playwright install chromium
+          }
       - name: End-to-end tests (iPhone, Android, desktop)
         run: pnpm e2e
       - uses: actions/upload-artifact@v4
