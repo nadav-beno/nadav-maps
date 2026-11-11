@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_PROVIDERS } from '@nm/core';
 import { createToolClient } from './client.ts';
-import { clampBbox, coverCircles, openskyCredits, parseOpenSky } from './providers/live-aircraft.ts';
+import { clampBbox, coverCircles, middleCircles, openskyCredits, parseOpenSky, resetOpenSkyPause } from './providers/live-aircraft.ts';
 import { parseAdsb } from './providers/adsb.ts';
 import { liveFlights, TOOLS } from './tools/index.ts';
 import { adsbAreaResponse, openskyResponse } from '../../../e2e/flight-fixture.ts';
@@ -69,10 +69,45 @@ describe('live flights', () => {
     expect(europe.source).toBe('opensky');
 
     opensky = 429;
+    let before = urls.length;
     const limited = await client.call(liveFlights, { bbox: [-10, 35, 30, 60] }, { cache: false });
     expect(limited).toMatchObject({ source: 'adsb', partial: true });
     expect(limited.note).toContain('מכסה');
-    expect(urls[urls.length - 1]).toBe('https://api.adsb.lol/v2/point/47.5/10/250');
+    const fallback = urls.slice(before + 1);
+    expect(fallback).toHaveLength(4);
+    expect(fallback.every((u) => u.startsWith('https://api.adsb.lol/v2/point/') && u.endsWith('/250'))).toBe(true);
+
+    // While paused, OpenSky is not asked again (each failed call would be a long wait).
+    before = urls.length;
+    const again = await client.call(liveFlights, { bbox: [-10, 35, 30, 60] }, { cache: false });
+    expect(again.note).toContain('מכסה');
+    expect(urls.slice(before).some((u) => u.includes('opensky'))).toBe(false);
+    resetOpenSkyPause();
+  });
+
+  it('treats an unreachable OpenSky (blocked, no CORS) like an outage and pauses it', async () => {
+    resetOpenSkyPause();
+    const urls: string[] = [];
+    const client = createToolClient(DEFAULT_PROVIDERS, 'he', (async (u: string | URL | Request) => {
+      urls.push(String(u));
+      if (String(u).includes('opensky')) throw new TypeError('Failed to fetch');
+      return json(adsbAreaResponse());
+    }) as typeof fetch);
+    const res = await client.call(liveFlights, { bbox: [-180, -85, 180, 85] }, { cache: false });
+    expect(res).toMatchObject({ source: 'adsb', partial: true });
+    expect(res.note).toContain('לא זמין');
+    expect(res.aircraft).toHaveLength(2);
+    await client.call(liveFlights, { bbox: [-180, -85, 180, 85] }, { cache: false });
+    expect(urls.filter((u) => u.includes('opensky'))).toHaveLength(1);
+    resetOpenSkyPause();
+  });
+
+  it('puts the fallback circles around the middle, inside the box', () => {
+    const c = middleCircles([-10, 35, 30, 60]);
+    expect(c).toHaveLength(4);
+    for (const x of c) expect(Math.hypot(x.lon - 10, x.lat - 47.5)).toBeLessThan(6);
+    // A box narrower than the block keeps only the circles inside it.
+    expect(middleCircles([9, 30, 11, 65]).length).toBeGreaterThanOrEqual(1);
   });
 
   it('is in the tool list (REST + MCP)', () => {

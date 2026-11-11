@@ -39,6 +39,8 @@ export const isLiveOn = computed(() => viewStack.value.some((v) => v.kind === LI
 const ADSB_EVERY_MS = 8000;
 /** Wide refresh; OpenSky anonymous gives ~100 world-wide calls a day per IP. */
 const OPENSKY_EVERY_MS = 60000;
+/** Zoomed out while OpenSky is unavailable: adsb.lol around the middle of the map. */
+const FALLBACK_EVERY_MS = 15000;
 /** Planes glide on for at most this long without news, then stop where they were last seen. */
 const MAX_GLIDE_S = 90;
 
@@ -137,7 +139,9 @@ async function refresh(force = false) {
     if (s !== seq || !running) return;
     feedState.value = 'error';
   }
-  schedule(feed.peek()?.source === 'opensky' ? OPENSKY_EVERY_MS : ADSB_EVERY_MS);
+  const got = feed.peek();
+  // The fallback around the middle (OpenSky out) costs four calls: a little less often.
+  schedule(got?.source === 'opensky' ? OPENSKY_EVERY_MS : got?.partial ? FALLBACK_EVERY_MS : ADSB_EVERY_MS);
 }
 
 function schedule(ms: number) {

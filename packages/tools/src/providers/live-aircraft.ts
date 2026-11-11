@@ -137,6 +137,22 @@ async function fromAdsb(ctx: ToolContext, circles: { lat: number; lon: number; r
   return [...seen.values()];
 }
 
+/**
+ * After OpenSky fails we stop asking it for a while: a rate limit lasts until its reset (or an
+ * hour), anything else (down, blocked, no CORS) ten minutes. Each call would cost a 25 s wait.
+ */
+const LIMITED_MS = 3600_000;
+const DOWN_MS = 600_000;
+let openskyPause: { until: number; limited: boolean } | null = null;
+
+/** For tests: forget an earlier OpenSky failure. */
+export function resetOpenSkyPause(): void {
+  openskyPause = null;
+}
+
+const NOTE_LIMITED = 'נגמרה המכסה היומית של מקור הטיסות העולמי (OpenSky). מוצגות רק הטיסות באזור מרכז המפה; התקרבו כדי לראות הכול.';
+const NOTE_DOWN = 'מקור הטיסות העולמי (OpenSky) לא זמין כרגע. מוצגות רק הטיסות באזור מרכז המפה; התקרבו כדי לראות הכול.';
+
 /** Aircraft in the box from the best feed for its size. */
 export async function liveAircraft(ctx: ToolContext, bbox: Bbox): Promise<LiveAircraft> {
   const box = clampBbox(bbox);
@@ -144,27 +160,46 @@ export async function liveAircraft(ctx: ToolContext, bbox: Bbox): Promise<LiveAi
   if (circles) return { source: 'adsb', aircraft: await fromAdsb(ctx, circles), at: Date.now() };
 
   const base = ctx.config.openskyUrl.replace(/\/$/, '');
-  if (base) {
+  const paused = openskyPause && Date.now() < openskyPause.until ? openskyPause : null;
+  if (base && !paused) {
     const [w, s, e, n] = box;
     const world = e - w >= 359 && n - s >= 170;
     const q = world ? '' : `?lamin=${round(s)}&lomin=${round(w)}&lamax=${round(n)}&lomax=${round(e)}`;
     try {
       const json = await getJson<unknown>(ctx, `${base}/states/all${q}`, {}, 'opensky', 25000);
+      openskyPause = null;
       return { source: 'opensky', ...parseOpenSky(json) };
     } catch (err) {
-      if (!ctx.config.flightsUrl) throw err;
+      if (ctx.signal?.aborted) throw err;
       const limited = err instanceof ProviderError && err.status === 429;
-      const note = limited
-        ? 'נגמרה המכסה היומית של מקור הטיסות העולמי (OpenSky). מוצגות רק הטיסות במרכז המפה; התקרבו כדי לראות הכול.'
-        : 'מקור הטיסות העולמי (OpenSky) לא זמין כרגע. מוצגות רק הטיסות במרכז המפה; התקרבו כדי לראות הכול.';
-      return { ...(await middleOnly(ctx, box)), note };
+      openskyPause = { until: Date.now() + (limited ? LIMITED_MS : DOWN_MS), limited };
+      if (!ctx.config.flightsUrl) throw err;
+      return { ...(await middleOnly(ctx, box)), note: limited ? NOTE_LIMITED : NOTE_DOWN };
     }
   }
-  return { ...(await middleOnly(ctx, box)), note: 'במבט רחוק מוצגות רק הטיסות במרכז המפה. התקרבו כדי לראות הכול.' };
+  if (paused && !ctx.config.flightsUrl) throw new ProviderError(paused.limited ? NOTE_LIMITED : NOTE_DOWN, undefined, 'opensky');
+  return { ...(await middleOnly(ctx, box)), note: paused ? (paused.limited ? NOTE_LIMITED : NOTE_DOWN) : 'במבט רחוק מוצגות רק הטיסות באזור מרכז המפה. התקרבו כדי לראות הכול.' };
 }
 
-/** The close-up feed around the middle of a box too big for it (one 250 NM circle). */
-async function middleOnly(ctx: ToolContext, [w, s, e, n]: Bbox): Promise<LiveAircraft> {
-  const circle = { lon: round((w + e) / 2), lat: round((s + n) / 2), radiusNm: MAX_RADIUS_NM };
-  return { source: 'adsb', aircraft: await fromAdsb(ctx, [circle]), at: Date.now(), partial: true };
+/**
+ * The close-up feed around the middle of a box too big for it: a 2 x 2 block of 250 NM
+ * circles (about 1,300 km across), clipped to the box.
+ */
+export function middleCircles([w, s, e, n]: Bbox): { lat: number; lon: number; radiusNm: number }[] {
+  const lon = (w + e) / 2, lat = Math.max(-80, Math.min(80, (s + n) / 2));
+  // Half a cell (a square inside one circle) from the middle, in each direction.
+  const halfKm = (MAX_RADIUS_NM * NM_KM) / Math.SQRT2;
+  const dLat = halfKm / KM_PER_DEG;
+  const dLon = halfKm / (KM_PER_DEG * Math.cos((lat * Math.PI) / 180));
+  const out: { lat: number; lon: number; radiusNm: number }[] = [];
+  for (const y of [-dLat, dLat])
+    for (const x of [-dLon, dLon]) {
+      const cx = lon + x, cy = lat + y;
+      if (cx >= w && cx <= e && cy >= s && cy <= n) out.push({ lon: round(cx), lat: round(cy), radiusNm: MAX_RADIUS_NM });
+    }
+  return out.length ? out : [{ lon: round(lon), lat: round(lat), radiusNm: MAX_RADIUS_NM }];
+}
+
+async function middleOnly(ctx: ToolContext, box: Bbox): Promise<LiveAircraft> {
+  return { source: 'adsb', aircraft: await fromAdsb(ctx, middleCircles(box)), at: Date.now(), partial: true };
 }

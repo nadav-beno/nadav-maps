@@ -658,6 +658,25 @@ test('live flights: planes around the map close up, a plane card, and the whole 
     .toBe(0);
 });
 
+test('live flights: when OpenSky cannot be reached, the world view falls back to adsb.lol and says so', async ({ page }) => {
+  test.setTimeout(60_000);
+  const cors = { 'access-control-allow-origin': '*' };
+  let opensky = 0;
+  await page.route('https://api.adsb.lol/**', (r) => r.fulfill({ json: adsbAreaResponse(), headers: cors }));
+  // What a browser sees when CORS or a network block stops the request.
+  await page.route('https://opensky-network.org/**', (r) => {
+    opensky++;
+    return r.abort('failed');
+  });
+  await page.goto('./?panel=flights#1.5/30/20');
+  await expect(page.locator('.live-note')).toContainText('לא זמין');
+  await expect(page.locator('.live-status')).toContainText('מטוס אחד באוויר במפה');
+  // Panning around does not keep hitting the failed source.
+  await page.evaluate(() => (window as unknown as { map: { panBy(o: number[]): void } }).map.panBy([200, 0]));
+  await page.waitForTimeout(1500);
+  expect(opensky).toBe(1);
+});
+
 test('timeline: importing a Google Takeout file shows the day, and a visit can be renamed', async ({ page }) => {
   test.setTimeout(90_000);
   await page.goto('./?panel=timeline');
