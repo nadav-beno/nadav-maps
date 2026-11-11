@@ -7,6 +7,37 @@ import { getJson, ProviderError, type ToolContext } from '../define.ts';
  * GET {base}/v2/callsign/{CALLSIGN} -> { ac: [{ hex, flight, lat, lon, alt_baro, gs, track, ... }] }
  */
 
+/** What to draw: airliner, wide-body, light aircraft or helicopter. */
+export type AircraftKind = 'jet' | 'heavy' | 'light' | 'heli';
+
+const HEAVY_TYPES = /^(A3[3-5]\d|A38\d|A30\d|A310|B74\d|B76\d|B77\w|B78\d|MD11|IL96|IL76|C17|A400|A124|A225|B52|KC10|K35R|E3TF|DC10|L101)$/;
+const LIGHT_TYPES = /^(C1\d\d|C2\d\d|C3\d\d|P28\w|PA\d\d|PA\w\w|SR2\d|DA[24]\d|DA62|BE\d\d|M20\w|TB\d\d|DR40|AT\d|C42|PC12|PC6T|C208|TBM\d|GLID|ULAC)$/;
+
+/**
+ * The kind from the ADS-B emitter category ("A5" heavy, "A7" rotorcraft…) or OpenSky's numeric
+ * category, falling back to the ICAO type designator. Null for things that aren't aircraft
+ * (airport vehicles, obstacles), which the live map leaves out.
+ */
+export function aircraftKind(category: string | number | null | undefined, type?: string): AircraftKind | null {
+  if (typeof category === 'number') {
+    if (category >= 16) return null; // surface vehicles and obstacles
+    if (category === 8) return 'heli';
+    if (category === 6) return 'heavy';
+    if (category === 2 || category === 9 || category === 10 || category === 12) return 'light';
+  } else if (typeof category === 'string' && category) {
+    const c = category.toUpperCase();
+    if (c[0] === 'C') return null;
+    if (c === 'A7') return 'heli';
+    if (c === 'A5') return 'heavy';
+    if (c === 'A1' || c[0] === 'B') return 'light';
+  }
+  const t = type?.toUpperCase();
+  if (t && HEAVY_TYPES.test(t)) return 'heavy';
+  if (t && LIGHT_TYPES.test(t)) return 'light';
+  if (t && /^(EC\d\d|AS\d\d|R22|R44|R66|B06|B407|B429|H\d\d\d|S76|S92|A109|A139|A169|AW\d\d\d|UH\d+|H60|NH90|EC\w\w)$/.test(t)) return 'heli';
+  return 'jet';
+}
+
 export interface AircraftPosition {
   callsign: string;
   /** ICAO 24-bit address. */
@@ -31,6 +62,10 @@ export interface AircraftPosition {
   operator?: string;
   /** Country the aircraft is registered in (OpenSky). */
   country?: string;
+  /** What to draw; null for ground vehicles and obstacles. */
+  kind?: AircraftKind | null;
+  /** Transponder code ("7700" is an emergency). */
+  squawk?: string;
 }
 
 export interface FlightLookup {
@@ -115,6 +150,8 @@ export function parseAdsb(json: unknown): AircraftPosition[] {
       verticalRateMs: onGround || rateFpm === null ? null : Math.round(rateFpm * 0.00508 * 10) / 10,
       description: str(a.desc),
       operator: str(a.ownOp),
+      kind: aircraftKind(str(a.category), str(a.t)),
+      squawk: str(a.squawk),
     });
   }
   // Freshest first.

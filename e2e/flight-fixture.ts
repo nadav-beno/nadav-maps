@@ -30,13 +30,28 @@ export function adsbResponse(callsign = 'ELY001') {
 export function adsbAreaResponse() {
   return {
     ac: [
-      { hex: '738075', flight: 'ELY001  ', r: '4X-EDF', t: 'B789', desc: 'BOEING 787-9 Dreamliner', ownOp: 'El Al', alt_baro: 9000, alt_geom: 9150, gs: 300, track: 270, baro_rate: 2000, lat: 32.1, lon: 34.6, seen_pos: 0.5 },
-      { hex: '4ca123', flight: 'RYR1234 ', r: 'EI-ABC', t: 'B738', alt_baro: 'ground', gs: 4, track: 90, lat: 32.0055, lon: 34.8854, seen_pos: 2 },
+      { hex: '738075', flight: 'ELY001  ', r: '4X-EDF', t: 'B789', category: 'A5', desc: 'BOEING 787-9 Dreamliner', ownOp: 'El Al', alt_baro: 9000, alt_geom: 9150, gs: 300, track: 270, baro_rate: 2000, lat: 32.1, lon: 34.6, seen_pos: 0.5 },
+      { hex: '4ca123', flight: 'RYR1234 ', r: 'EI-ABC', t: 'B738', category: 'A3', alt_baro: 'ground', gs: 4, track: 90, lat: 32.0055, lon: 34.8854, seen_pos: 2 },
     ],
     msg: 'No error',
     now: 1760000000000,
     total: 2,
   };
+}
+
+/** adsb.lol /api/0/routeset for El Al 1: Tel Aviv to New York. */
+export function routesetResponse() {
+  return [
+    {
+      callsign: 'ELY001',
+      _airport_codes_iata: 'TLV-JFK',
+      _airports: [
+        { name: 'Ben Gurion International Airport', iata: 'TLV', icao: 'LLBG', location: 'Tel Aviv', countryiso2: 'IL', lat: 32.011, lon: 34.887 },
+        { name: 'John F Kennedy International Airport', iata: 'JFK', icao: 'KJFK', location: 'New York', countryiso2: 'US', lat: 40.64, lon: -73.779 },
+      ],
+      plausible: 1,
+    },
+  ];
 }
 
 /** An OpenSky /states/all response: three aircraft across the world. */

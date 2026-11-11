@@ -1,11 +1,11 @@
 import { computed, effect, signal } from '@preact/signals';
 import { useEffect, useState } from 'preact/hooks';
 import type { Map as MapLibreMap } from 'maplibre-gl';
-import type { LngLat } from '@nm/core';
+import { distance, formatArrival, formatDuration, greatCircle, type LngLat } from '@nm/core';
 import { back, ensureLayer, EMPTY, Icon, isDark, open, providers, setGeoJSON, sheet, units, viewStack, type FeatureContext, type ViewProps } from '@nm/core/app';
-import { clampBbox, coverCircles, flightPosition, liveFlights, tools, type AircraftPosition, type Bbox, type LiveAircraft } from '@nm/tools';
+import { clampBbox, coverCircles, flightPosition, flightRouteTool, liveFlights, tools, type AircraftPosition, type Bbox, type FlightRoute, type LiveAircraft } from '@nm/tools';
 import { altitudeReadout, headingReadout, speedReadout } from './format.ts';
-import { addPlaneImages } from './plane-image.ts';
+import { addLiveIcons, altitudeBand, BANDS, iconId } from './live-icons.ts';
 
 /**
  * Live flights: every aircraft in the air on the map, moving in real time, like the flight
@@ -31,6 +31,8 @@ export const followSelected = signal(true);
 /** Extra details for the picked aircraft (type, registration) when the wide feed lacks them. */
 const details = signal<Record<string, AircraftPosition>>({});
 const trail = signal<{ hex: string; points: LngLat[] }>({ hex: '', points: [] });
+/** Origin and destination of the picked flight (null route = unknown). */
+const route = signal<{ hex: string; route: FlightRoute | null } | null>(null);
 const now = signal(Date.now());
 
 export const isLiveOn = computed(() => viewStack.value.some((v) => v.kind === LIVE_VIEW || v.kind === AIRCRAFT_VIEW));
@@ -130,9 +132,12 @@ async function refresh(force = false) {
   const s = ++seq;
   feedState.value = 'loading';
   try {
+    const prevSel = selected.peek();
     const res = await tools().call(liveFlights, { bbox: box }, { cache: false });
     if (s !== seq || !running) return;
-    feed.value = { ...res, receivedAt: Date.now(), box };
+    const kept = await keepSelected(res.aircraft, prevSel);
+    if (s !== seq || !running) return;
+    feed.value = { ...res, aircraft: kept, receivedAt: Date.now(), box };
     feedState.value = 'ok';
     noteTrail();
   } catch {
@@ -143,6 +148,36 @@ async function refresh(force = false) {
   // The fallback around the middle (OpenSky out) costs four calls: a little less often.
   schedule(got?.source === 'opensky' ? OPENSKY_EVERY_MS : got?.partial ? FALLBACK_EVERY_MS : ADSB_EVERY_MS);
 }
+
+/**
+ * The plane being followed must not vanish when the wide feed (OpenSky) doesn't have it, or when
+ * the map moves away: look it up close by from adsb.lol, else keep its last position briefly.
+ */
+async function keepSelected(list: AircraftPosition[], prev: AircraftPosition | null): Promise<AircraftPosition[]> {
+  if (!prev) return list;
+  if (list.some((a) => a.hex === prev.hex)) {
+    lostSince = null;
+    return list;
+  }
+  if (providers.peek().flightsUrl) {
+    const [lng, lat] = prev.lngLat;
+    try {
+      const near = await tools().call(liveFlights, { bbox: [lng - 1, lat - 1, lng + 1, lat + 1] }, { cache: false });
+      const found = near.aircraft.find((a) => a.hex === prev.hex);
+      if (found) {
+        lostSince = null;
+        return [...list, found];
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  // Glide on from where it is now (prev is already glided), until it has been gone too long.
+  if (lostSince?.hex !== prev.hex) lostSince = { hex: prev.hex, at: Date.now() };
+  if (Date.now() - lostSince.at > MAX_GLIDE_S * 1000) return list;
+  return [...list, { ...prev, ageS: 0 }];
+}
+let lostSince: { hex: string; at: number } | null = null;
 
 function schedule(ms: number) {
   clearTimeout(refreshTimer);
@@ -173,6 +208,21 @@ async function loadDetails(hex: string) {
   }
 }
 
+/** Origin and destination for the picked flight (crowd-sourced; a bonus when it's there). */
+async function loadRoute(hex: string) {
+  const a = feed.peek()?.aircraft.find((x) => x.hex === hex);
+  const cs = a?.callsign?.replace(/\s/g, '');
+  if (route.peek()?.hex === hex) return;
+  route.value = null;
+  if (!a || !cs || cs.length < 3 || !/^[A-Z0-9]+$/i.test(cs) || !providers.peek().flightsUrl) return;
+  try {
+    const r = await tools().call(flightRouteTool, { callsign: cs, at: a.lngLat });
+    if (selectedHex.peek() === hex) route.value = { hex, route: r && r.plausible ? r : null };
+  } catch {
+    if (selectedHex.peek() === hex) route.value = { hex, route: null };
+  }
+}
+
 function start() {
   running = true;
   feedState.value = 'idle';
@@ -194,6 +244,7 @@ function stop() {
   feedState.value = 'idle';
   selectedHex.value = null;
   trail.value = { hex: '', points: [] };
+  route.value = null;
   render();
 }
 
@@ -206,12 +257,22 @@ const onVisible = () => {
 };
 
 let ticks = 0;
+/**
+ * Seconds between redraws of all planes. Every redraw re-sends them to the map worker, so with
+ * thousands on screen we redraw less often; zoomed out a plane moves less than a pixel a second.
+ */
+export function redrawSeconds(planes: number, zoom: number): number {
+  if (planes < 1500) return 1;
+  if (zoom >= 7) return 1;
+  if (zoom >= 5) return 2;
+  return planes < 5000 ? 4 : 8;
+}
+const redrawEvery = () => redrawSeconds(feed.peek()?.aircraft.length ?? 0, map?.getZoom() ?? 0);
+
 function tick() {
   now.value = Date.now();
-  // Thousands of planes on a world map barely move per second: redraw them less often.
-  const n = feed.peek()?.aircraft.length ?? 0;
   ticks++;
-  if (n < 3000 || ticks % 3 === 0) render();
+  if (ticks % redrawEvery() === 0) render();
   else renderSelected();
   followPlane();
 }
@@ -230,21 +291,25 @@ const SRC = 'live-flights';
 const SEL = 'live-flights-selected';
 const PLANES = 'live-flights-planes';
 
+/** The icon for an aircraft: its kind, in its altitude colour. */
+const iconFor = (a: AircraftPosition) => iconId(a.kind ?? 'jet', altitudeBand(a));
+
 function planesData(): Parameters<typeof setGeoJSON>[2] {
   const f = feed.peek();
   if (!f || !isLiveOn.peek()) return EMPTY;
   const dt = (Date.now() - f.receivedAt) / 1000;
   const sel = selectedHex.peek();
-  return {
-    type: 'FeatureCollection',
-    features: f.aircraft
-      .filter((a) => a.hex !== sel)
-      .map((a) => ({
-        type: 'Feature' as const,
-        properties: { hex: a.hex, cs: a.callsign, h: a.track ?? 0, g: a.onGround ? 1 : 0 },
-        geometry: { type: 'Point' as const, coordinates: glide(a, dt) },
-      })),
-  } as Parameters<typeof setGeoJSON>[2];
+  const features = [];
+  for (const a of f.aircraft) {
+    if (a.hex === sel) continue;
+    features.push({
+      type: 'Feature' as const,
+      // Short keys: thousands of these are serialised to the map worker every few seconds.
+      properties: { hex: a.hex, cs: a.callsign, h: a.track ?? 0, i: iconFor(a), g: a.onGround ? 0 : 1 },
+      geometry: { type: 'Point' as const, coordinates: glide(a, dt) },
+    });
+  }
+  return { type: 'FeatureCollection', features } as Parameters<typeof setGeoJSON>[2];
 }
 
 function selectedData(): Parameters<typeof setGeoJSON>[2] {
@@ -252,11 +317,18 @@ function selectedData(): Parameters<typeof setGeoJSON>[2] {
   if (!a) return EMPTY;
   const t = trail.peek();
   const features: unknown[] = [];
+  const r = route.peek();
+  if (r && r.hex === a.hex && r.route) {
+    // Where it's going: a dashed great circle to the destination, and both airports.
+    features.push({ type: 'Feature', properties: { kind: 'ahead' }, geometry: { type: 'LineString', coordinates: greatCircle(a.lngLat, r.route.to.lngLat, 40000) } });
+    for (const [end, ap] of [['from', r.route.from], ['to', r.route.to]] as const)
+      features.push({ type: 'Feature', properties: { kind: 'airport', end, code: ap.iata ?? ap.icao ?? '' }, geometry: { type: 'Point', coordinates: ap.lngLat } });
+  }
   if (t.hex === a.hex) {
     const line = [...t.points, a.lngLat];
     if (line.length >= 2) features.push({ type: 'Feature', properties: { kind: 'trail' }, geometry: { type: 'LineString', coordinates: line } });
   }
-  features.push({ type: 'Feature', properties: { kind: 'plane', hex: a.hex, cs: a.callsign, h: a.track ?? 0 }, geometry: { type: 'Point', coordinates: a.lngLat } });
+  features.push({ type: 'Feature', properties: { kind: 'plane', hex: a.hex, cs: a.callsign, h: a.track ?? 0, i: iconFor(a) }, geometry: { type: 'Point', coordinates: a.lngLat } });
   return { type: 'FeatureCollection', features } as Parameters<typeof setGeoJSON>[2];
 }
 
@@ -269,50 +341,107 @@ function renderSelected() {
   if (map?.getSource(SEL)) setGeoJSON(map, SEL, selectedData());
 }
 
-const planeSize = ['interpolate', ['linear'], ['zoom'], 1, 0.3, 3, 0.4, 5, 0.55, 9, 0.85] as never;
+/** Small over the whole world (thousands of planes), full size close up. */
+const planeSize = ['interpolate', ['linear'], ['zoom'], 1, 0.42, 3, 0.55, 6, 0.75, 9, 1] as never;
 
 function addLayers(m: MapLibreMap) {
-  addPlaneImages(m, isDark.peek());
+  const dark = isDark.peek();
+  addLiveIcons(m, dark);
   setGeoJSON(m, SRC, planesData());
   setGeoJSON(m, SEL, selectedData());
-  const dark = isDark.peek();
+  const accent = dark ? '#a8c7fa' : '#0b57d0';
+  const kind = (k: string) => ['==', ['get', 'kind'], k] as never;
   ensureLayer(m, {
     id: PLANES,
     type: 'symbol',
     source: SRC,
     layout: {
-      'icon-image': ['case', ['==', ['get', 'g'], 1], 'live-plane-ground', 'live-plane'] as never,
+      'icon-image': ['get', 'i'] as never,
       'icon-size': planeSize,
       'icon-rotate': ['get', 'h'],
       'icon-rotation-alignment': 'map',
       'icon-allow-overlap': true,
       'icon-ignore-placement': true,
+      // Planes in the air draw over the ones parked at the gate.
       'symbol-sort-key': ['get', 'g'] as never,
-      'text-field': ['step', ['zoom'], '', 7, ['get', 'cs']] as never,
+    },
+  }, null);
+  // Callsigns only close up, in their own layer so the world view never lays out text.
+  ensureLayer(m, {
+    id: 'live-flights-labels',
+    type: 'symbol',
+    source: SRC,
+    minzoom: 7,
+    layout: {
+      'text-field': ['get', 'cs'],
       'text-size': 11,
-      'text-offset': [0, 1.5],
+      'text-offset': [0, 1.6],
       'text-anchor': 'top',
-      'text-optional': true,
       'text-font': ['Noto Sans Regular'],
     },
     paint: { 'text-color': dark ? '#e8eaed' : '#3c4043', 'text-halo-color': dark ? '#1f1f1f' : '#ffffff', 'text-halo-width': 1.5 },
   }, null);
   ensureLayer(m, {
+    id: 'live-flights-ahead',
+    type: 'line',
+    source: SEL,
+    filter: kind('ahead'),
+    layout: { 'line-cap': 'round' },
+    paint: { 'line-color': accent, 'line-width': 2, 'line-dasharray': [1.5, 2], 'line-opacity': 0.8 },
+  }, null);
+  ensureLayer(m, {
     id: 'live-flights-trail',
     type: 'line',
     source: SEL,
-    filter: ['==', ['get', 'kind'], 'trail'] as never,
+    filter: kind('trail'),
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': dark ? '#a8c7fa' : '#0b57d0', 'line-width': 3, 'line-opacity': 0.85 },
+    paint: { 'line-color': accent, 'line-width': 3, 'line-opacity': 0.9 },
+  }, null);
+  ensureLayer(m, {
+    id: 'live-flights-airports',
+    type: 'symbol',
+    source: SEL,
+    filter: kind('airport'),
+    layout: {
+      'text-field': ['get', 'code'],
+      'text-size': 12,
+      'text-font': ['Noto Sans Bold'],
+      'text-offset': [0, 1.2],
+      'text-anchor': 'top',
+      'text-allow-overlap': true,
+    },
+    paint: { 'text-color': accent, 'text-halo-color': dark ? '#1f1f1f' : '#ffffff', 'text-halo-width': 2 },
+  }, null);
+  ensureLayer(m, {
+    id: 'live-flights-airport-dots',
+    type: 'circle',
+    source: SEL,
+    filter: kind('airport'),
+    paint: { 'circle-radius': 5, 'circle-color': dark ? '#1f1f1f' : '#ffffff', 'circle-stroke-color': accent, 'circle-stroke-width': 2.5 },
+  }, null);
+  // The picked plane: a soft halo under it, then the plane a size up.
+  ensureLayer(m, {
+    id: 'live-flights-halo',
+    type: 'circle',
+    source: SEL,
+    filter: kind('plane'),
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 1, 13, 9, 22] as never,
+      'circle-color': accent,
+      'circle-opacity': 0.22,
+      'circle-stroke-color': accent,
+      'circle-stroke-width': 2,
+      'circle-stroke-opacity': 0.9,
+    },
   }, null);
   ensureLayer(m, {
     id: 'live-flights-picked',
     type: 'symbol',
     source: SEL,
-    filter: ['==', ['get', 'kind'], 'plane'] as never,
+    filter: kind('plane'),
     layout: {
-      'icon-image': 'live-plane-selected',
-      'icon-size': ['interpolate', ['linear'], ['zoom'], 1, 0.7, 9, 1.05] as never,
+      'icon-image': ['get', 'i'] as never,
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 1, 0.8, 9, 1.25] as never,
       'icon-rotate': ['get', 'h'],
       'icon-rotation-alignment': 'map',
       'icon-allow-overlap': true,
@@ -334,6 +463,7 @@ export function setupLive(ctx: FeatureContext) {
   });
   effect(() => {
     void selectedHex.value;
+    void route.value;
     void trail.value;
     void feed.value;
     render();
@@ -467,6 +597,64 @@ function FindLive() {
   );
 }
 
+/** The colour scale: what each plane colour means, in the user's units. */
+function AltitudeLegend() {
+  const imperial = units.value === 'imperial';
+  const label = (m: number) => (imperial ? `${Math.round((m * 3.28084) / 1000)}K` : `${m / 1000}`);
+  return (
+    <div class="live-legend" aria-label="צבע המטוס לפי גובה">
+      <div class="live-legend-title muted small">גובה ({imperial ? 'אלפי רגל' : 'ק״מ'})</div>
+      <div class="live-legend-bar" dir="ltr">
+        {BANDS.map((b, i) => (
+          <span key={i} style={{ background: b.color }} />
+        ))}
+      </div>
+      <div class="live-legend-labels small" dir="ltr">
+        <span>{BANDS[0].label}</span>
+        {BANDS.slice(1, -1).map((b) => (
+          <span key={b.upToM}>{label(b.upToM)}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const EMERGENCY: Record<string, string> = { '7700': 'מצב חירום', '7600': 'תקלת קשר', '7500': 'חטיפה' };
+
+/** Origin → destination, how far is left and when it should land. */
+function RouteLine({ a }: { a: AircraftPosition }) {
+  const r = route.value;
+  if (!r || r.hex !== a.hex) return null;
+  if (!r.route) return null;
+  const { from, to } = r.route;
+  const left = distance(a.lngLat, to.lngLat);
+  const v = a.groundSpeedKmh ? a.groundSpeedKmh / 3.6 : null;
+  const eta = !a.onGround && v && v > 50 ? left / v : null;
+  const km = units.value === 'imperial' ? `${Math.round(left / 1609.34).toLocaleString('en-US')} מייל` : `${Math.round(left / 1000).toLocaleString('en-US')} ק״מ`;
+  const place = (ap: typeof from) => ap.city || ap.name;
+  return (
+    <div class="live-route">
+      <div class="live-route-end">
+        <span class="live-route-code" dir="ltr">{from.iata ?? from.icao}</span>
+        <span class="live-route-city">{place(from)}</span>
+      </div>
+      <Icon name="arrow_forward" class="live-route-arrow" />
+      <div class="live-route-end to">
+        <span class="live-route-code" dir="ltr">{to.iata ?? to.icao}</span>
+        <span class="live-route-city">{place(to)}</span>
+      </div>
+      <div class="live-route-left small muted">
+        נשארו <span dir="ltr">{km}</span>
+        {eta !== null && (
+          <>
+            {' · '}נחיתה משוערת <span dir="ltr">{formatArrival(eta)}</span> (עוד {formatDuration(eta)})
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function LiveFlightsView(_: ViewProps) {
   useEffect(() => {
     if (sheet.peek() === 'full') sheet.value = 'half';
@@ -492,6 +680,7 @@ export function LiveFlightsView(_: ViewProps) {
         </button>
       </div>
       <FindLive />
+      <AltitudeLegend />
       <p class="muted small flight-privacy">
         הקישו על מטוס לפרטים ולמעקב. במבט קרוב המיקומים מתעדכנים כל כמה שניות, ובמבט על כל העולם בערך פעם בדקה. נשלח רק אזור המפה שעל המסך, לא המיקום שלכם.
         נתונים: adsb.lol (ODbL) ו-OpenSky Network.
@@ -505,6 +694,7 @@ export function AircraftView({ view }: ViewProps<{ hex: string }>) {
   useEffect(() => {
     if (selectedHex.peek() !== hex) selectedHex.value = hex;
     void loadDetails(hex);
+    void loadRoute(hex);
     if (sheet.peek() === 'peek') sheet.value = 'half';
     // Leaving the card (back, or another screen replacing it) un-picks the plane.
     return () => {
@@ -559,6 +749,13 @@ export function AircraftView({ view }: ViewProps<{ hex: string }>) {
           )}
         </p>
       )}
+      {a.squawk && EMERGENCY[a.squawk] && (
+        <p class="live-emergency" role="status">
+          <Icon name="warning" size={18} />
+          המטוס משדר קוד {a.squawk}: {EMERGENCY[a.squawk]}
+        </p>
+      )}
+      <RouteLine a={a} />
       <div class="flight-grid">
         <div class="flight-stat">
           <div class="flight-stat-label">
@@ -636,5 +833,29 @@ export function AircraftView({ view }: ViewProps<{ hex: string }>) {
         הקו הכחול הוא הדרך שהמטוס עשה מאז שפתחתם אותו. בין העדכונים המטוס ממשיך לנוע לפי המהירות והכיוון האחרונים.
       </p>
     </div>
+  );
+}
+
+/** The round map button that shows (and hides) every flight, next to the layers button. */
+export function LiveFlightsButton() {
+  const on = isLiveOn.value;
+  return (
+    <button
+      class={`ctrl live-ctrl${on ? ' on' : ''}`}
+      aria-label={on ? 'הסתרת הטיסות' : 'טיסות בזמן אמת'}
+      title={on ? 'הסתרת הטיסות' : 'טיסות בזמן אמת'}
+      aria-pressed={on}
+      onClick={() => {
+        if (!on) return openLiveFlights();
+        // Close every flights screen on the stack, top first.
+        const stack = viewStack.peek();
+        let n = 0;
+        for (let i = stack.length - 1; i >= 0 && (stack[i].kind === LIVE_VIEW || stack[i].kind === AIRCRAFT_VIEW); i--) n++;
+        if (n) for (let i = 0; i < n; i++) back();
+        else openLiveFlights();
+      }}
+    >
+      <Icon name="flight" size={22} />
+    </button>
   );
 }

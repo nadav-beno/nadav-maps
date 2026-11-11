@@ -62,10 +62,10 @@ describe('live flights', () => {
     const world = await client.call(liveFlights, { bbox: [-200, -90, 200, 90] }, { cache: false });
     expect(world.source).toBe('opensky');
     expect(world.aircraft).toHaveLength(3);
-    expect(urls[1]).toBe('https://opensky-network.org/api/states/all');
+    expect(urls[1]).toBe('https://opensky-network.org/api/states/all?extended=1');
 
     const europe = await client.call(liveFlights, { bbox: [-10, 35, 30, 60] }, { cache: false });
-    expect(urls[2]).toBe('https://opensky-network.org/api/states/all?lamin=35&lomin=-10&lamax=60&lomax=30');
+    expect(urls[2]).toBe('https://opensky-network.org/api/states/all?lamin=35&lomin=-10&lamax=60&lomax=30&extended=1');
     expect(europe.source).toBe('opensky');
 
     opensky = 429;
@@ -112,5 +112,68 @@ describe('live flights', () => {
 
   it('is in the tool list (REST + MCP)', () => {
     expect(TOOLS).toContain(liveFlights);
+  });
+});
+
+describe('aircraft kinds and quality', () => {
+  it('picks the silhouette from the emitter category, then the type', async () => {
+    const { aircraftKind } = await import('./providers/adsb.ts');
+    expect(aircraftKind('A5')).toBe('heavy');
+    expect(aircraftKind('A7')).toBe('heli');
+    expect(aircraftKind('A1')).toBe('light');
+    expect(aircraftKind('A3', 'B738')).toBe('jet');
+    expect(aircraftKind('', 'B789')).toBe('heavy');
+    expect(aircraftKind(undefined, 'C172')).toBe('light');
+    expect(aircraftKind(undefined, 'EC35')).toBe('heli');
+    expect(aircraftKind('C1')).toBeNull(); // airport vehicle
+    expect(aircraftKind(6)).toBe('heavy');
+    expect(aircraftKind(8)).toBe('heli');
+    expect(aircraftKind(17)).toBeNull();
+    expect(aircraftKind(0)).toBe('jet');
+  });
+
+  it('drops stale positions and ground vehicles', async () => {
+    const { liveOnly } = await import('./providers/live-aircraft.ts');
+    const base = { callsign: 'X', hex: 'a', lngLat: [0, 0] as [number, number], altitudeM: 1000, onGround: false, groundSpeedKmh: 500, track: 0 };
+    const out = liveOnly([
+      { ...base, hex: 'fresh', ageS: 3, kind: 'jet' },
+      { ...base, hex: 'stale', ageS: 300, kind: 'jet' },
+      { ...base, hex: 'van', ageS: 1, kind: null },
+      { ...base, hex: 'unknown-age', ageS: null },
+    ]);
+    expect(out.map((a) => a.hex)).toEqual(['fresh', 'unknown-age']);
+  });
+});
+
+describe('flight route', () => {
+  const TLV = { name: 'Ben Gurion', iata: 'TLV', icao: 'LLBG', location: 'Tel Aviv', countryiso2: 'IL', lat: 32.011, lon: 34.887 };
+  const ATH = { name: 'Athens', iata: 'ATH', icao: 'LGAV', location: 'Athens', countryiso2: 'GR', lat: 37.936, lon: 23.947 };
+  const JFK = { name: 'John F Kennedy', iata: 'JFK', icao: 'KJFK', location: 'New York', countryiso2: 'US', lat: 40.64, lon: -73.78 };
+
+  it('reads the airports, and the current leg of a multi-stop route', async () => {
+    const { parseRouteset } = await import('./providers/flight-route.ts');
+    const direct = parseRouteset([{ callsign: 'ELY001', _airports: [TLV, JFK], plausible: 1 }], 'ELY001', [30, 34.5])!;
+    expect(direct).toMatchObject({ from: { iata: 'TLV', city: 'Tel Aviv' }, to: { iata: 'JFK' }, plausible: true, stops: [] });
+    // Between Athens and New York: the second leg.
+    const multi = parseRouteset([{ callsign: 'ELY001', _airports: [TLV, ATH, JFK], plausible: 1 }], 'ELY001', [0, 45])!;
+    expect(multi.from.iata).toBe('ATH');
+    expect(multi.to.iata).toBe('JFK');
+    expect(multi.stops.map((s) => s.iata)).toEqual(['TLV']);
+    expect(parseRouteset([{ callsign: 'ELY001', _airports: [TLV, JFK], plausible: 0 }], 'ELY001', [0, 0])!.plausible).toBe(false);
+    expect(parseRouteset([{ callsign: 'X', airport_codes: 'unknown' }], 'X', [0, 0])).toBeNull();
+    expect(parseRouteset(null, 'X', [0, 0])).toBeNull();
+  });
+
+  it('posts only the callsign and the aircraft position', async () => {
+    const { flightRouteTool } = await import('./tools/index.ts');
+    const seen: { url: string; body: string }[] = [];
+    const client = createToolClient(DEFAULT_PROVIDERS, 'he', (async (u: string | URL | Request, init?: RequestInit) => {
+      seen.push({ url: String(u), body: String(init?.body) });
+      return json([{ callsign: 'ELY001', _airports: [TLV, JFK], plausible: true }]);
+    }) as typeof fetch);
+    const r = await client.call(flightRouteTool, { callsign: 'ely001', at: [30, 34.5] });
+    expect(r?.to.iata).toBe('JFK');
+    expect(seen[0].url).toBe('https://api.adsb.lol/api/0/routeset');
+    expect(JSON.parse(seen[0].body)).toEqual({ planes: [{ callsign: 'ELY001', lat: 34.5, lng: 30 }] });
   });
 });
