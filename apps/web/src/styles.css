@@ -756,6 +756,21 @@ kbd {
 .live-model { margin: 0 0 10px; font-size: 15px; line-height: 1.45; }
 .live-hex { font-size: 22px; }
 .live-flights .flight-stat-sub .icon { vertical-align: -2px; }
+.live-ctrl .icon { transform: rotate(45deg); }
+.live-ctrl.on { background: var(--accent-soft); color: var(--accent-soft-text); }
+.live-legend { margin: 14px 0 0; }
+.live-legend-title { margin-bottom: 4px; }
+.live-legend-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; }
+.live-legend-bar span { flex: 1; }
+.live-legend-labels { display: flex; justify-content: space-between; margin-top: 3px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.live-route { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 4px 10px; margin: 0 0 12px; padding: 12px 14px; border-radius: 16px; background: var(--bg-2); }
+.live-route-end { display: flex; flex-direction: column; min-width: 0; }
+.live-route-end.to { text-align: end; }
+.live-route-code { font-size: 26px; font-weight: 500; line-height: 1.1; }
+.live-route-city { font-size: 13px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-route-arrow { color: var(--text-2); }
+.live-route-left { grid-column: 1 / -1; }
+.live-emergency { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; padding: 8px 12px; border-radius: 12px; background: color-mix(in srgb, #d93025 14%, var(--surface)); color: #d93025; font-weight: 500; }
 
 /* ---------- timeline (packages/features/timeline) ---------- */
 .m-walk { --mode: #1e8e3e; }

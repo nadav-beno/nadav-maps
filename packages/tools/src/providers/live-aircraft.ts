@@ -1,5 +1,5 @@
 import { getJson, ProviderError, type ToolContext } from '../define.ts';
-import { parseAdsb, type AircraftPosition } from './adsb.ts';
+import { aircraftKind, parseAdsb, type AircraftPosition } from './adsb.ts';
 
 /**
  * Every aircraft in an area, for the live flights map.
@@ -29,6 +29,13 @@ export interface LiveAircraft {
 }
 
 const NM_KM = 1.852;
+/** Positions older than this are not "live": the aircraft has left coverage or landed. */
+export const MAX_AGE_S = 60;
+
+/** Only real aircraft with a fresh position. */
+export function liveOnly(list: AircraftPosition[]): AircraftPosition[] {
+  return list.filter((a) => a.kind !== null && (a.ageS === null || a.ageS <= MAX_AGE_S));
+}
 /** The readsb APIs' largest radius. */
 export const MAX_RADIUS_NM = 250;
 /** Close-up queries: at most this many circles, otherwise the wide feed is used. */
@@ -113,6 +120,8 @@ export function parseOpenSky(json: unknown): { at: number; aircraft: AircraftPos
       ageS: time !== null && tPos !== null ? Math.max(0, time - tPos) : null,
       verticalRateMs: vr === null || onGround ? null : Math.round(vr * 10) / 10,
       country: typeof st[2] === 'string' && st[2] ? st[2] : undefined,
+      kind: aircraftKind(num(st[17])),
+      squawk: typeof st[14] === 'string' && st[14] ? st[14] : undefined,
     });
   }
   return { at: time !== null ? time * 1000 : Date.now(), aircraft: out };
@@ -157,7 +166,7 @@ const NOTE_DOWN = 'מקור הטיסות העולמי (OpenSky) לא זמין כ
 export async function liveAircraft(ctx: ToolContext, bbox: Bbox): Promise<LiveAircraft> {
   const box = clampBbox(bbox);
   const circles = ctx.config.flightsUrl ? coverCircles(box) : null;
-  if (circles) return { source: 'adsb', aircraft: await fromAdsb(ctx, circles), at: Date.now() };
+  if (circles) return { source: 'adsb', aircraft: liveOnly(await fromAdsb(ctx, circles)), at: Date.now() };
 
   const base = ctx.config.openskyUrl.replace(/\/$/, '');
   const paused = openskyPause && Date.now() < openskyPause.until ? openskyPause : null;
@@ -166,9 +175,11 @@ export async function liveAircraft(ctx: ToolContext, bbox: Bbox): Promise<LiveAi
     const world = e - w >= 359 && n - s >= 170;
     const q = world ? '' : `?lamin=${round(s)}&lomin=${round(w)}&lamax=${round(n)}&lomax=${round(e)}`;
     try {
-      const json = await getJson<unknown>(ctx, `${base}/states/all${q}`, {}, 'opensky', 25000);
+      // extended=1 adds the emitter category (light, heavy, rotorcraft…) at no extra cost.
+      const json = await getJson<unknown>(ctx, `${base}/states/all${q ? `${q}&` : '?'}extended=1`, {}, 'opensky', 25000);
       openskyPause = null;
-      return { source: 'opensky', ...parseOpenSky(json) };
+      const parsed = parseOpenSky(json);
+      return { source: 'opensky', at: parsed.at, aircraft: liveOnly(parsed.aircraft) };
     } catch (err) {
       if (ctx.signal?.aborted) throw err;
       const limited = err instanceof ProviderError && err.status === 429;
@@ -201,5 +212,5 @@ export function middleCircles([w, s, e, n]: Bbox): { lat: number; lon: number; r
 }
 
 async function middleOnly(ctx: ToolContext, box: Bbox): Promise<LiveAircraft> {
-  return { source: 'adsb', aircraft: await fromAdsb(ctx, middleCircles(box)), at: Date.now(), partial: true };
+  return { source: 'adsb', aircraft: liveOnly(await fromAdsb(ctx, middleCircles(box))), at: Date.now(), partial: true };
 }

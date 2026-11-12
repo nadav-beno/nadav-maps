@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { stubGeodata, stubNetwork } from './stubs.ts';
 import { encodePlusCode } from '../packages/core/src/plus-code.ts';
-import { adsbAreaResponse, adsbResponse, fakeGps, FLIGHT_FIXES, openskyResponse } from './flight-fixture.ts';
+import { adsbAreaResponse, adsbResponse, fakeGps, FLIGHT_FIXES, openskyResponse, routesetResponse } from './flight-fixture.ts';
 import { TAKEOUT_DAY, TAKEOUT_FIXTURE } from './timeline-fixture.ts';
 
 test.beforeEach(async ({ page }) => {
@@ -610,20 +610,26 @@ test('live flights: planes around the map close up, a plane card, and the whole 
   const cors = { 'access-control-allow-origin': '*' };
   const asked: string[] = [];
   await page.route('https://api.adsb.lol/**', (r) => {
-    asked.push(r.request().url());
+    const url = r.request().url();
+    asked.push(url);
+    if (url.endsWith('/api/0/routeset')) return r.fulfill({ json: routesetResponse(), headers: cors });
     return r.fulfill({ json: adsbAreaResponse(), headers: cors });
   });
   await page.route('https://opensky-network.org/**', (r) => {
     asked.push(r.request().url());
     return r.fulfill({ json: openskyResponse(Math.floor(Date.now() / 1000)), headers: cors });
   });
-  await page.goto('./?panel=flights#9/32.05/34.75');
+  // One tap on the round map button, from the home screen.
+  await page.goto('./#9/32.05/34.75');
+  await page.getByRole('button', { name: 'טיסות בזמן אמת' }).click();
+  await expect(page).toHaveURL(/panel=flights/);
   await expect(page.getByRole('heading', { name: 'טיסות בעולם' })).toBeVisible();
+  await expect(page.getByLabel('צבע המטוס לפי גובה')).toBeVisible();
   await expect(page.locator('.live-status')).toContainText('מטוס אחד באוויר במפה');
   await expect(page.locator('.live-status')).toContainText('1 על הקרקע');
   await expect(page.locator('.live-status')).toContainText('adsb.lol');
   // Close up only the visible area goes to adsb.lol, as one circle.
-  expect(asked[0]).toMatch(/^https:\/\/api\.adsb\.lol\/v2\/point\/[\d.]+\/[\d.]+\/\d+$/);
+  expect(asked.find((u) => u.includes('/v2/point/'))).toMatch(/^https:\/\/api\.adsb\.lol\/v2\/point\/[\d.]+\/[\d.]+\/\d+$/);
 
   // Tap the plane in the air.
   const planeAt = () => page.evaluate(() => {
@@ -643,6 +649,10 @@ test('live flights: planes around the map close up, a plane card, and the whole 
   await expect(page.locator('.flight-stat').filter({ hasText: 'גובה' })).toContainText('2,789');
   await expect(page.locator('.flight-stat').filter({ hasText: 'גובה' })).toContainText('עולה');
   await expect(page.getByRole('button', { name: 'המפה עוקבת' })).toBeVisible();
+  // Where it flies: from the crowd-sourced route database.
+  await expect(page.locator('.live-route')).toContainText('TLV');
+  await expect(page.locator('.live-route')).toContainText('JFK');
+  await expect(page.locator('.live-route')).toContainText('נשארו');
   await page.getByRole('button', { name: 'סגירה' }).click();
 
   // The whole world: OpenSky, one call without a box.
@@ -651,8 +661,9 @@ test('live flights: planes around the map close up, a plane card, and the whole 
   await expect(page.locator('.live-status')).toContainText('2 מטוסים באוויר במפה');
   expect(asked.some((u) => u.startsWith('https://opensky-network.org/api/states/all'))).toBe(true);
 
-  // Closing the screen clears the planes.
-  await page.getByRole('button', { name: 'סגירה' }).click();
+  // The map button closes it again and clears the planes.
+  await page.getByRole('button', { name: 'הסתרת הטיסות' }).click();
+  await expect(page.getByRole('heading', { name: 'טיסות בעולם' })).toBeHidden();
   await expect
     .poll(() => page.evaluate(() => (window as unknown as { map: MapLike }).map.queryRenderedFeatures({ layers: ['live-flights-planes'] }).length))
     .toBe(0);

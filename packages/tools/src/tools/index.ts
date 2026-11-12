@@ -4,6 +4,7 @@ import { CATEGORIES, categoryById } from '../categories.ts';
 import { defineTool, ProviderError, type ToolContext } from '../define.ts';
 import { findFlight } from '../providers/adsb.ts';
 import { liveAircraft, type Bbox } from '../providers/live-aircraft.ts';
+import { flightRoute } from '../providers/flight-route.ts';
 import { airQualityAt } from '../providers/air-quality.ts';
 import { commonsPhotosNear } from '../providers/commons.ts';
 import { overpassAlongLine, overpassCategory, overpassDetails, overpassIdentify, overpassInside } from '../providers/overpass.ts';
@@ -417,7 +418,19 @@ export const liveFlights = defineTool({
   run: (input, ctx) => liveAircraft(ctx, input.bbox as Bbox),
 });
 
-export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, routeGuidance, searchAlongRoute, placesInside, placePhotos, airQuality, transitDirections, transitDeparturesTool, placeSummary, trafficIncidents, trafficTravelTime, flightPosition, liveFlights];
+export const flightRouteTool = defineTool({
+  name: 'flight_route',
+  title: 'מאיפה ולאן הטיסה',
+  description:
+    'Origin and destination airports of a flight by its callsign ("ELY001"), from adsb.lol\'s crowd-maintained route database. Pass the aircraft\'s current position (from live_flights or flight_position) so multi-leg routes resolve to the current leg and implausible matches are flagged. Null when the route is unknown.',
+  input: z.object({
+    callsign: z.string().trim().min(2).max(10).regex(/^[A-Za-z0-9]+$/, 'letters and digits only'),
+    at: point.describe('The aircraft\'s position [lng, lat]'),
+  }),
+  run: (input, ctx) => flightRoute(ctx, input.callsign, input.at as LngLat),
+});
+
+export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, routeGuidance, searchAlongRoute, placesInside, placePhotos, airQuality, transitDirections, transitDeparturesTool, placeSummary, trafficIncidents, trafficTravelTime, flightPosition, liveFlights, flightRouteTool];
 
 /**
  * Start loading the region's full names list (typo dictionary) in the background, e.g. in
