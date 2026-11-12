@@ -3,7 +3,7 @@ import { getJson, type ToolContext } from '../define.ts';
 
 /**
  * Where a flight is going, from adsb.lol's route database (crowd-maintained callsign → airports,
- * the same data their map shows): POST {flightsUrl}/api/0/routeset with the callsign and the
+ * the same data their map shows): POST {routesUrl} (adsb.im's /api/0/routeset) with the callsign and the
  * aircraft's position, so it can say whether the route is plausible for where the plane is.
  * Only the flight's callsign and position are sent.
  */
@@ -66,11 +66,11 @@ export function parseRouteset(json: unknown, callsign: string, at: LngLat): Flig
 }
 
 export async function flightRoute(ctx: ToolContext, callsign: string, at: LngLat): Promise<FlightRoute | null> {
-  const base = ctx.config.flightsUrl.replace(/\/$/, '');
-  if (!base) return null;
+  const url = ctx.config.routesUrl;
+  if (!url) return null;
   const json = await getJson<unknown>(
     ctx,
-    `${base}/api/0/routeset`,
+    url,
     { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ planes: [{ callsign: callsign.trim().toUpperCase(), lat: at[1], lng: at[0] }] }) },
     'flights',
     10000,

@@ -173,7 +173,7 @@ describe('flight route', () => {
     }) as typeof fetch);
     const r = await client.call(flightRouteTool, { callsign: 'ely001', at: [30, 34.5] });
     expect(r?.to.iata).toBe('JFK');
-    expect(seen[0].url).toBe('https://api.adsb.lol/api/0/routeset');
+    expect(seen[0].url).toBe('https://adsb.im/api/0/routeset');
     expect(JSON.parse(seen[0].body)).toEqual({ planes: [{ callsign: 'ELY001', lat: 34.5, lng: 30 }] });
   });
 });

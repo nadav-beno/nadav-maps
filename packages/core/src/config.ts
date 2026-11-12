@@ -55,6 +55,13 @@ export interface ProviderConfig {
    */
   openskyUrl: string;
   /**
+   * Our relay for the flight feeds ('' = call them directly). adsb.lol and OpenSky send no CORS
+   * headers, so the browser build sends those requests through it (packages/tools/src/flights-proxy.ts).
+   */
+  flightsRelayUrl: string;
+  /** Flight routes by callsign (adsb.im's routeset, the database behind adsb.lol's map), '' = off. */
+  routesUrl: string;
+  /**
    * Our own static geodata built from OpenStreetMap (scripts/geodata), '' = off. Folder URL ending
    * in "/", may be relative to the page (the web build defaults to the site's own `<base>data/`).
    * Regions with `geodata` in region.ts are answered from `<geodataUrl><region>/` first; Photon and
@@ -92,6 +99,8 @@ export const DEFAULT_PROVIDERS: ProviderConfig = {
   atlasKey: '',
   flightsUrl: 'https://api.adsb.lol',
   openskyUrl: 'https://opensky-network.org/api',
+  flightsRelayUrl: '',
+  routesUrl: 'https://adsb.im/api/0/routeset',
   // Off unless configured: the web build sets it to its own <base>data/ (providersFromEnv).
   geodataUrl: '',
   photosUrl: 'https://commons.wikimedia.org/w/api.php',
@@ -117,6 +126,8 @@ export function providersFromEnv(env: Record<string, string | undefined>, prefix
     atlasKey: (env[prefix + 'ATLAS_KEY'] ?? '').trim(),
     flightsUrl: env[prefix + 'FLIGHTS_URL'] ?? DEFAULT_PROVIDERS.flightsUrl,
     openskyUrl: env[prefix + 'OPENSKY_URL'] ?? DEFAULT_PROVIDERS.openskyUrl,
+    flightsRelayUrl: env[prefix + 'FLIGHTS_RELAY_URL'] ?? DEFAULT_PROVIDERS.flightsRelayUrl,
+    routesUrl: env[prefix + 'ROUTES_URL'] ?? DEFAULT_PROVIDERS.routesUrl,
     // Vite's BASE_URL is set in the browser build: default to the data published with the site.
     geodataUrl: withSlash(env[prefix + 'GEODATA_URL'] ?? (env.BASE_URL !== undefined ? `${env.BASE_URL}data/` : DEFAULT_PROVIDERS.geodataUrl)),
     photosUrl: env[prefix + 'PHOTOS_URL'] ?? DEFAULT_PROVIDERS.photosUrl,
