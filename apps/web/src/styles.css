@@ -746,6 +746,16 @@ kbd {
 .flight-error { color: var(--warn); }
 .flight-adsb { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; margin-top: 10px; padding: 10px 12px; border-radius: 16px; background: color-mix(in srgb, #e37400 10%, var(--surface)); }
 .flight-privacy { margin: 16px 0 0; }
+/* live flights */
+.live-status { margin: 0 0 8px; font-size: 14px; line-height: 1.5; }
+.live-note { margin: 0 0 8px; padding: 8px 12px; border-radius: 12px; background: color-mix(in srgb, var(--warn) 10%, var(--surface)); line-height: 1.45; }
+.live-find { display: flex; flex-wrap: wrap; gap: 8px; }
+.live-find .flight-input { flex: 1; min-width: 0; text-transform: uppercase; }
+.live-find .flight-results { flex-basis: 100%; }
+.live-callsign { font-variant-numeric: tabular-nums; }
+.live-model { margin: 0 0 10px; font-size: 15px; line-height: 1.45; }
+.live-hex { font-size: 22px; }
+.live-flights .flight-stat-sub .icon { vertical-align: -2px; }
 
 /* ---------- timeline (packages/features/timeline) ---------- */
 .m-walk { --mode: #1e8e3e; }

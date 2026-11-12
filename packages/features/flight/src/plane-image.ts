@@ -39,16 +39,23 @@ function plane(fill: string, halo: string): { width: number; height: number; dat
   return { width: el.width, height: el.height, data: ctx.getImageData(0, 0, el.width, el.height).data };
 }
 
-/** Our plane (accent blue) and the one found by flight number (amber). */
+/**
+ * Our plane (accent blue), the one found by flight number (amber), and the live flights map:
+ * every aircraft (yellow, like the flight trackers), on the ground (grey) and the one picked (accent).
+ */
 export function addPlaneImages(map: MapLibreMap, dark: boolean): void {
   const halo = dark ? '#1f1f1f' : '#ffffff';
-  const images: [string, string][] = [
+  const images: [string, string, string?][] = [
     ['flight-plane', dark ? '#a8c7fa' : '#0b57d0'],
     ['flight-plane-adsb', dark ? '#fdd663' : '#e37400'],
+    // A dark outline keeps yellow readable on a light map.
+    ['live-plane', dark ? '#fdd663' : '#fbbc04', dark ? '#1f1f1f' : '#7a5200'],
+    ['live-plane-ground', dark ? '#9aa0a6' : '#80868b'],
+    ['live-plane-selected', dark ? '#a8c7fa' : '#0b57d0'],
   ];
-  for (const [id, color] of images) {
+  for (const [id, color, outline] of images) {
     if (map.hasImage(id)) continue;
-    const img = plane(color, halo);
+    const img = plane(color, outline ?? halo);
     if (img) map.addImage(id, img, { pixelRatio: RATIO });
   }
 }

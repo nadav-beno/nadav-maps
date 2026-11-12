@@ -227,6 +227,8 @@ export async function stubNetwork(page: Page): Promise<void> {
   });
   // ADS-B flight lookup: nothing in the air unless a test routes its own answer.
   await page.route('https://api.adsb.lol/**', (r) => r.fulfill({ json: { ac: [], total: 0 }, headers: { 'access-control-allow-origin': '*' } }));
+  // Live flights zoomed out (OpenSky): an empty sky unless a test routes its own answer.
+  await page.route('https://opensky-network.org/**', (r) => r.fulfill({ json: { time: Math.floor(Date.now() / 1000), states: [] }, headers: { 'access-control-allow-origin': '*' } }));
   await page.route('https://overpass-api.de/api/interpreter', (r) => {
     const body = decodeURIComponent(r.request().postData() ?? '');
     if (body.includes('2002')) {
