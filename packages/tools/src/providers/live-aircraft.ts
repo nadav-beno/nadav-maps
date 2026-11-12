@@ -1,5 +1,6 @@
 import { getJson, ProviderError, type ToolContext } from '../define.ts';
 import { aircraftKind, parseAdsb, type AircraftPosition } from './adsb.ts';
+import type { Row, WorldAnswer } from '../world-cells.ts';
 
 /**
  * Every aircraft in an area, for the live flights map.
@@ -8,7 +9,9 @@ import { aircraftKind, parseAdsb, type AircraftPosition } from './adsb.ts';
  * - Close up (the area fits in a few 250 NM circles): the readsb-style API in `flightsUrl`
  *   (adsb.lol by default, ODbL, no key), `GET /v2/point/{lat}/{lon}/{radius_nm}`, one call
  *   per circle. Fresh every few seconds, with type and registration.
- * - Further out, up to the whole world: OpenSky Network's `GET /states/all` with a bounding
+ * - Further out, up to the whole world, with our relay (`flightsRelayUrl`): the relay's shared
+ *   world cells (world-cells.ts), the same feeds cached per 250 NM cell for every viewer.
+ * - Further out without the relay: OpenSky Network's `GET /states/all` with a bounding
  *   box (anonymous, no key; 400 credits a day per IP, 1-4 credits a call by area). Positions
  *   are 10 s old at most but have no type or registration.
  * Only the visible map area is sent, never the user's location.
@@ -18,7 +21,7 @@ export type Bbox = [west: number, south: number, east: number, north: number];
 
 export interface LiveAircraft {
   /** Which feed answered. */
-  source: 'adsb' | 'opensky';
+  source: 'adsb' | 'opensky' | 'world';
   aircraft: AircraftPosition[];
   /** When the feed says the positions are from, epoch ms. */
   at: number;
@@ -26,6 +29,45 @@ export interface LiveAircraft {
   partial?: boolean;
   /** Hebrew note for the user when something is missing (rate limit, feed down). */
   note?: string;
+  /** World cells in the area not fetched yet: ask again soon. */
+  pending?: number;
+}
+
+/** A world-cell row (see world-cells.ts) as an aircraft. */
+export function fromRow(r: Row): AircraftPosition {
+  const [hex, cs, lon, lat, alt, trk, gs, age, cat, type, reg, squawk, rate, flags] = r;
+  const onGround = alt === -1;
+  return {
+    callsign: cs ?? '',
+    hex,
+    registration: reg ?? undefined,
+    type: type ?? undefined,
+    lngLat: [lon, lat],
+    altitudeM: onGround ? 0 : alt === null ? null : Math.round(alt * 0.3048),
+    onGround,
+    groundSpeedKmh: gs === null ? null : Math.round(gs * 1.852),
+    track: trk,
+    ageS: age,
+    verticalRateMs: onGround || rate === null ? null : Math.round(rate * 0.00508 * 10) / 10,
+    kind: aircraftKind(cat, type ?? undefined),
+    squawk: squawk ?? undefined,
+    military: flags !== null && (flags & 1) === 1 ? true : undefined,
+  };
+}
+
+/** World cells are refreshed in turn (busiest and oldest first), so a quiet area can be minutes old. */
+const WORLD_MAX_AGE_S = 900;
+
+async function fromWorld(ctx: ToolContext, box: Bbox): Promise<LiveAircraft> {
+  const json = await getJson<WorldAnswer>(
+    ctx,
+    ctx.config.flightsRelayUrl,
+    { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ world: box }) },
+    'flights-world',
+    20000,
+  );
+  const aircraft = (Array.isArray(json?.ac) ? json.ac : []).filter((r) => Array.isArray(r) && r[7] <= WORLD_MAX_AGE_S).map(fromRow).filter((a) => a.kind !== null);
+  return { source: 'world', aircraft, at: typeof json.at === 'number' ? json.at : Date.now(), pending: json.pending || undefined };
 }
 
 const NM_KM = 1.852;
@@ -159,6 +201,7 @@ export function resetOpenSkyPause(): void {
   openskyPause = null;
 }
 
+const NOTE_WORLD_DOWN = 'התצוגה של כל העולם לא זמינה כרגע. מוצגות רק הטיסות באזור מרכז המפה; התקרבו כדי לראות הכול.';
 const NOTE_LIMITED = 'נגמרה המכסה היומית של מקור הטיסות העולמי (OpenSky). מוצגות רק הטיסות באזור מרכז המפה; התקרבו כדי לראות הכול.';
 const NOTE_DOWN = 'מקור הטיסות העולמי (OpenSky) לא זמין כרגע. מוצגות רק הטיסות באזור מרכז המפה; התקרבו כדי לראות הכול.';
 
@@ -167,6 +210,14 @@ export async function liveAircraft(ctx: ToolContext, bbox: Bbox): Promise<LiveAi
   const box = clampBbox(bbox);
   const circles = ctx.config.flightsUrl ? coverCircles(box) : null;
   if (circles) return { source: 'adsb', aircraft: liveOnly(await fromAdsb(ctx, circles)), at: Date.now() };
+  if (ctx.config.flightsRelayUrl) {
+    try {
+      return await fromWorld(ctx, box);
+    } catch (err) {
+      if (ctx.signal?.aborted || !ctx.config.flightsUrl) throw err;
+      return { ...(await middleOnly(ctx, box)), note: NOTE_WORLD_DOWN };
+    }
+  }
 
   const base = ctx.config.openskyUrl.replace(/\/$/, '');
   const paused = openskyPause && Date.now() < openskyPause.until ? openskyPause : null;

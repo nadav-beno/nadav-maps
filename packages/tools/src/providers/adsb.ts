@@ -7,34 +7,54 @@ import { getJson, ProviderError, type ToolContext } from '../define.ts';
  * GET {base}/v2/callsign/{CALLSIGN} -> { ac: [{ hex, flight, lat, lon, alt_baro, gs, track, ... }] }
  */
 
-/** What to draw: airliner, wide-body, light aircraft or helicopter. */
-export type AircraftKind = 'jet' | 'heavy' | 'light' | 'heli';
+/**
+ * What to draw: airliner (narrow body), wide body, turboprop, business jet, light aircraft,
+ * helicopter, fighter, glider, balloon or airship, drone.
+ */
+export type AircraftKind = 'jet' | 'heavy' | 'prop' | 'bizjet' | 'light' | 'heli' | 'fighter' | 'glider' | 'balloon' | 'drone';
 
-const HEAVY_TYPES = /^(A3[3-5]\d|A38\d|A30\d|A310|B74\d|B76\d|B77\w|B78\d|MD11|IL96|IL76|C17|A400|A124|A225|B52|KC10|K35R|E3TF|DC10|L101)$/;
-const LIGHT_TYPES = /^(C1\d\d|C2\d\d|C3\d\d|P28\w|PA\d\d|PA\w\w|SR2\d|DA[24]\d|DA62|BE\d\d|M20\w|TB\d\d|DR40|AT\d|C42|PC12|PC6T|C208|TBM\d|GLID|ULAC)$/;
+const HEAVY_TYPES = /^(A3[3-5]\d|A38\d|A30\d|A310|B74\w|B76\d|B77\w|B78\d|MD11|IL96|IL76|IL62|C17|A400|A124|A225|AN22|B52|KC10|K35R|K35E|E3TF|E3CF|DC10|L101|C5M|A332|A333|A339|A359|A35K|B744|B748)$/;
+const HELI_TYPES = /^(EC\d\d|EC\w\w|AS32|AS3B|AS50|AS55|AS65|R22|R44|R66|B06|B06T|B212|B412|B429|B407|B505|H\d\d\d|H\d\d|S76|S92|S61|A109|A119|A139|A149|A169|A189|AW\d\d\d|UH\d+|H60|H47|H64|NH90|MI8|MI17|MI24|MI26|KA\d\d|EH10|AS50|AS55|AS65|BK17|EXPL|G2CA|CH47|V22|LYNX|PUMA|ALO3|GAZL)$/;
+const FIGHTER_TYPES = /^(F14|F15|F16|F18|F117|F4|F5|FA18|F18S|F35|F22|EUFI|RFAL|TOR|HAWK|T38|T45|T6|M346|L159|L39|A10|AV8B|MIR2|M2KC|SU\d\d|MG\d\d|J10|J20|JF17|GRIF|ALPJ|K8|T50|HUNT|KFIR|F4)$/;
+const BIZJET_TYPES = /^(C25\w|C500|C501|C510|C525|C526|C550|C551|C560|C56X|C650|C680|C68A|C700|C750|GLF\d|GL5T|GL6T|GL7T|GLEX|GA5C|GA6C|GA7C|GA8C|CL30|CL35|CL60|CL64|F2TH|F900|FA10|FA20|FA50|FA6X|FA7X|FA8X|LJ\d\d|E50P|E55P|E545|E550|E35L|H25\w|PRM1|HDJT|BE40|G150|G200|G280|ASTR|GALX|PC24|SF50|EA50|E35L)$/;
+const PROP_TYPES = /^(AT4\d|AT5\d|AT7\d|ATP|DH8\w|DHC\d|SF34|JS3\d|JS41|B190|B350|BE20|BE30|BE9L|BE99|E110|E120|D228|D328|SW\d|F27|F50|AN2\d|AN3\d|L410|SB20|SH36|C212|CN35|C295|C130|C30J|C160|P3|DO28|BN2\w|TRIS|PC12|C208|KODI|TBM\d|PC6T|PA46|M600|AT8T|AT6T|AT5T|DHC2|Y12|MA60)$/;
+const LIGHT_TYPES = /^(C1\d\d|C2\d\d|C3\d\d|P28\w|PA\d\d|PA\w\w|SR2\d|DA[24]\d|DA62|BE\d\d|M20\w|TB\d\d|DR40|C42|ULAC|AAT3|PIVI|EV97|CRUZ|WT9|TL20|SIRA|RV\d+|A210|BREZ|DV20|J3|CH60|ZLIN|Z42|Z43|SUBA|SAVG)$/;
+const GLIDER_TYPES = /^(GLID|AS2\d|AS3[13]|ASK\d\d|ASW\d\d|ASG\d\d|ASH\d\d|DG\d+|LS\d|LAK\d+|DUOD|ARCP|JANU|DISC|VENT|NIMB|G102|G103|G109|PIK\d+)$/;
+const BALLOON_TYPES = /^(BALL|ZEPP|SHIP|AIRSHIP|BLMP)$/;
 
 /**
- * The kind from the ADS-B emitter category ("A5" heavy, "A7" rotorcraft…) or OpenSky's numeric
- * category, falling back to the ICAO type designator. Null for things that aren't aircraft
- * (airport vehicles, obstacles), which the live map leaves out.
+ * The kind from the ICAO type designator when it is known (most specific), else the ADS-B
+ * emitter category ("A5" heavy, "A7" rotorcraft…) or OpenSky's numeric category. Null for things
+ * that aren't aircraft (airport vehicles, obstacles, parachutists), which the live map leaves out.
  */
 export function aircraftKind(category: string | number | null | undefined, type?: string): AircraftKind | null {
+  let cat: string | null = null;
   if (typeof category === 'number') {
-    if (category >= 16) return null; // surface vehicles and obstacles
-    if (category === 8) return 'heli';
-    if (category === 6) return 'heavy';
-    if (category === 2 || category === 9 || category === 10 || category === 12) return 'light';
+    if (category >= 16 || category === 11) return null; // surface vehicles, obstacles, parachutists
+    cat = ({ 2: 'A1', 3: 'A2', 4: 'A3', 5: 'A4', 6: 'A5', 7: 'A6', 8: 'A7', 9: 'B1', 10: 'B2', 12: 'B4', 14: 'B6', 15: 'B7' } as Record<number, string>)[category] ?? null;
   } else if (typeof category === 'string' && category) {
-    const c = category.toUpperCase();
-    if (c[0] === 'C') return null;
-    if (c === 'A7') return 'heli';
-    if (c === 'A5') return 'heavy';
-    if (c === 'A1' || c[0] === 'B') return 'light';
+    cat = category.toUpperCase();
+    if (cat[0] === 'C' || cat === 'B3') return null;
   }
+  // Categories that say more than any type could.
+  if (cat === 'A7') return 'heli';
+  if (cat === 'B1') return 'glider';
+  if (cat === 'B2') return 'balloon';
+  if (cat === 'B6') return 'drone';
   const t = type?.toUpperCase();
-  if (t && HEAVY_TYPES.test(t)) return 'heavy';
-  if (t && LIGHT_TYPES.test(t)) return 'light';
-  if (t && /^(EC\d\d|AS\d\d|R22|R44|R66|B06|B407|B429|H\d\d\d|S76|S92|A109|A139|A169|AW\d\d\d|UH\d+|H60|NH90|EC\w\w)$/.test(t)) return 'heli';
+  if (t) {
+    if (HELI_TYPES.test(t)) return 'heli';
+    if (BALLOON_TYPES.test(t)) return 'balloon';
+    if (GLIDER_TYPES.test(t)) return 'glider';
+    if (FIGHTER_TYPES.test(t)) return 'fighter';
+    if (HEAVY_TYPES.test(t)) return 'heavy';
+    if (BIZJET_TYPES.test(t)) return 'bizjet';
+    if (PROP_TYPES.test(t)) return 'prop';
+    if (LIGHT_TYPES.test(t)) return 'light';
+  }
+  if (cat === 'A5') return 'heavy';
+  if (cat === 'A6') return 'fighter';
+  if (cat === 'A1' || cat === 'B4') return 'light';
   return 'jet';
 }
 
@@ -66,6 +86,8 @@ export interface AircraftPosition {
   kind?: AircraftKind | null;
   /** Transponder code ("7700" is an emergency). */
   squawk?: string;
+  /** Flagged military in the feed's aircraft database. */
+  military?: boolean;
 }
 
 export interface FlightLookup {
@@ -152,6 +174,7 @@ export function parseAdsb(json: unknown): AircraftPosition[] {
       operator: str(a.ownOp),
       kind: aircraftKind(str(a.category), str(a.t)),
       squawk: str(a.squawk),
+      military: (num(a.dbFlags) ?? 0) & 1 ? true : undefined,
     });
   }
   // Freshest first.

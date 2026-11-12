@@ -129,3 +129,27 @@ export async function fakeGps(page: import('@playwright/test').Page, fixes: Fake
     Object.defineProperty(navigator, 'geolocation', { get: () => geo, configurable: true });
   }, fixes);
 }
+
+/**
+ * The relay's world answer (packages/tools/src/world-cells.ts rows): one aircraft of each kind
+ * across the world, one of them squawking an emergency.
+ * [hex, callsign, lon, lat, alt ft, track, gs kt, age s, category, type, reg, squawk, rate, flags]
+ */
+export function worldResponse(at = Date.now()) {
+  return {
+    at,
+    cells: 1300,
+    pending: 0,
+    ac: [
+      ['738075', 'ELY001', 20, 45, 37000, 300, 480, 5, 'A5', 'B789', '4X-EDF', '2000', 0, 0],
+      ['a1b2c3', 'UAL90', -95, 38, 35000, 80, 450, 10, 'A3', 'B738', 'N12345', null, 0, 0],
+      ['400abc', 'BAW7AB', -2, 52, 12000, 120, 300, 3, 'A2', 'DH8D', 'G-ABCD', null, -800, 0],
+      ['3c1234', 'DCXYZ', 9, 50, 41000, 200, 460, 4, 'A2', 'GLF6', 'D-AXYZ', null, 0, 0],
+      ['4x0001', 'MDA12', 35, 31.5, 1500, 30, 110, 2, 'A7', 'EC35', '4X-BEA', null, 0, 0],
+      ['ae0001', 'VIPER1', -117, 34, 20000, 10, 520, 2, 'A6', 'F16', null, null, 0, 1],
+      ['3d0001', null, 10, 48, 3000, 250, 40, 6, 'B1', 'GLID', 'D-1234', null, 0, 0],
+      ['c00001', 'ACA870', -40, 50, 36000, 60, 470, 8, 'A5', 'B77W', 'C-FITW', '7700', -3000, 0],
+      ['7c0001', 'QFA1', 151, -33.9, -1, 0, 0, 1, 'A5', 'A388', 'VH-OQA', null, 0, 0],
+    ],
+  };
+}

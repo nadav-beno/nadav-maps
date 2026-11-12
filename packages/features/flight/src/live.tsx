@@ -6,11 +6,13 @@ import { back, ensureLayer, EMPTY, Icon, isDark, open, providers, setGeoJSON, sh
 import { clampBbox, coverCircles, flightPosition, flightRouteTool, liveFlights, tools, type AircraftPosition, type Bbox, type FlightRoute, type LiveAircraft } from '@nm/tools';
 import { altitudeReadout, headingReadout, speedReadout } from './format.ts';
 import { addLiveIcons, altitudeBand, BANDS, iconId } from './live-icons.ts';
+import { EMERGENCY_SQUAWKS, filters, GROUPS, isFiltered, isSaved, KIND_NAME, NO_FILTERS, passes, savedFlights, setFilters, toggleSaved, type Group, type SavedFlight } from './live-filters.ts';
 
 /**
  * Live flights: every aircraft in the air on the map, moving in real time, like the flight
  * trackers. Close up the positions come from adsb.lol every few seconds; zoomed out (up to the
- * whole world) from OpenSky about once a minute. Between updates planes glide on along their
+ * whole world) from our relay's shared world cells (adsb.lol and adsb.fi, refreshed for every
+ * viewer at once), or from OpenSky where there is no relay. Between updates planes glide on along their
  * track at their speed, so the map never looks frozen. Only the visible map area is sent.
  */
 
@@ -41,10 +43,13 @@ export const isLiveOn = computed(() => viewStack.value.some((v) => v.kind === LI
 const ADSB_EVERY_MS = 8000;
 /** Wide refresh; OpenSky anonymous gives ~100 world-wide calls a day per IP. */
 const OPENSKY_EVERY_MS = 60000;
+/** Zoomed out with the relay: the shared world cells. Cells not fetched yet: ask again soon. */
+const WORLD_EVERY_MS = 12000;
+const WORLD_PENDING_MS = 3000;
 /** Zoomed out while OpenSky is unavailable: adsb.lol around the middle of the map. */
 const FALLBACK_EVERY_MS = 15000;
 /** Planes glide on for at most this long without news, then stop where they were last seen. */
-const MAX_GLIDE_S = 90;
+const MAX_GLIDE_S = 240;
 
 export function openLiveFlights(replace = false) {
   open({ kind: LIVE_VIEW, props: { url: { panel: 'flights' } } }, { replace });
@@ -122,7 +127,7 @@ async function refresh(force = false) {
   const tight = viewBox(0.1);
   const near = closeUp(tight);
   const last = feed.peek();
-  const every = near ? ADSB_EVERY_MS : OPENSKY_EVERY_MS;
+  const every = near ? ADSB_EVERY_MS : providers.peek().flightsRelayUrl ? WORLD_EVERY_MS : OPENSKY_EVERY_MS;
   // Zoomed out, panning inside what we already have costs no credits.
   if (!force && last && Date.now() - last.receivedAt < every && inside(tight, last.box) && (last.source === 'adsb') === near) {
     schedule(every - (Date.now() - last.receivedAt));
@@ -146,7 +151,17 @@ async function refresh(force = false) {
   }
   const got = feed.peek();
   // The fallback around the middle (OpenSky out) costs four calls: a little less often.
-  schedule(got?.source === 'opensky' ? OPENSKY_EVERY_MS : got?.partial ? FALLBACK_EVERY_MS : ADSB_EVERY_MS);
+  schedule(
+    got?.source === 'opensky'
+      ? OPENSKY_EVERY_MS
+      : got?.source === 'world'
+        ? got.pending
+          ? WORLD_PENDING_MS
+          : WORLD_EVERY_MS
+        : got?.partial
+          ? FALLBACK_EVERY_MS
+          : ADSB_EVERY_MS,
+  );
 }
 
 /**
@@ -225,6 +240,11 @@ async function loadRoute(hex: string) {
 
 function start() {
   running = true;
+  try {
+    addLiveIcons(map, isDark.peek());
+  } catch {
+    // The style is still loading: addLayers adds them when it is ready.
+  }
   feedState.value = 'idle';
   void refresh(true);
   ticker = setInterval(tick, 1000);
@@ -299,9 +319,11 @@ function planesData(): Parameters<typeof setGeoJSON>[2] {
   if (!f || !isLiveOn.peek()) return EMPTY;
   const dt = (Date.now() - f.receivedAt) / 1000;
   const sel = selectedHex.peek();
+  const flt = filters.peek();
+  const narrow = isFiltered(flt);
   const features = [];
   for (const a of f.aircraft) {
-    if (a.hex === sel) continue;
+    if (a.hex === sel || (narrow && !passes(a, flt))) continue;
     features.push({
       type: 'Feature' as const,
       // Short keys: thousands of these are serialised to the map worker every few seconds.
@@ -346,7 +368,8 @@ const planeSize = ['interpolate', ['linear'], ['zoom'], 1, 0.42, 3, 0.55, 6, 0.7
 
 function addLayers(m: MapLibreMap) {
   const dark = isDark.peek();
-  addLiveIcons(m, dark);
+  // 70 icons are drawn only once the live mode is on, not on every app start.
+  if (isLiveOn.peek()) addLiveIcons(m, dark);
   setGeoJSON(m, SRC, planesData());
   setGeoJSON(m, SEL, selectedData());
   const accent = dark ? '#a8c7fa' : '#0b57d0';
@@ -466,6 +489,7 @@ export function setupLive(ctx: FeatureContext) {
     void route.value;
     void trail.value;
     void feed.value;
+    void filters.value;
     render();
   });
   ctx.onMapClick((_e, features) => {
@@ -498,8 +522,11 @@ function FeedStatus() {
       </p>
     );
   }
-  const air = f.aircraft.filter((a) => !a.onGround).length;
-  const src = f.source === 'opensky' ? 'OpenSky' : 'adsb.lol';
+  const flt = filters.value;
+  const shown = isFiltered(flt) ? f.aircraft.filter((a) => passes(a, flt)) : f.aircraft;
+  const air = shown.filter((a) => !a.onGround).length;
+  const sos = f.aircraft.filter((a) => a.squawk && EMERGENCY_SQUAWKS.has(a.squawk));
+  const src = f.source === 'opensky' ? 'OpenSky' : f.source === 'world' ? 'adsb.lol · adsb.fi' : 'adsb.lol';
   return (
     <>
       <p class="live-status" role="status">
@@ -512,7 +539,8 @@ function FeedStatus() {
             <strong>{air.toLocaleString('he-IL')}</strong> מטוסים באוויר במפה
           </>
         )}
-        {f.aircraft.length > air && <span class="muted"> · {(f.aircraft.length - air).toLocaleString('he-IL')} על הקרקע</span>}
+        {shown.length > air && <span class="muted"> · {(shown.length - air).toLocaleString('he-IL')} על הקרקע</span>}
+        {isFiltered(flt) && <span class="muted"> · מסונן</span>}
         <span class="muted">
           {' '}
           · עודכן לפני {ago(now.value - f.receivedAt)} · {src}
@@ -520,8 +548,35 @@ function FeedStatus() {
         {st === 'error' && <span class="flight-error"> · העדכון האחרון נכשל</span>}
       </p>
       {f.note && <p class="small live-note">{f.note}</p>}
+      {f.source === 'world' && f.pending ? <p class="small live-note">טוענים את שאר העולם, אזור אחרי אזור…</p> : null}
+      {sos.length > 0 && (
+        <button class="live-emergency live-sos" onClick={() => pickPlane(sos[0])}>
+          <Icon name="warning" size={18} />
+          {sos.length === 1 ? 'מטוס אחד משדר מצב חירום' : `${sos.length} מטוסים משדרים מצב חירום`}
+          <span dir="ltr"> · {sos[0].callsign || sos[0].hex.toUpperCase()}</span>
+        </button>
+      )}
     </>
   );
+}
+
+/** Center the map on a plane and open its card. */
+function pickPlane(a: AircraftPosition) {
+  map.easeTo({ center: a.lngLat, zoom: Math.max(map.getZoom(), 6), duration: 800 });
+  openAircraft(a.hex);
+}
+
+/** Look a flight up by callsign wherever it is, put it in the feed and open it. */
+async function findAndOpen(callsign: string): Promise<boolean> {
+  const res = await tools().call(flightPosition, { callsign }, { cache: false });
+  const a = res.aircraft[0];
+  if (!a) return false;
+  // Put it in the feed so it shows and can be followed until the next update.
+  const cur = feed.peek();
+  if (cur && !cur.aircraft.some((x) => x.hex === a.hex)) feed.value = { ...cur, aircraft: [...cur.aircraft, { ...a }], receivedAt: cur.receivedAt };
+  map.jumpTo({ center: a.lngLat, zoom: Math.max(map.getZoom(), 6) });
+  openAircraft(a.hex);
+  return true;
 }
 
 function FindLive() {
@@ -532,10 +587,7 @@ function FindLive() {
   const norm = (s: string) => s.toUpperCase().replace(/[\s-]/g, '');
   const needle = norm(q);
   const local = needle.length >= 2 && f ? f.aircraft.filter((a) => norm(a.callsign).startsWith(needle) || norm(a.registration ?? '') === needle).slice(0, 6) : [];
-  const pick = (a: AircraftPosition) => {
-    map.easeTo({ center: a.lngLat, zoom: Math.max(map.getZoom(), 6), duration: 800 });
-    openAircraft(a.hex);
-  };
+  const pick = pickPlane;
   const submit = async (e: Event) => {
     e.preventDefault();
     setMsg('');
@@ -543,16 +595,7 @@ function FindLive() {
     if (!providers.peek().flightsUrl || needle.length < 2) return;
     setBusy(true);
     try {
-      const res = await tools().call(flightPosition, { callsign: q.trim() }, { cache: false });
-      const a = res.aircraft[0];
-      if (!a) setMsg('הטיסה לא נמצאה באוויר כרגע.');
-      else {
-        // Put it in the feed so it shows and can be followed until the next update.
-        const cur = feed.peek();
-        if (cur && !cur.aircraft.some((x) => x.hex === a.hex)) feed.value = { ...cur, aircraft: [...cur.aircraft, { ...a }], receivedAt: cur.receivedAt };
-        map.jumpTo({ center: a.lngLat, zoom: Math.max(map.getZoom(), 6) });
-        openAircraft(a.hex);
-      }
+      if (!(await findAndOpen(q.trim()))) setMsg('הטיסה לא נמצאה באוויר כרגע.');
     } catch {
       setMsg('שירות הטיסות לא זמין כרגע.');
     }
@@ -655,6 +698,183 @@ function RouteLine({ a }: { a: AircraftPosition }) {
   );
 }
 
+const ALTITUDES: { id: string; label: string; minM: number | null; maxM: number | null }[] = [
+  { id: 'all', label: 'כל הגבהים', minM: null, maxM: null },
+  { id: 'low', label: 'נמוך (עד 3 ק״מ)', minM: null, maxM: 3000 },
+  { id: 'mid', label: 'בינוני (3–9 ק״מ)', minM: 3000, maxM: 9000 },
+  { id: 'high', label: 'גבוה (מעל 9 ק״מ)', minM: 9000, maxM: null },
+];
+
+/** Narrow the map: by kind, altitude, airline, only in the air, only emergencies. Free, unlike the big trackers. */
+function LiveFilters() {
+  const [openPanel, setOpen] = useState(false);
+  const f = filters.value;
+  const on = isFiltered(f);
+  const toggle = (g: Group) => setFilters({ hide: f.hide.includes(g) ? f.hide.filter((x) => x !== g) : [...f.hide, g] });
+  const alt = ALTITUDES.find((x) => x.minM === f.minM && x.maxM === f.maxM)?.id ?? 'all';
+  return (
+    <div class="live-filters">
+      <div class="chips flight-chips">
+        <button class="chip" aria-expanded={openPanel} aria-pressed={on} onClick={() => setOpen(!openPanel)}>
+          <Icon name="tune" />
+          סינון{on ? ' (פעיל)' : ''}
+        </button>
+        {on && (
+          <button class="chip" onClick={() => setFilters(NO_FILTERS)}>
+            <Icon name="close" />
+            ניקוי
+          </button>
+        )}
+      </div>
+      {openPanel && (
+        <div class="live-filter-panel" role="group" aria-label="סינון מטוסים">
+          <div class="chips">
+            {GROUPS.map((g) => (
+              <button key={g.id} class="chip" aria-pressed={!f.hide.includes(g.id)} onClick={() => toggle(g.id)}>
+                {g.label}
+              </button>
+            ))}
+          </div>
+          <div class="chips">
+            <button class="chip" aria-pressed={f.air} onClick={() => setFilters({ air: !f.air })}>
+              רק באוויר
+            </button>
+            <button class="chip" aria-pressed={f.emergency} onClick={() => setFilters({ emergency: !f.emergency })}>
+              <Icon name="warning" />
+              רק מצבי חירום
+            </button>
+          </div>
+          <label class="live-filter-row">
+            <span>גובה</span>
+            <select value={alt} onChange={(e) => {
+              const x = ALTITUDES.find((a) => a.id === (e.target as HTMLSelectElement).value) ?? ALTITUDES[0];
+              setFilters({ minM: x.minM, maxM: x.maxM });
+            }}>
+              {ALTITUDES.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label class="live-filter-row">
+            <span>חברת תעופה</span>
+            <input
+              class="flight-input"
+              dir="ltr"
+              autoCapitalize="characters"
+              placeholder="ELY, UAE, RYR"
+              maxLength={4}
+              value={f.airline}
+              onInput={(e) => setFilters({ airline: (e.target as HTMLInputElement).value.toUpperCase().replace(/[^A-Z0-9]/g, '') })}
+            />
+          </label>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Flights the user saved: tap to find them in the air. */
+function SavedFlights() {
+  const list = savedFlights.value;
+  const f = feed.value;
+  const [busy, setBusy] = useState('');
+  const [msg, setMsg] = useState('');
+  if (!list.length) return null;
+  const go = async (s: SavedFlight) => {
+    setMsg('');
+    const here = f?.aircraft.find((a) => a.hex === s.hex || (!!s.callsign && a.callsign === s.callsign));
+    if (here) return pickPlane(here);
+    if (!s.callsign) return setMsg('המטוס לא נקלט כרגע.');
+    setBusy(s.hex);
+    try {
+      if (!(await findAndOpen(s.callsign))) setMsg(`${s.callsign} לא באוויר כרגע.`);
+    } catch {
+      setMsg('שירות הטיסות לא זמין כרגע.');
+    }
+    setBusy('');
+  };
+  return (
+    <section class="live-saved" aria-label="הטיסות שלי">
+      <h3 class="small muted">הטיסות שלי</h3>
+      <ul class="flight-results">
+        {list.map((s) => {
+          const live = f?.aircraft.some((a) => a.hex === s.hex || (!!s.callsign && a.callsign === s.callsign));
+          return (
+            <li key={s.hex}>
+              <button type="button" class="flight-result" disabled={busy === s.hex} onClick={() => void go(s)}>
+                <Icon name="bookmark" size={20} />
+                <span class="flight-result-name" dir="ltr">
+                  {s.callsign || s.hex.toUpperCase()}
+                </span>
+                {s.label && (
+                  <span class="flight-code" dir="ltr">
+                    {s.label}
+                  </span>
+                )}
+                {live && <span class="live-dot" aria-label="באוויר במפה" />}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {msg && <p class="small flight-error">{msg}</p>}
+    </section>
+  );
+}
+
+interface Photo {
+  src: string;
+  link: string;
+  by: string;
+  w: number;
+  h: number;
+}
+const photos = new Map<string, Photo | null>();
+
+/**
+ * A photo of this very aircraft from Planespotters.net, read straight from the browser and shown
+ * as their terms ask: unchanged, linked to its page, with the photographer's name.
+ */
+function PlanePhoto({ hex }: { hex: string }) {
+  const base = providers.value.planePhotosUrl.replace(/\/$/, '');
+  const [p, setP] = useState<Photo | null | undefined>(photos.get(hex));
+  useEffect(() => {
+    if (!base || !/^[0-9a-f]{6}$/.test(hex)) return setP(null);
+    if (photos.has(hex)) return setP(photos.get(hex));
+    let live = true;
+    setP(undefined);
+    fetch(`${base}/hex/${hex}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { photos?: { thumbnail_large?: { src?: string; size?: { width?: number; height?: number } }; link?: string; photographer?: string }[] } | null) => {
+        const x = j?.photos?.[0];
+        const t = x?.thumbnail_large;
+        const photo = t?.src && x?.link ? { src: t.src, link: x.link, by: x.photographer ?? '', w: t.size?.width ?? 420, h: t.size?.height ?? 280 } : null;
+        photos.set(hex, photo);
+        if (live) setP(photo);
+      })
+      .catch(() => live && setP(null));
+    return () => {
+      live = false;
+    };
+  }, [hex, base]);
+  if (!p) return null;
+  return (
+    <figure class="live-photo">
+      <a href={p.link} target="_blank">
+        <img src={p.src} width={p.w} height={p.h} alt="תמונה של המטוס" loading="lazy" />
+      </a>
+      <figcaption class="small muted">
+        צילום: <span dir="auto">{p.by}</span> ·{' '}
+        <a href={p.link} target="_blank">
+          Planespotters.net
+        </a>
+      </figcaption>
+    </figure>
+  );
+}
+
 export function LiveFlightsView(_: ViewProps) {
   useEffect(() => {
     if (sheet.peek() === 'full') sheet.value = 'half';
@@ -680,10 +900,12 @@ export function LiveFlightsView(_: ViewProps) {
         </button>
       </div>
       <FindLive />
+      <LiveFilters />
+      <SavedFlights />
       <AltitudeLegend />
       <p class="muted small flight-privacy">
-        הקישו על מטוס לפרטים ולמעקב. במבט קרוב המיקומים מתעדכנים כל כמה שניות, ובמבט על כל העולם בערך פעם בדקה. נשלח רק אזור המפה שעל המסך, לא המיקום שלכם.
-        נתונים: adsb.lol (ODbL) ו-OpenSky Network.
+        הקישו על מטוס לפרטים ולמעקב. במבט קרוב המיקומים מתעדכנים כל כמה שניות; במבט רחוק, עד כל העולם, אזור אחרי אזור, ובין העדכונים המטוסים ממשיכים לנוע. נשלח רק אזור המפה שעל המסך, לא המיקום שלכם.
+        נתונים: adsb.lol (ODbL), adsb.fi ו-OpenSky Network.
       </p>
     </div>
   );
@@ -737,6 +959,13 @@ export function AircraftView({ view }: ViewProps<{ hex: string }>) {
           <Icon name="close" />
         </button>
       </div>
+      <PlanePhoto hex={a.hex} />
+      {(a.kind || a.military) && (
+        <p class="live-kind small muted">
+          {a.kind ? KIND_NAME[a.kind] : ''}
+          {a.military && ' · צבאי'}
+        </p>
+      )}
       {(a.description || a.type || a.registration || a.operator || a.country) && (
         <p class="live-model">
           {a.description ?? a.type}
@@ -821,6 +1050,10 @@ export function AircraftView({ view }: ViewProps<{ hex: string }>) {
         >
           <Icon name="my_location" />
           {followSelected.value ? 'המפה עוקבת' : 'מעקב כבוי'}
+        </button>
+        <button class="chip" aria-pressed={isSaved(a)} onClick={() => toggleSaved(a)}>
+          <Icon name={isSaved(a) ? 'bookmark' : 'bookmark_outline'} />
+          {isSaved(a) ? 'שמורה' : 'שמירת הטיסה'}
         </button>
         {a.callsign && (
           <a class="chip" href={`https://globe.adsb.lol/?icao=${encodeURIComponent(a.hex)}`} target="_blank" rel="noopener">
