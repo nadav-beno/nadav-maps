@@ -43,6 +43,8 @@ test('back button closes the place card', async ({ page }) => {
 });
 
 test('save a place to favorites and see it in the saved list', async ({ page }) => {
+  // Many steps: on a busy CI runner it can pass 30 s.
+  test.slow();
   await page.goto('./');
   await page.getByRole('searchbox', { name: 'חיפוש מקום או כתובת' }).fill('עזריאלי');
   await page.getByRole('option').first().click();

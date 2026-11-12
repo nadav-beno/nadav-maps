@@ -240,6 +240,11 @@ async function loadRoute(hex: string) {
 
 function start() {
   running = true;
+  try {
+    addLiveIcons(map, isDark.peek());
+  } catch {
+    // The style is still loading: addLayers adds them when it is ready.
+  }
   feedState.value = 'idle';
   void refresh(true);
   ticker = setInterval(tick, 1000);
@@ -363,7 +368,8 @@ const planeSize = ['interpolate', ['linear'], ['zoom'], 1, 0.42, 3, 0.55, 6, 0.7
 
 function addLayers(m: MapLibreMap) {
   const dark = isDark.peek();
-  addLiveIcons(m, dark);
+  // 70 icons are drawn only once the live mode is on, not on every app start.
+  if (isLiveOn.peek()) addLiveIcons(m, dark);
   setGeoJSON(m, SRC, planesData());
   setGeoJSON(m, SEL, selectedData());
   const accent = dark ? '#a8c7fa' : '#0b57d0';
