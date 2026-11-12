@@ -62,6 +62,11 @@ export interface ProviderConfig {
   /** Flight routes by callsign (adsb.im's routeset, the database behind adsb.lol's map), '' = off. */
   routesUrl: string;
   /**
+   * Aircraft photos by ICAO hex (Planespotters.net's public API), '' = off. Read straight from the
+   * browser (its terms forbid proxying or re-serving it), so it is not a tool.
+   */
+  planePhotosUrl: string;
+  /**
    * Our own static geodata built from OpenStreetMap (scripts/geodata), '' = off. Folder URL ending
    * in "/", may be relative to the page (the web build defaults to the site's own `<base>data/`).
    * Regions with `geodata` in region.ts are answered from `<geodataUrl><region>/` first; Photon and
@@ -101,6 +106,7 @@ export const DEFAULT_PROVIDERS: ProviderConfig = {
   openskyUrl: 'https://opensky-network.org/api',
   flightsRelayUrl: '',
   routesUrl: 'https://adsb.im/api/0/routeset',
+  planePhotosUrl: 'https://api.planespotters.net/pub/photos',
   // Off unless configured: the web build sets it to its own <base>data/ (providersFromEnv).
   geodataUrl: '',
   photosUrl: 'https://commons.wikimedia.org/w/api.php',
@@ -128,6 +134,7 @@ export function providersFromEnv(env: Record<string, string | undefined>, prefix
     openskyUrl: env[prefix + 'OPENSKY_URL'] ?? DEFAULT_PROVIDERS.openskyUrl,
     flightsRelayUrl: env[prefix + 'FLIGHTS_RELAY_URL'] ?? DEFAULT_PROVIDERS.flightsRelayUrl,
     routesUrl: env[prefix + 'ROUTES_URL'] ?? DEFAULT_PROVIDERS.routesUrl,
+    planePhotosUrl: env[prefix + 'PLANE_PHOTOS_URL'] ?? DEFAULT_PROVIDERS.planePhotosUrl,
     // Vite's BASE_URL is set in the browser build: default to the data published with the site.
     geodataUrl: withSlash(env[prefix + 'GEODATA_URL'] ?? (env.BASE_URL !== undefined ? `${env.BASE_URL}data/` : DEFAULT_PROVIDERS.geodataUrl)),
     photosUrl: env[prefix + 'PHOTOS_URL'] ?? DEFAULT_PROVIDERS.photosUrl,
@@ -143,7 +150,7 @@ function withSlash(u: string): string {
 
 /**
  * Lets tests (and developers) switch on key-based sources without a build: `?tomtom=<key>`,
- * `?here=<key>`, `?atlas=<key>`.
+ * `?here=<key>`, `?atlas=<key>`, and a flights relay with `?flightsrelay=<url>`.
  * Honoured only on localhost, so the public site can't be pointed at someone else's key.
  */
 export function withDevOverrides(cfg: ProviderConfig, href: string): ProviderConfig {
@@ -157,6 +164,15 @@ export function withDevOverrides(cfg: ProviderConfig, href: string): ProviderCon
   const tomtom = url.searchParams.get('tomtom');
   const here = url.searchParams.get('here');
   const atlas = url.searchParams.get('atlas');
-  if (!tomtom && !here && !atlas) return cfg;
-  return { ...cfg, ...(tomtom ? { tomtomKey: tomtom } : {}), ...(here ? { hereKey: here } : {}), ...(atlas ? { atlasKey: atlas } : {}) };
+  // A flights relay (e2e tests stub one to try the world view).
+  const relay = url.searchParams.get('flightsrelay');
+  const relayOk = !!relay && /^https?:\/\/[^\s]+$/.test(relay);
+  if (!tomtom && !here && !atlas && !relayOk) return cfg;
+  return {
+    ...cfg,
+    ...(tomtom ? { tomtomKey: tomtom } : {}),
+    ...(here ? { hereKey: here } : {}),
+    ...(atlas ? { atlasKey: atlas } : {}),
+    ...(relayOk ? { flightsRelayUrl: relay } : {}),
+  };
 }

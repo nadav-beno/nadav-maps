@@ -771,6 +771,21 @@ kbd {
 .live-route-arrow { color: var(--text-2); }
 .live-route-left { grid-column: 1 / -1; }
 .live-emergency { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; padding: 8px 12px; border-radius: 12px; background: color-mix(in srgb, #d93025 14%, var(--surface)); color: #d93025; font-weight: 500; }
+button.live-sos { width: 100%; border: 0; font: inherit; cursor: pointer; text-align: start; }
+.live-kind { margin: 0 0 2px; }
+.live-filters { margin: 4px 0 8px; }
+.live-filter-panel { display: grid; gap: 8px; padding: 10px 12px; border-radius: 16px; background: var(--bg-2); }
+.live-filter-panel .chips { margin: 0; padding: 0; flex-wrap: wrap; overflow: visible; }
+.live-filter-row select { height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); color: var(--text); font: inherit; }
+.live-filter-row { display: flex; align-items: center; gap: 10px; }
+.live-filter-row > span { min-width: 84px; color: var(--text-2); font-size: 14px; }
+.live-filter-row select, .live-filter-row input { flex: 1; min-width: 0; }
+.live-saved { margin: 4px 0 10px; }
+.live-saved h3 { margin: 0 0 4px; font-weight: 500; }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); margin-inline-start: auto; flex: none; }
+.live-photo { margin: 0 0 10px; }
+.live-photo img { display: block; width: 100%; height: auto; max-height: 220px; object-fit: cover; border-radius: 14px; background: var(--bg-2); }
+.live-photo figcaption { margin-top: 4px; }
 
 /* ---------- timeline (packages/features/timeline) ---------- */
 .m-walk { --mode: #1e8e3e; }

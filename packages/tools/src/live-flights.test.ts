@@ -130,6 +130,22 @@ describe('aircraft kinds and quality', () => {
     expect(aircraftKind(8)).toBe('heli');
     expect(aircraftKind(17)).toBeNull();
     expect(aircraftKind(0)).toBe('jet');
+    expect(aircraftKind('A3', 'AT76')).toBe('prop');
+    expect(aircraftKind('A2', 'DH8D')).toBe('prop');
+    expect(aircraftKind('A2', 'GLF6')).toBe('bizjet');
+    expect(aircraftKind('A2', 'C56X')).toBe('bizjet');
+    expect(aircraftKind('A6', 'F16')).toBe('fighter');
+    expect(aircraftKind('A6')).toBe('fighter');
+    expect(aircraftKind('A3', 'F70')).toBe('jet');
+    expect(aircraftKind('A2', 'F50')).toBe('prop');
+    expect(aircraftKind('B1')).toBe('glider');
+    expect(aircraftKind(undefined, 'AS21')).toBe('glider');
+    expect(aircraftKind(undefined, 'AS50')).toBe('heli');
+    expect(aircraftKind('B2')).toBe('balloon');
+    expect(aircraftKind('B6')).toBe('drone');
+    expect(aircraftKind('B3')).toBeNull(); // parachutist
+    expect(aircraftKind(14)).toBe('drone');
+    expect(aircraftKind('A3', 'A359')).toBe('heavy');
   });
 
   it('drops stale positions and ground vehicles', async () => {
