@@ -11,7 +11,8 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04, where Playwright 1.56 can't install Chromium's dependencies.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -23,7 +24,9 @@ jobs:
       - name: Boundaries, types, unit tests, build
         run: pnpm check
       - name: Install Chromium
-        run: pnpm exec playwright install --with-deps chromium
+        # The runner image already has Chromium's system libraries; --with-deps would also apt-get
+        # extra fonts, which fails whenever the Ubuntu mirrors are unreachable from the runners.
+        run: pnpm exec playwright install chromium
       - name: End-to-end tests (iPhone, Android, desktop)
         run: pnpm e2e
       - uses: actions/upload-artifact@v4
