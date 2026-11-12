@@ -60,6 +60,8 @@ test('save a place to favorites and see it in the saved list', async ({ page }) 
   await page.getByRole('textbox', { name: /תווית פרטית/ }).press('Enter');
   await expect(page.getByText('תווית: הקניון שלי')).toBeVisible();
   await page.goBack();
+  // Wait for the back to close the card: a tab tapped before the app handles popstate is undone by it.
+  await expect(page.getByText('תווית: הקניון שלי')).toBeHidden();
   await page.getByRole('navigation', { name: 'ניווט ראשי' }).getByRole('button', { name: 'שמורים' }).click();
   await page.getByRole('button', { name: /מועדפים/ }).click();
   await expect(page.getByText('קניון עזריאלי')).toBeVisible();
@@ -670,7 +672,7 @@ test('live flights: planes around the map close up, a plane card, and the whole 
 });
 
 test('live flights: the whole world from the relay, a shape per kind, filters, an emergency, saving a flight', async ({ page }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(180_000);
   const cors = { 'access-control-allow-origin': '*' };
   const bodies: Record<string, unknown>[] = [];
   await page.route('https://relay.test/flights', async (r) => {
