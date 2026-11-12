@@ -55,8 +55,8 @@ export function fromRow(r: Row): AircraftPosition {
   };
 }
 
-/** World positions come from cells refreshed every half minute or so: allow older ones. */
-const WORLD_MAX_AGE_S = 300;
+/** World cells are refreshed in turn (busiest and oldest first), so a quiet area can be minutes old. */
+const WORLD_MAX_AGE_S = 900;
 
 async function fromWorld(ctx: ToolContext, box: Bbox): Promise<LiveAircraft> {
   const json = await getJson<WorldAnswer>(
