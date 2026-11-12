@@ -39,7 +39,7 @@ export function adsbAreaResponse() {
   };
 }
 
-/** adsb.lol /api/0/routeset for El Al 1: Tel Aviv to New York. */
+/** adsb.im /api/0/routeset for El Al 1: Tel Aviv to New York. */
 export function routesetResponse() {
   return [
     {

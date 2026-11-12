@@ -612,9 +612,9 @@ test('live flights: planes around the map close up, a plane card, and the whole 
   await page.route('https://api.adsb.lol/**', (r) => {
     const url = r.request().url();
     asked.push(url);
-    if (url.endsWith('/api/0/routeset')) return r.fulfill({ json: routesetResponse(), headers: cors });
     return r.fulfill({ json: adsbAreaResponse(), headers: cors });
   });
+  await page.route('https://adsb.im/api/0/routeset', (r) => r.fulfill({ json: routesetResponse(), headers: cors }));
   await page.route('https://opensky-network.org/**', (r) => {
     asked.push(r.request().url());
     return r.fulfill({ json: openskyResponse(Math.floor(Date.now() / 1000)), headers: cors });
