@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { CATEGORIES, categoryById } from '../categories.ts';
 import { defineTool, ProviderError, type ToolContext } from '../define.ts';
 import { findFlight } from '../providers/adsb.ts';
+import { liveAircraft, type Bbox } from '../providers/live-aircraft.ts';
+import { flightRoute } from '../providers/flight-route.ts';
 import { airQualityAt } from '../providers/air-quality.ts';
 import { commonsPhotosNear } from '../providers/commons.ts';
 import { overpassAlongLine, overpassCategory, overpassDetails, overpassIdentify, overpassInside } from '../providers/overpass.ts';
@@ -444,7 +446,33 @@ export const flightPosition = defineTool({
   run: (input, ctx) => findFlight(ctx, input.callsign),
 });
 
-export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, routeGuidance, searchAlongRoute, placesInside, placePhotos, airQuality, transitDirections, transitDeparturesTool, transitVehiclesTool, placeSummary, trafficIncidents, trafficTravelTime, flightPosition];
+export const liveFlights = defineTool({
+  name: 'live_flights',
+  title: 'טיסות בזמן אמת',
+  description:
+    'Every aircraft currently received in a map area, from public ADS-B feeds: adsb.lol (ODbL) close up, OpenSky Network for large areas up to the whole world. Returns callsign, ICAO hex, position, altitude (m), ground speed (km/h), track, vertical rate (m/s) and, when known, type, registration and model. Pass the whole world ([-180,-90,180,90]) for a global snapshot.',
+  input: z.object({
+    bbox: z
+      .tuple([z.number().min(-540).max(540), z.number().min(-90).max(90), z.number().min(-540).max(540), z.number().min(-90).max(90)])
+      .refine(([w, s, e, n]) => e > w && n > s, 'west < east and south < north')
+      .describe('[west, south, east, north] in degrees'),
+  }),
+  run: (input, ctx) => liveAircraft(ctx, input.bbox as Bbox),
+});
+
+export const flightRouteTool = defineTool({
+  name: 'flight_route',
+  title: 'מאיפה ולאן הטיסה',
+  description:
+    'Origin and destination airports of a flight by its callsign ("ELY001"), from adsb.lol\'s crowd-maintained route database. Pass the aircraft\'s current position (from live_flights or flight_position) so multi-leg routes resolve to the current leg and implausible matches are flagged. Null when the route is unknown.',
+  input: z.object({
+    callsign: z.string().trim().min(2).max(10).regex(/^[A-Za-z0-9]+$/, 'letters and digits only'),
+    at: point.describe('The aircraft\'s position [lng, lat]'),
+  }),
+  run: (input, ctx) => flightRoute(ctx, input.callsign, input.at as LngLat),
+});
+
+export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, routeGuidance, searchAlongRoute, placesInside, placePhotos, airQuality, transitDirections, transitDeparturesTool, transitVehiclesTool, placeSummary, trafficIncidents, trafficTravelTime, flightPosition, liveFlights, flightRouteTool];
 
 /**
  * Start loading the region's full names list (typo dictionary) in the background, e.g. in

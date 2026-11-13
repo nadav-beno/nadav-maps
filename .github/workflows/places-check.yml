@@ -2,12 +2,15 @@ name: Places check
 
 # Builds the real places tiles from the newest Overture release on pull requests that change the
 # builder, so the pipeline is proven before it reaches the deploy workflow. Nothing is deployed.
+# region.ts is not a trigger: it changes with most features, and the weekly deploy rebuilds
+# from it anyway (keeping the previous build if that fails). Run this by hand when a region's
+# bounds change (Actions > Places check > Run workflow).
 on:
   pull_request:
     paths:
       - 'scripts/places/**'
       - 'packages/core/src/overture.ts'
-      - 'packages/core/src/region.ts'
+      - 'scripts/ci/install-tools.sh'
       - '.github/workflows/places-check.yml'
   workflow_dispatch:
 
@@ -26,10 +29,11 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Install tippecanoe
+        run: bash scripts/ci/install-tools.sh tippecanoe
       - name: Build places from Overture
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq tippecanoe
+          tippecanoe --version 2>&1 | head -1
           python3 -m venv "$RUNNER_TEMP/venv"
           . "$RUNNER_TEMP/venv/bin/activate"
           pip install --quiet duckdb==1.5.6

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { stubGeodata, stubNetwork } from './stubs.ts';
 import { encodePlusCode } from '../packages/core/src/plus-code.ts';
-import { adsbResponse, fakeGps, FLIGHT_FIXES } from './flight-fixture.ts';
+import { adsbAreaResponse, adsbResponse, fakeGps, FLIGHT_FIXES, openskyResponse, routesetResponse, worldResponse } from './flight-fixture.ts';
 import { TAKEOUT_DAY, TAKEOUT_FIXTURE } from './timeline-fixture.ts';
 
 test.beforeEach(async ({ page }) => {
@@ -43,6 +43,8 @@ test('back button closes the place card', async ({ page }) => {
 });
 
 test('save a place to favorites and see it in the saved list', async ({ page }) => {
+  // Many steps: on a busy CI runner it can pass 30 s.
+  test.slow();
   await page.goto('./');
   await page.getByRole('searchbox', { name: 'חיפוש מקום או כתובת' }).fill('עזריאלי');
   await page.getByRole('option').first().click();
@@ -60,6 +62,8 @@ test('save a place to favorites and see it in the saved list', async ({ page }) 
   await page.getByRole('textbox', { name: /תווית פרטית/ }).press('Enter');
   await expect(page.getByText('תווית: הקניון שלי')).toBeVisible();
   await page.goBack();
+  // Wait for the back to close the card: a tab tapped before the app handles popstate is undone by it.
+  await expect(page.getByText('תווית: הקניון שלי')).toBeHidden();
   await page.getByRole('navigation', { name: 'ניווט ראשי' }).getByRole('button', { name: 'שמורים' }).click();
   await page.getByRole('button', { name: /מועדפים/ }).click();
   await expect(page.getByText('קניון עזריאלי')).toBeVisible();
@@ -603,6 +607,146 @@ test.describe('flight mode', () => {
     // Only the flight number left the device.
     expect(asked).toEqual(['ELY1', 'ELY001']);
   });
+});
+
+test('live flights: planes around the map close up, a plane card, and the whole world from OpenSky', async ({ page }) => {
+  test.setTimeout(90_000);
+  const cors = { 'access-control-allow-origin': '*' };
+  const asked: string[] = [];
+  await page.route('https://api.adsb.lol/**', (r) => {
+    const url = r.request().url();
+    asked.push(url);
+    return r.fulfill({ json: adsbAreaResponse(), headers: cors });
+  });
+  await page.route('https://adsb.im/api/0/routeset', (r) => r.fulfill({ json: routesetResponse(), headers: cors }));
+  await page.route('https://opensky-network.org/**', (r) => {
+    asked.push(r.request().url());
+    return r.fulfill({ json: openskyResponse(Math.floor(Date.now() / 1000)), headers: cors });
+  });
+  // One tap on the round map button, from the home screen.
+  await page.goto('./#9/32.05/34.75');
+  await page.getByRole('button', { name: 'טיסות בזמן אמת' }).click();
+  await expect(page).toHaveURL(/panel=flights/);
+  await expect(page.getByRole('heading', { name: 'טיסות בעולם' })).toBeVisible();
+  await expect(page.getByLabel('צבע המטוס לפי גובה')).toBeVisible();
+  await expect(page.locator('.live-status')).toContainText('מטוס אחד באוויר במפה');
+  await expect(page.locator('.live-status')).toContainText('1 על הקרקע');
+  await expect(page.locator('.live-status')).toContainText('adsb.lol');
+  // Close up only the visible area goes to adsb.lol, as one circle.
+  expect(asked.find((u) => u.includes('/v2/point/'))).toMatch(/^https:\/\/api\.adsb\.lol\/v2\/point\/[\d.]+\/[\d.]+\/\d+$/);
+
+  // Tap the plane in the air.
+  const planeAt = () => page.evaluate(() => {
+    const map = (window as unknown as { map: MapLike & { project(p: number[]): { x: number; y: number }; getCanvas(): HTMLCanvasElement } }).map;
+    const f = map.queryRenderedFeatures({ layers: ['live-flights-planes'] }).find((x) => x.properties.cs === 'ELY001') as unknown as { geometry: { coordinates: number[] } } | undefined;
+    if (!f) return null;
+    const p = map.project(f.geometry.coordinates);
+    const r = map.getCanvas().getBoundingClientRect();
+    return { x: r.left + p.x, y: r.top + p.y };
+  });
+  await expect.poll(planeAt, { timeout: 15_000 }).not.toBeNull();
+  const at = (await planeAt())!;
+  await page.mouse.click(at.x, at.y);
+  await expect(page.locator('.live-callsign')).toHaveText('ELY001');
+  await expect(page.locator('.live-model')).toContainText('BOEING 787-9 Dreamliner');
+  await expect(page.locator('.live-model')).toContainText('4X-EDF');
+  await expect(page.locator('.flight-stat').filter({ hasText: 'גובה' })).toContainText('2,789');
+  await expect(page.locator('.flight-stat').filter({ hasText: 'גובה' })).toContainText('עולה');
+  await expect(page.getByRole('button', { name: 'המפה עוקבת' })).toBeVisible();
+  // Where it flies: from the crowd-sourced route database.
+  await expect(page.locator('.live-route')).toContainText('TLV');
+  await expect(page.locator('.live-route')).toContainText('JFK');
+  await expect(page.locator('.live-route')).toContainText('נשארו');
+  await page.getByRole('button', { name: 'סגירה' }).click();
+
+  // The whole world: OpenSky, one call without a box.
+  await page.getByRole('button', { name: 'כל העולם' }).click();
+  await expect(page.locator('.live-status')).toContainText('OpenSky', { timeout: 15_000 });
+  await expect(page.locator('.live-status')).toContainText('2 מטוסים באוויר במפה');
+  expect(asked.some((u) => u.startsWith('https://opensky-network.org/api/states/all'))).toBe(true);
+
+  // The map button closes it again and clears the planes.
+  await page.getByRole('button', { name: 'הסתרת הטיסות' }).click();
+  await expect(page.getByRole('heading', { name: 'טיסות בעולם' })).toBeHidden();
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { map: MapLike }).map.queryRenderedFeatures({ layers: ['live-flights-planes'] }).length))
+    .toBe(0);
+});
+
+test('live flights: the whole world from the relay, a shape per kind, filters, an emergency, saving a flight', async ({ page }) => {
+  test.setTimeout(180_000);
+  const cors = { 'access-control-allow-origin': '*' };
+  const bodies: Record<string, unknown>[] = [];
+  await page.route('https://relay.test/flights', async (r) => {
+    const body = r.request().postDataJSON() as Record<string, unknown>;
+    bodies.push(body);
+    if (body.world) return r.fulfill({ json: worldResponse(), headers: cors });
+    return r.fulfill({ json: { ac: [] }, headers: cors });
+  });
+  await page.goto('./?panel=flights&flightsrelay=https://relay.test/flights#1.3/25/20');
+  await expect(page.locator('.live-status')).toContainText('8 מטוסים באוויר במפה', { timeout: 15_000 });
+  await expect(page.locator('.live-status')).toContainText('1 על הקרקע');
+  await expect(page.locator('.live-status')).toContainText('adsb.lol · adsb.fi');
+  // Only the map area went out, as a box, in the request body.
+  const box = bodies.find((b) => b.world)!.world as number[];
+  expect(box).toHaveLength(4);
+  expect(box[2] - box[0]).toBeGreaterThan(90);
+  // Every plane is drawn with the shape of its kind.
+  const icons = () =>
+    page.evaluate(() =>
+      [
+        ...new Map(
+          (window as unknown as { map: { querySourceFeatures(s: string): { properties: { hex: string; i: string } }[] } }).map
+            .querySourceFeatures('live-flights')
+            .map((f) => [f.properties.hex, f.properties.i.replace(/-\d+$/, '')]),
+        ).values(),
+      ].sort(),
+    );
+  await expect.poll(icons, { timeout: 15_000 }).toEqual(
+    ['live-bizjet', 'live-fighter', 'live-glider', 'live-heavy', 'live-heavy', 'live-heavy', 'live-heli', 'live-jet', 'live-prop'],
+  );
+  // An emergency anywhere on the map is called out; a tap opens that plane.
+  await page.getByRole('button', { name: /מטוס אחד משדר מצב חירום/ }).click();
+  await expect(page.locator('.live-callsign')).toHaveText('ACA870');
+  await expect(page.locator('.live-emergency')).toContainText('7700');
+  await expect(page.locator('.live-kind')).toContainText('מטוס רחב גוף');
+  // Save it: it shows under "my flights" on this device.
+  await page.getByRole('button', { name: 'שמירת הטיסה' }).click();
+  await expect(page.getByRole('button', { name: 'שמורה' })).toBeVisible();
+  await page.getByRole('button', { name: 'סגירה' }).click();
+  await expect(page.getByRole('region', { name: 'הטיסות שלי' })).toContainText('ACA870');
+  // Opening the plane zoomed in; back out to the whole world.
+  await page.getByRole('button', { name: 'כל העולם' }).click();
+  await expect(page.locator('.live-status')).toContainText('8 מטוסים באוויר במפה', { timeout: 15_000 });
+  // Filters: helicopters and military off, then only in the air.
+  await page.getByRole('button', { name: 'סינון' }).click();
+  await page.getByRole('button', { name: 'מסוקים' }).click();
+  await page.getByRole('button', { name: 'צבאיים' }).click();
+  await expect(page.locator('.live-status')).toContainText('6 מטוסים באוויר במפה');
+  await page.getByRole('button', { name: 'רק באוויר' }).click();
+  await expect(page.locator('.live-status')).not.toContainText('על הקרקע');
+  await expect.poll(async () => (await icons()).length).toBe(6);
+  await page.getByRole('button', { name: 'ניקוי' }).click();
+  await expect(page.locator('.live-status')).toContainText('8 מטוסים באוויר במפה');
+});
+
+test('live flights: when OpenSky cannot be reached, the world view falls back to adsb.lol and says so', async ({ page }) => {
+  test.setTimeout(60_000);
+  const cors = { 'access-control-allow-origin': '*' };
+  let opensky = 0;
+  await page.route('https://api.adsb.lol/**', (r) => r.fulfill({ json: adsbAreaResponse(), headers: cors }));
+  // What a browser sees when CORS or a network block stops the request.
+  await page.route('https://opensky-network.org/**', (r) => {
+    opensky++;
+    return r.abort('failed');
+  });
+  await page.goto('./?panel=flights#1.5/30/20');
+  await expect(page.locator('.live-note')).toContainText('לא זמין');
+  await expect(page.locator('.live-status')).toContainText('מטוס אחד באוויר במפה');
+  // Panning around does not keep hitting the failed source.
+  await page.evaluate(() => (window as unknown as { map: { panBy(o: number[]): void } }).map.panBy([200, 0]));
+  await page.waitForTimeout(1500);
+  expect(opensky).toBe(1);
 });
 
 test('timeline: importing a Google Takeout file shows the day, and a visit can be renamed', async ({ page }) => {

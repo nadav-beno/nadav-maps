@@ -747,6 +747,46 @@ kbd {
 .flight-error { color: var(--warn); }
 .flight-adsb { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; margin-top: 10px; padding: 10px 12px; border-radius: 16px; background: color-mix(in srgb, #e37400 10%, var(--surface)); }
 .flight-privacy { margin: 16px 0 0; }
+/* live flights */
+.live-status { margin: 0 0 8px; font-size: 14px; line-height: 1.5; }
+.live-note { margin: 0 0 8px; padding: 8px 12px; border-radius: 12px; background: color-mix(in srgb, var(--warn) 10%, var(--surface)); line-height: 1.45; }
+.live-find { display: flex; flex-wrap: wrap; gap: 8px; }
+.live-find .flight-input { flex: 1; min-width: 0; text-transform: uppercase; }
+.live-find .flight-results { flex-basis: 100%; }
+.live-callsign { font-variant-numeric: tabular-nums; }
+.live-model { margin: 0 0 10px; font-size: 15px; line-height: 1.45; }
+.live-hex { font-size: 22px; }
+.live-flights .flight-stat-sub .icon { vertical-align: -2px; }
+.live-ctrl .icon { transform: rotate(45deg); }
+.live-ctrl.on { background: var(--accent-soft); color: var(--accent-soft-text); }
+.live-legend { margin: 14px 0 0; }
+.live-legend-title { margin-bottom: 4px; }
+.live-legend-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; }
+.live-legend-bar span { flex: 1; }
+.live-legend-labels { display: flex; justify-content: space-between; margin-top: 3px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.live-route { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 4px 10px; margin: 0 0 12px; padding: 12px 14px; border-radius: 16px; background: var(--bg-2); }
+.live-route-end { display: flex; flex-direction: column; min-width: 0; }
+.live-route-end.to { text-align: end; }
+.live-route-code { font-size: 26px; font-weight: 500; line-height: 1.1; }
+.live-route-city { font-size: 13px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-route-arrow { color: var(--text-2); }
+.live-route-left { grid-column: 1 / -1; }
+.live-emergency { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; padding: 8px 12px; border-radius: 12px; background: color-mix(in srgb, #d93025 14%, var(--surface)); color: #d93025; font-weight: 500; }
+button.live-sos { width: 100%; border: 0; font: inherit; cursor: pointer; text-align: start; }
+.live-kind { margin: 0 0 2px; }
+.live-filters { margin: 4px 0 8px; }
+.live-filter-panel { display: grid; gap: 8px; padding: 10px 12px; border-radius: 16px; background: var(--bg-2); }
+.live-filter-panel .chips { margin: 0; padding: 0; flex-wrap: wrap; overflow: visible; }
+.live-filter-row select { height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); color: var(--text); font: inherit; }
+.live-filter-row { display: flex; align-items: center; gap: 10px; }
+.live-filter-row > span { min-width: 84px; color: var(--text-2); font-size: 14px; }
+.live-filter-row select, .live-filter-row input { flex: 1; min-width: 0; }
+.live-saved { margin: 4px 0 10px; }
+.live-saved h3 { margin: 0 0 4px; font-weight: 500; }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); margin-inline-start: auto; flex: none; }
+.live-photo { margin: 0 0 10px; }
+.live-photo img { display: block; width: 100%; height: auto; max-height: 220px; object-fit: cover; border-radius: 14px; background: var(--bg-2); }
+.live-photo figcaption { margin-top: 4px; }
 
 /* ---------- timeline (packages/features/timeline) ---------- */
 .m-walk { --mode: #1e8e3e; }

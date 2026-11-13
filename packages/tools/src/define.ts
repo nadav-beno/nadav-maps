@@ -37,6 +37,16 @@ export class ProviderError extends Error {
   }
 }
 
+/** Feeds without CORS headers go through our relay when one is configured (see flights-proxy.ts). */
+const RELAYED = new Set(['flights', 'opensky']);
+
+function relayed(ctx: ToolContext, url: string, init: RequestInit, provider: string, signal: AbortSignal): [string, RequestInit] {
+  const relay = ctx.config.flightsRelayUrl;
+  if (!relay || !RELAYED.has(provider)) return [url, { ...init, signal }];
+  const body = typeof init.body === 'string' ? (JSON.parse(init.body) as unknown) : undefined;
+  return [relay, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url, body }), signal }];
+}
+
 /** fetch + JSON with a timeout and readable errors. */
 export async function getJson<T>(ctx: ToolContext, url: string, init: RequestInit = {}, provider = 'provider', timeoutMs = 12000): Promise<T> {
   const ac = new AbortController();
@@ -44,7 +54,7 @@ export async function getJson<T>(ctx: ToolContext, url: string, init: RequestIni
   const onAbort = () => ac.abort(ctx.signal?.reason);
   ctx.signal?.addEventListener('abort', onAbort, { once: true });
   try {
-    const res = await ctx.fetch(url, { ...init, signal: ac.signal });
+    const res = await ctx.fetch(...relayed(ctx, url, init, provider, ac.signal));
     if (!res.ok) {
       let detail = '';
       try {

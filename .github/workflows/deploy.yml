@@ -44,16 +44,19 @@ jobs:
           key: geodata-v1-${{ steps.geokey.outputs.week }}-${{ hashFiles('scripts/geodata/*.ts', 'scripts/geodata/*.sh', 'packages/core/src/geoindex.ts', 'packages/core/src/hebrew.ts', 'packages/core/src/region.ts') }}
           # A miss still restores the newest older build: if this week's build fails, we deploy that one.
           restore-keys: geodata-v1-
+      - name: Install osmium
+        id: geotools
+        if: steps.geocache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        run: bash scripts/ci/install-tools.sh osmium-tool
       - name: Build geodata from OpenStreetMap
         id: geobuild
-        if: steps.geocache.outputs.cache-hit != 'true'
+        if: steps.geocache.outputs.cache-hit != 'true' && steps.geotools.outcome == 'success'
         continue-on-error: true
         timeout-minutes: 60
         env:
           NODE_OPTIONS: --max-old-space-size=6144
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq osmium-tool
           osmium --version
           bash scripts/geodata/build-all.sh "$RUNNER_TEMP/geodata-new"
           rm -rf geodata-out
@@ -80,14 +83,17 @@ jobs:
           path: places-out
           key: places-v1-${{ steps.plkey.outputs.release || 'unknown' }}-${{ hashFiles('scripts/places/*', 'packages/core/src/overture.ts', 'packages/core/src/region.ts') }}
           restore-keys: places-v1-
+      - name: Install tippecanoe
+        id: pltools
+        if: steps.plcache.outputs.cache-hit != 'true' && steps.plkey.outputs.release != ''
+        continue-on-error: true
+        run: bash scripts/ci/install-tools.sh tippecanoe
       - name: Build places from Overture
         id: plbuild
-        if: steps.plcache.outputs.cache-hit != 'true' && steps.plkey.outputs.release != ''
+        if: steps.plcache.outputs.cache-hit != 'true' && steps.plkey.outputs.release != '' && steps.pltools.outcome == 'success'
         continue-on-error: true
         timeout-minutes: 45
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq tippecanoe
           python3 -m venv "$RUNNER_TEMP/venv"
           . "$RUNNER_TEMP/venv/bin/activate"
           pip install --quiet duckdb==1.5.6
@@ -112,6 +118,12 @@ jobs:
           # Optional. Empty = no Atlas (our own traffic service, Hong Kong today). Same place as above:
           # Atlas's publishable read key for https://nadav-beno.github.io.
           VITE_ATLAS_KEY: ${{ vars.VITE_ATLAS_KEY }}
+          # The flight feeds (adsb.lol, adsb.im) send no CORS headers, so the site reads them through
+          # our relay (Supabase Edge Function "flights", source packages/tools/src/flights-proxy.ts).
+          VITE_FLIGHTS_RELAY_URL: https://wysmzvzpmtptckngegvo.supabase.co/functions/v1/flights
+          # OpenSky has no CORS either and doesn't answer the relay's cloud IPs: far views show the
+          # middle of the map from adsb.lol instead.
+          VITE_OPENSKY_URL: ''
       - name: Add geodata to the site
         run: |
           if ls geodata-out/*/manifest.json >/dev/null 2>&1; then

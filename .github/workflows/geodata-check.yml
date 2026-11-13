@@ -2,12 +2,15 @@ name: Geodata check
 
 # Builds the real OpenStreetMap geodata on pull requests that change the builder, so the
 # pipeline is proven before it reaches the deploy workflow. Nothing is deployed or cached.
+# region.ts is not a trigger: it changes with most features, and the weekly deploy rebuilds
+# from it anyway (keeping the previous build if that fails). Run this by hand when a region's
+# geodata settings change (Actions > Geodata check > Run workflow).
 on:
   pull_request:
     paths:
       - 'scripts/geodata/**'
       - 'packages/core/src/geoindex.ts'
-      - 'packages/core/src/region.ts'
+      - 'scripts/ci/install-tools.sh'
       - '.github/workflows/geodata-check.yml'
   workflow_dispatch:
 
@@ -26,12 +29,13 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Install osmium
+        run: bash scripts/ci/install-tools.sh osmium-tool
       - name: Build geodata from OpenStreetMap
         env:
           NODE_OPTIONS: --max-old-space-size=6144
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq osmium-tool
+          osmium --version
           bash scripts/geodata/build-all.sh "$RUNNER_TEMP/geodata"
       - name: Probe the result
         run: |
