@@ -32,7 +32,8 @@ describe('live bus arrivals (curlbus)', () => {
     expect(list[0].vehicle).toEqual({ id: 'openbus:7701355', lng: 34.779, lat: 32.0775 });
     expect(list[1]).toMatchObject({ headsign: 'מסוף רידינג, תל אביב יפו', agency: 'אגד' });
     expect(list[1].vehicle).toBeUndefined();
-    expect(Math.round((Date.parse(list[0].time) - now) / 1000)).toBe(150);
+    // The fixture writes whole seconds, like curlbus.
+    expect(Math.abs((Date.parse(list[0].time) - now) / 1000 - 150)).toBeLessThanOrEqual(1);
   });
 
   function fakeFetch(urls: string[], fail: { curlbus?: boolean } = {}) {
