@@ -26,11 +26,12 @@ describe('live vehicles', () => {
   it('keeps the newest GPS fix of each bus, drops old ones, names the line', () => {
     const now = Date.now();
     const list = strideVehicles(strideLocations(now), strideRoutes(), now);
+    // The light rail train (route_type 0) is left to Transitous.
     expect(list).toHaveLength(2);
-    expect(list.find((v) => v.line === '18')).toMatchObject({ source: 'gps', mode: 'bus', agency: 'דן', headsign: 'ת. מרכזית בת ים, בת ים', lng: 34.779, bearing: 90, speedKph: 24 });
-    expect(list.find((v) => v.line === '25')?.headsign).toBe('ת. רכבת בת ים יוספטל, בת ים');
+    expect(list.find((v) => v.line === '18')).toMatchObject({ source: 'gps', mode: 'bus', agency: 'דן', headsign: 'ת. מרכזית בת ים', lng: 34.779, bearing: 90, speedKph: 24 });
+    expect(list.find((v) => v.line === '25')?.headsign).toBe('ת. רכבת בת ים יוספטל');
     // Without routes the Ministry's line id stands in for the number.
-    expect(strideVehicles(strideLocations(now), [], now).map((v) => v.line).sort()).toEqual(['10755', '2148']);
+    expect(strideVehicles(strideLocations(now), [], now).map((v) => v.line).sort()).toEqual(['10755', '2148', '34448']);
   });
 
   it('gives the service day in Israel', () => {
@@ -57,7 +58,7 @@ describe('live vehicles', () => {
     expect(q.get('lat__greater_or_equal')).toBe('32.06000');
     expect(q.get('order_by')).toBe('recorded_at_time desc');
     const r = new URL(urls.find((u) => u.includes('gtfs_routes'))!).searchParams;
-    expect(r.get('line_refs')?.split(',').sort()).toEqual(['10755', '2148']);
+    expect(r.get('line_refs')?.split(',').sort()).toEqual(['10755', '2148', '34448']);
   });
 
   it('falls back to computed buses when Open Bus is down, and uses only Transitous abroad', async () => {

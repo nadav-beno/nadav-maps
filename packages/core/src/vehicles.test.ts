@@ -29,8 +29,12 @@ describe('live vehicles', () => {
   });
 
   it('reads a headsign from an Israeli GTFS long name', () => {
-    expect(israelHeadsign('ת. רכבת אוניברסיטה/תל אביב יפו<->ת. מרכזית בת ים/בת ים-1#')).toBe('ת. מרכזית בת ים, בת ים');
-    expect(israelHeadsign('מסוף רידינג/תל אביב יפו<->ירושלים-3ב#')).toBe('ירושלים');
+    // Real names from the Ministry's GTFS (Open Bus, 2026-11-13).
+    expect(israelHeadsign('מסוף בית העלמין/איסוף-בת ים<->ת. רכבת תל אביב - סבידור/הורדה-תל אביב יפו-20')).toBe('ת. רכבת תל אביב - סבידור, תל אביב יפו');
+    expect(israelHeadsign('מסוף אור יהודה-אור יהודה<->קניון איילון-רמת גן-20')).toBe('קניון איילון, רמת גן');
+    expect(israelHeadsign('תחנה תפעולית/ביטוח לאומי-ירושלים<->חניון רכבת מלחה/הורדה-ירושלים-1#')).toBe('חניון רכבת מלחה, ירושלים');
+    expect(israelHeadsign('חניון רכבת מלחה/דרך יצחק מודעי-ירושלים<->בנייני האומה/הנשיא השישי-ירושלים-2א')).toBe('בנייני האומה, ירושלים');
+    expect(israelHeadsign('ת. מרכזית רמלה-רמלה<->שדרות החשמונאים/לב העיר-מודיעין מכבים רעות-10')).toBe('שדרות החשמונאים, מודיעין מכבים רעות');
     expect(israelHeadsign(undefined)).toBeUndefined();
   });
 });

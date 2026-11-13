@@ -97,18 +97,17 @@ export function vehicleEndsAt(v: Pick<LiveVehicle, 'legs'>): number {
 }
 
 /**
- * Israel's GTFS route_long_name reads "origin/city<->destination/city-1#": the part after "<->",
- * without the direction suffix, reads well as a headsign ("ת. מרכזית, ירושלים").
+ * Israel's GTFS route_long_name reads "origin stop-city<->destination stop/street-city-direction"
+ * ("מסוף בית העלמין/איסוף-בת ים<->ת. רכבת תל אביב - סבידור/הורדה-תל אביב יפו-20"). The
+ * destination stop and city read well as a headsign ("ת. רכבת תל אביב - סבידור, תל אביב יפו").
  */
 export function israelHeadsign(longName?: string): string | undefined {
   if (!longName) return undefined;
-  const to = longName.split('<->')[1] ?? longName;
-  const clean = to
-    .replace(/-\d[^/<>-]*#?\s*$/, '')
-    .replace(/#\s*$/, '')
-    .split('/')
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .join(', ');
+  // The direction/alternative suffix: "-1#", "-2א", "-10", "-3ב#".
+  const to = (longName.split('<->')[1] ?? longName).trim().replace(/-\d+[\u05d0-\u05ea]?#?\s*$/, '').replace(/#\s*$/, '');
+  const cut = to.lastIndexOf('-');
+  const city = cut > 0 ? to.slice(cut + 1).trim() : '';
+  const stop = (cut > 0 ? to.slice(0, cut) : to).split('/')[0].trim();
+  const clean = [stop, city && !stop.includes(city) ? city : ''].filter(Boolean).join(', ');
   return clean || undefined;
 }

@@ -55,9 +55,12 @@ export function strideVehicles(rows: StrideVehicleLocation[], routes: StrideGtfs
     const seen = newest.get(key);
     if (!seen || utc(seen.recorded_at_time) < t) newest.set(key, r);
   }
-  return [...newest.entries()].map(([key, r]) => {
+  const out: LiveVehicle[] = [];
+  for (const [key, r] of newest) {
     const g = r.siri_route__line_ref != null ? route.get(r.siri_route__line_ref) : undefined;
-    return {
+    // Light rail and trains report here too; Transitous moves them along their track instead.
+    if (g?.route_type != null && g.route_type !== '3') continue;
+    out.push({
       id: `openbus:${key}`,
       mode: 'bus' as const,
       line: (g?.route_short_name ?? '').trim() || (r.siri_route__line_ref != null ? String(r.siri_route__line_ref) : ''),
@@ -69,8 +72,9 @@ export function strideVehicles(rows: StrideVehicleLocation[], routes: StrideGtfs
       bearing: typeof r.bearing === 'number' ? r.bearing : undefined,
       speedKph: typeof r.velocity === 'number' ? r.velocity : undefined,
       at: new Date(utc(r.recorded_at_time)).toISOString(),
-    };
-  });
+    });
+  }
+  return out;
 }
 
 export async function openBusVehicles(ctx: ToolContext, bbox: BBox, now = Date.now()): Promise<LiveVehicle[]> {

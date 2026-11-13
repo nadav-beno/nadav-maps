@@ -55,6 +55,8 @@ export function motisTrips(now = Date.now()) {
       realTime: false,
       polyline: encodePolyline([[34.7745, 32.0755], [34.7810, 32.0805]], 5),
     },
+    // The Red Line light rail is in Stride too (route_type 0): left to Transitous, which animates it.
+    { id: 3, date: '2026-11-11', line_ref: 34448, operator_ref: 22, route_short_name: '1', route_long_name: 'הקוממיות-בת ים<->תחנה מרכזית פתח תקווה-פתח תקווה-20', agency_name: 'תבל', route_type: '0' },
   ];
 }
 
@@ -81,12 +83,16 @@ export function strideLocations(now = Date.now()) {
     row(2, '7701355', 2148, 34.7785, 32.0772, 100, 90),
     row(1, '3829401', 10755, 34.7850, 32.0720, 70, 200),
     row(0, '1111111', 10755, 34.7900, 32.0700, 900, 0),
+    // A Red Line light rail train (its vehicle ref is "18", like a bus line number).
+    row(4, '18', 34448, 34.7834, 32.0657, 30, 0),
   ];
 }
 
 export function strideRoutes() {
   return [
-    { id: 1, date: '2026-11-11', line_ref: 2148, operator_ref: 5, route_short_name: '18', route_long_name: 'ת. רכבת אוניברסיטה/תל אביב יפו<->ת. מרכזית בת ים/בת ים-1#', agency_name: 'דן', route_type: '3' },
-    { id: 2, date: '2026-11-11', line_ref: 10755, operator_ref: 3, route_short_name: '25', route_long_name: 'מסוף רידינג/תל אביב יפו<->ת. רכבת בת ים יוספטל/בת ים-2#', agency_name: 'אגד', route_type: '3' },
+    { id: 1, date: '2026-11-11', line_ref: 2148, operator_ref: 5, route_short_name: '18', route_long_name: 'ת. רכבת אוניברסיטה-תל אביב יפו<->ת. מרכזית בת ים/הורדה-בת ים-10', agency_name: 'דן', route_type: '3' },
+    { id: 2, date: '2026-11-11', line_ref: 10755, operator_ref: 3, route_short_name: '25', route_long_name: 'מסוף רדינג/איסוף-תל אביב יפו<->ת. רכבת בת ים יוספטל-בת ים-2#', agency_name: 'אגד', route_type: '3' },
+    // The Red Line light rail is in Stride too (route_type 0): left to Transitous, which animates it.
+    { id: 3, date: '2026-11-11', line_ref: 34448, operator_ref: 22, route_short_name: '1', route_long_name: 'הקוממיות-בת ים<->תחנה מרכזית פתח תקווה-פתח תקווה-20', agency_name: 'תבל', route_type: '0' },
   ];
 }
