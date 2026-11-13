@@ -8,6 +8,7 @@ import type { DirectionsMode, LngLat } from './types.ts';
  *   ?route=lng,lat;lng,lat&mode=walk  directions (first = origin, last = destination)
  *   ?list=<base64 GeoJSON>          shared list (no account needed)
  *   ?panel=timeline&day=2026-10-10  a screen by name, and the day it shows
+ *   ?panel=weather&at=lng,lat       weather at a point
  *   ?embed=1                        inside an iframe on another site: map and card only
  */
 export interface UrlState {
@@ -26,6 +27,8 @@ export interface UrlState {
   panel?: string;
   /** A calendar day for screens that show one (timeline), "YYYY-MM-DD". */
   day?: string;
+  /** A point for screens about a spot rather than a place (weather), [lng, lat]. */
+  at?: LngLat;
   /** Shown inside another site's iframe ("?embed=1"): just the map and the card. */
   embed?: boolean;
 }
@@ -75,6 +78,8 @@ export function parseUrl(href: string): UrlState {
   if (panel) out.panel = panel;
   const day = p.get('day');
   if (day && /^\d{4}-\d{2}-\d{2}$/.test(day)) out.day = day;
+  const at = p.get('at')?.split(',').map(Number);
+  if (at?.length === 2 && at.every(Number.isFinite) && Math.abs(at[0]) <= 180 && Math.abs(at[1]) <= 90) out.at = [at[0], at[1]];
   if (p.get('embed') === '1') out.embed = true;
   return out;
 }
@@ -106,6 +111,7 @@ export function buildUrl(base: string, s: UrlState): string {
   if (s.list) p.set('list', s.list);
   if (s.panel) p.set('panel', s.panel);
   if (s.day) p.set('day', s.day);
+  if (s.at) p.set('at', `${round(s.at[0], 4)},${round(s.at[1], 4)}`);
   if (s.embed) p.set('embed', '1');
   url.hash = s.view ? viewHash(s.view.zoom, s.view.center, s.view.bearing, s.view.pitch) : url.hash;
   // URLSearchParams encodes ';' and ','; keep them readable.

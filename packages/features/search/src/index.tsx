@@ -21,6 +21,7 @@ import {
   openNowStates,
   parseFilters,
   parseMapLink,
+  parseWeatherQuery,
   suggestCorrections,
   toggleFilter,
   topCuisines,
@@ -82,6 +83,28 @@ function bias(): { near: [number, number]; zoom: number } {
   const u = userLocation.peek();
   if (u && !simulatingLocation.peek() && map.getBounds().contains([u.lng, u.lat])) return { near: [u.lng, u.lat], zoom: Math.max(zoom, 13) };
   return { near: [c.lng, c.lat], zoom };
+}
+
+/** "מזג אוויר" / "מזג אוויר בחיפה": the weather screen, here or at the first place found. */
+async function openWeatherFor(candidates: string[]) {
+  const show = (at: [number, number], name?: string) => open({ kind: 'weather', props: { at, name, url: { panel: 'weather', at } } });
+  if (!candidates.length) {
+    const u = userLocation.peek();
+    const c = map.getCenter();
+    return show(u ? [u.lng, u.lat] : [c.lng, c.lat]);
+  }
+  for (const text of candidates) {
+    try {
+      const p = (await tools().call(searchPlaces, { query: text, ...bias(), limit: 1 }))[0];
+      if (p) {
+        map.easeTo({ center: [p.lng, p.lat], zoom: Math.min(map.getZoom(), 11), duration: 600 });
+        return show([p.lng, p.lat], p.name);
+      }
+    } catch {
+      /* try the next spelling */
+    }
+  }
+  openError(candidates[0]);
 }
 
 function origin(): [number, number] {
@@ -528,6 +551,12 @@ function SearchBar() {
     const l = parseMapLink(text);
     if (l) {
       followLink(l);
+      return;
+    }
+    const wq = parseWeatherQuery(text);
+    if (wq) {
+      close();
+      void openWeatherFor(wq.candidates);
       return;
     }
     if (active.value >= 0 && suggestions[active.value]) {

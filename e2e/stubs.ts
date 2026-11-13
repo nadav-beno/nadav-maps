@@ -8,6 +8,7 @@ import { motisPlan, motisStoptimes } from './transit-fixture.ts';
 import { motisTrips, strideLocations, strideRoutes } from './vehicles-fixture.ts';
 import { curlbusNearby, curlbusVisits } from './curlbus-fixture.ts';
 import { flowTile, HERE_INCIDENTS, HERE_ROUTE, hereTrafficTile, incidentTile, INCIDENT_DETAILS, TRAFFIC_ROUTE } from './traffic-scene.ts';
+import { omForecast, omGrid } from './weather-fixture.ts';
 
 /**
  * Tests never hit the real map servers: tiles, search, routing and place details
@@ -187,6 +188,16 @@ export async function stubNetwork(page: Page): Promise<void> {
     return r.fulfill({ json: near ? COMMONS : { batchcomplete: '' }, headers: { 'access-control-allow-origin': '*' } });
   });
   await page.route('https://upload.wikimedia.org/**', (r) => r.fulfill({ body: PIXEL, contentType: 'image/png' }));
+  // Open-Meteo forecast: one point (the weather screen) or many (map layers, the map chip).
+  await page.route('https://api.open-meteo.com/v1/forecast**', (r) => {
+    const q = new URL(r.request().url()).searchParams;
+    const lats = (q.get('latitude') ?? '32').split(',').map(Number);
+    const lngs = (q.get('longitude') ?? '34.8').split(',').map(Number);
+    const cors = { 'access-control-allow-origin': '*' };
+    if (q.get('current')) return r.fulfill({ json: omForecast(lats[0], lngs[0]), headers: cors });
+    const list = omGrid(lats, lngs);
+    return r.fulfill({ json: lats.length === 1 ? list[0] : list, headers: cors });
+  });
   await page.route('https://air-quality-api.open-meteo.com/**', (r) => {
     const n = (new URL(r.request().url()).searchParams.get('latitude') ?? '').split(',').length;
     const list = Array.from({ length: n }, (_, i) => ({ latitude: 32, longitude: 34.8, current: { time: '2026-10-17T06:00', european_aqi: 20 + ((i * 13) % 60), pm2_5: 8, pm10: 18 } }));

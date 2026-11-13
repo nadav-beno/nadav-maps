@@ -27,3 +27,4 @@ export * from './geoindex.ts';
 export * from './nav.ts';
 export * from './result-filters.ts';
 export * from './vehicles.ts';
+export * from './weather.ts';

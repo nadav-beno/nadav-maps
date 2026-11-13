@@ -6,6 +6,7 @@ import { findFlight } from '../providers/adsb.ts';
 import { liveAircraft, type Bbox } from '../providers/live-aircraft.ts';
 import { flightRoute } from '../providers/flight-route.ts';
 import { airQualityAt } from '../providers/air-quality.ts';
+import { weatherForecast, weatherGrid } from '../providers/open-meteo.ts';
 import { commonsPhotosNear } from '../providers/commons.ts';
 import { overpassAlongLine, overpassCategory, overpassDetails, overpassIdentify, overpassInside } from '../providers/overpass.ts';
 import { photonReverse, photonSearch } from '../providers/photon.ts';
@@ -328,6 +329,27 @@ export const airQuality = defineTool({
   run: (input, ctx) => airQualityAt(ctx, input.points as LngLat[]),
 });
 
+export const weatherForecastTool = defineTool({
+  name: 'weather_forecast',
+  title: 'תחזית מזג אוויר',
+  description:
+    'Weather at a point, like a phone weather app: current conditions (temperature, feels like, humidity, dew point, wind and gusts, pressure, visibility, UV index, cloud cover), precipitation every 15 minutes for the next 2 hours, hourly for 24 hours back and 48 ahead (incl. UV, clear-sky UV, solar radiation, chance of rain), and 10 days (max/min, rain, sunrise/sunset, max UV, wind). Metric units, Unix-second times, the point\'s IANA time zone. From Open-Meteo (CC BY 4.0). Null when weather is switched off.',
+  input: z.object({ at: point.describe('[lng, lat]') }),
+  run: (input, ctx) => weatherForecast(ctx, input.at as LngLat),
+});
+
+export const weatherGridTool = defineTool({
+  name: 'weather_grid',
+  title: 'מזג אוויר על המפה',
+  description:
+    'Hourly temperature (°C), precipitation (mm), wind speed (km/h) and direction (degrees from), UV index, cloud cover (%), visibility (m) and WMO weather code at up to 100 points, for weather map layers. Each point has `start` (Unix seconds of the first hour) and one value per hour. From Open-Meteo (CC BY 4.0).',
+  input: z.object({
+    points: z.array(point).min(1).max(100),
+    hours: z.number().int().min(1).max(72).default(48),
+  }),
+  run: (input, ctx) => weatherGrid(ctx, input.points as LngLat[], input.hours),
+});
+
 export const placeSummary = defineTool({
   name: 'place_summary',
   title: 'תיאור מקום מוויקיפדיה',
@@ -500,7 +522,7 @@ export const flightRouteTool = defineTool({
   run: (input, ctx) => flightRoute(ctx, input.callsign, input.at as LngLat),
 });
 
-export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, routeGuidance, searchAlongRoute, placesInside, placePhotos, airQuality, transitDirections, transitDeparturesTool, transitVehiclesTool, placeSummary, trafficIncidents, trafficTravelTime, flightPosition, liveFlights, flightRouteTool];
+export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, routeGuidance, searchAlongRoute, placesInside, placePhotos, airQuality, weatherForecastTool, weatherGridTool, transitDirections, transitDeparturesTool, transitVehiclesTool, placeSummary, trafficIncidents, trafficTravelTime, flightPosition, liveFlights, flightRouteTool];
 
 /**
  * Start loading the region's full names list (typo dictionary) in the background, e.g. in

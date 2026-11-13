@@ -26,6 +26,7 @@
     "@nm/feature-settings": "workspace:*",
     "@nm/feature-timeline": "workspace:*",
     "@nm/feature-transit": "workspace:*",
+    "@nm/feature-weather": "workspace:*",
     "@nm/tools": "workspace:*",
     "@preact/signals": "^2.11.3",
     "maplibre-contour": "0.1.1",
