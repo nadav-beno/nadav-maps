@@ -6,6 +6,7 @@ import { sceneTile, TILEJSON } from './basemap-scene.ts';
 import { PLACES_LISTING, PLACES_PMTILES, PLACES_RELEASE } from './places-scene.ts';
 import { motisPlan, motisStoptimes } from './transit-fixture.ts';
 import { motisTrips, strideLocations, strideRoutes } from './vehicles-fixture.ts';
+import { curlbusNearby, curlbusVisits } from './curlbus-fixture.ts';
 import { flowTile, HERE_INCIDENTS, HERE_ROUTE, hereTrafficTile, incidentTile, INCIDENT_DETAILS, TRAFFIC_ROUTE } from './traffic-scene.ts';
 
 /**
@@ -294,5 +295,19 @@ export async function stubNetwork(page: Page): Promise<void> {
       });
     }
     return r.fulfill({ json: { elements: [] } });
+  });
+}
+
+/**
+ * Live bus arrivals at Israeli stops (curlbus, SIRI stop monitoring). Opt-in: without it curlbus
+ * requests fail and stop departures fall back to Transitous, as when curlbus is down.
+ */
+export async function stubCurlbus(page: Page, asked: string[] = []) {
+  await page.route('https://curlbus.app/**', (r) => {
+    const url = new URL(r.request().url());
+    asked.push(url.pathname + url.search);
+    const cors = { 'access-control-allow-origin': '*' };
+    if (url.pathname === '/nearby') return r.fulfill({ json: curlbusNearby(), headers: cors });
+    return r.fulfill({ json: curlbusVisits(), headers: cors });
   });
 }

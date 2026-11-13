@@ -42,6 +42,8 @@ export interface LiveVehicle {
   delayS?: number;
   /** The trip's path near now, oldest first (computed positions only). */
   legs?: VehicleLeg[];
+  /** When this vehicle reaches the stop the user is looking at (live prediction), if known. */
+  arrival?: { stop: string; time: string };
 }
 
 /** A point `f` (0..1) of the way along a line, with the heading there. */

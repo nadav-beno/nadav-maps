@@ -5,7 +5,7 @@ import { delayMinutes, formatClock, formatDeparture, type Departure, type LngLat
 import { back, defineFeature, Icon, LineChip, mapLayers, open, region, userLocation, type ViewProps } from '@nm/core/app';
 import { tools, transitDeparturesTool } from '@nm/tools';
 import { isTransitStop } from './stops.ts';
-import { onLiveClick, setupLive, VehicleView } from './live.tsx';
+import { onLiveClick, setupLive, showArrivingBus, VehicleView } from './live.tsx';
 
 /**
  * Public transport around you: next departures on a stop's place card, and a
@@ -14,7 +14,7 @@ import { onLiveClick, setupLive, VehicleView } from './live.tsx';
 
 let map: MapLibreMap;
 
-const REFRESH_MS = 30_000;
+const REFRESH_MS = 20_000;
 
 function useDepartures(at: LngLat | null, radius: number, limit: number) {
   const list = useSignal<Departure[] | null>(null);
@@ -74,6 +74,11 @@ export function DepartureList({ departures, showStop }: { departures: Departure[
             {showStop && <span class="muted small">{[d.stop.name, d.stop.track && `רציף ${d.stop.track}`].filter(Boolean).join(' · ')}</span>}
           </span>
           <DepartureTime d={d} />
+          {d.vehicle && (
+            <button class="icon-btn dep-locate" aria-label={`איפה קו ${d.line} עכשיו`} title="הצגת האוטובוס על המפה" onClick={() => showArrivingBus(d)}>
+              <Icon name="directions_bus" size={20} />
+            </button>
+          )}
         </li>
       ))}
     </ul>
@@ -88,7 +93,18 @@ function DeparturesBody({ at, radius, limit, showStop }: { at: LngLat | null; ra
   return <DepartureList departures={list} showStop={showStop} />;
 }
 
-/** On a stop's place card: the next departures, refreshed every 30 seconds. */
+function StopNote() {
+  const live = region.value.busArrivals === 'curlbus';
+  return (
+    <p class="muted tiny">
+      {live
+        ? 'זמני ההגעה של האוטובוסים הם תחזית בזמן אמת של משרד התחבורה (דרך curlbus), מתעדכנים כל 20 שניות. לחצו על סמל האוטובוס כדי לראות איפה הוא עכשיו. רכבות: Transitous.'
+        : 'זמני אמת מסומנים בירוק. מקור: Transitous. כדי לראות את האוטובוסים זזים על המפה, הפעילו את שכבת התחבורה הציבורית.'}
+    </p>
+  );
+}
+
+/** On a stop's place card: the next departures, refreshed every 20 seconds. */
 function StopSection({ place }: { place: Place }) {
   if (!isTransitStop(place)) return null;
   return (
@@ -97,7 +113,7 @@ function StopSection({ place }: { place: Place }) {
         <Icon name="departure_board" size={20} /> יציאות קרובות
       </h3>
       <DeparturesBody at={[place.lng, place.lat]} radius={120} limit={8} />
-      <p class="muted tiny">זמני אמת מסומנים בירוק. מקור: Transitous. כדי לראות את האוטובוסים זזים על המפה, הפעילו את שכבת התחבורה הציבורית.</p>
+      <StopNote />
     </section>
   );
 }

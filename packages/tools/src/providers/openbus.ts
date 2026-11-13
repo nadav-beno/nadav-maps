@@ -50,7 +50,7 @@ export function strideVehicles(rows: StrideVehicleLocation[], routes: StrideGtfs
   for (const r of rows) {
     if (typeof r.lat !== 'number' || typeof r.lon !== 'number' || !r.recorded_at_time) continue;
     const t = utc(r.recorded_at_time);
-    if (!Number.isFinite(t) || now - t > MAX_FIX_AGE_MS) continue;
+    if (!Number.isFinite(t) || now - t > MAX_FIX_AGE_MS || t - now > 60_000) continue;
     const key = r.siri_ride__vehicle_ref || `ride:${r.siri_ride__id ?? r.id}`;
     const seen = newest.get(key);
     if (!seen || utc(seen.recorded_at_time) < t) newest.set(key, r);
@@ -83,6 +83,8 @@ export async function openBusVehicles(ctx: ToolContext, bbox: BBox, now = Date.n
     lat__greater_or_equal: s.toFixed(5),
     lat__lower_or_equal: n.toFixed(5),
     recorded_at_time_from: new Date(now - MAX_FIX_AGE_MS).toISOString(),
+    // Stride holds a few rows stamped in 2038; newest-first they would crowd out the real ones.
+    recorded_at_time_to: new Date(now + 60_000).toISOString(),
     order_by: 'recorded_at_time desc',
     limit: '2000',
   });

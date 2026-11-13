@@ -1,7 +1,7 @@
 import { effect, signal } from '@preact/signals';
 import { useEffect } from 'preact/hooks';
 import type { GeoJSONSource, Map as MapLibreMap, MapGeoJSONFeature } from 'maplibre-gl';
-import { formatClock, vehicleEndsAt, vehiclePositionAt, type BBox, type LiveVehicle } from '@nm/core';
+import { formatClock, formatDeparture, vehicleEndsAt, vehiclePositionAt, type BBox, type Departure, type LiveVehicle } from '@nm/core';
 import { back, Icon, LineChip, lineColors, mapLayers, open, region, toast, TRANSIT_LABEL, type ViewProps } from '@nm/core/app';
 import { tools, transitVehiclesTool, type LiveVehicles } from '@nm/tools';
 
@@ -20,6 +20,48 @@ export const LIVE_LAYERS = ['live-vehicles-arrow', 'live-vehicles-dot', 'live-ve
 const SELECTED_LAYER = 'live-vehicles-selected';
 
 export const liveVehicles = signal<LiveVehicle[]>([]);
+/**
+ * A bus opened from a stop's live arrivals: shown until the map's own feed has it (same id), and
+ * it keeps the arrival time at that stop for the card.
+ */
+const pinned = signal<LiveVehicle | null>(null);
+
+/** Every vehicle to draw: the feed, plus the pinned bus when the feed doesn't have it yet. */
+function allVehicles(list = liveVehicles.peek(), pin = pinned.peek()): LiveVehicle[] {
+  if (!pin || list.some((v) => v.id === pin.id)) return list;
+  return [...list, pin];
+}
+
+/** The vehicle with this id, with the pinned arrival time when it is the pinned bus. */
+function findVehicle(id: string, list = liveVehicles.value, pin = pinned.value): LiveVehicle | undefined {
+  const v = list.find((x) => x.id === id);
+  if (pin && pin.id === id) return v ? { ...v, arrival: pin.arrival, headsign: v.headsign ?? pin.headsign, agency: v.agency ?? pin.agency } : pin;
+  return v;
+}
+
+/** From a live arrival with a known bus position: show that bus on the map and open its card. */
+export function showArrivingBus(d: Departure) {
+  if (!d.vehicle) return;
+  const id = d.vehicle.id ?? `arrival:${d.line}:${d.time}`;
+  pinned.value = {
+    id,
+    mode: d.mode,
+    line: d.line,
+    headsign: d.headsign || undefined,
+    agency: d.agency,
+    color: d.color,
+    textColor: d.textColor,
+    source: 'gps',
+    lng: d.vehicle.lng,
+    lat: d.vehicle.lat,
+    at: new Date().toISOString(),
+    arrival: { stop: d.stop.name, time: d.time },
+  };
+  if (!mapLayers.peek().transit) mapLayers.value = { ...mapLayers.peek(), transit: true };
+  map.flyTo({ center: [d.vehicle.lng, d.vehicle.lat], zoom: Math.max(map.getZoom(), 15), duration: 800 });
+  render();
+  open({ kind: 'vehicle', props: { id } });
+}
 export const liveSources = signal<LiveVehicles['sources']>([]);
 /** The vehicle whose card is open (highlighted, optionally followed). */
 const selected = signal<string | null>(null);
@@ -71,7 +113,7 @@ async function load() {
 /** Positions now: GPS fixes as reported, computed vehicles moved along their legs. */
 function positions(now: number) {
   const out: { v: LiveVehicle; lng: number; lat: number; bearing?: number }[] = [];
-  for (const v of liveVehicles.peek()) {
+  for (const v of allVehicles()) {
     if (!v.legs?.length) {
       out.push({ v, lng: v.lng, lat: v.lat, bearing: v.bearing });
       continue;
@@ -224,7 +266,7 @@ export function setupLive(m: MapLibreMap, onStyle: (fn: (m: MapLibreMap) => void
 export function onLiveClick(features: MapGeoJSONFeature[]): boolean | void {
   const f = features.find((x) => LIVE_LAYERS.includes(x.layer.id));
   const id = f?.properties?.id as string | undefined;
-  if (!id || !liveVehicles.peek().some((v) => v.id === id)) return;
+  if (!id || !allVehicles().some((v) => v.id === id)) return;
   open({ kind: 'vehicle', props: { id } });
   return true;
 }
@@ -258,11 +300,11 @@ function VehicleView({ view }: ViewProps<{ id: string }>) {
     return () => {
       selected.value = null;
       following.value = false;
+      if (pinned.peek()?.id === id) pinned.value = null;
     };
   }, [id]);
   // Re-render with the vehicles list (refresh) and every tick, for "updated … ago" and next stop.
-  const list = liveVehicles.value;
-  const v = list.find((x) => x.id === id);
+  const v = findVehicle(id);
   const now = Date.now();
   const tz = region.value.timeZone;
   useTicker();
@@ -300,6 +342,15 @@ function VehicleView({ view }: ViewProps<{ id: string }>) {
             {v.source === 'gps' && <span class="muted"> · {ago(v.at, now)}</span>}
           </span>
         </li>
+        {v.arrival && (
+          <li class="vehicle-arrival">
+            <Icon name="departure_board" size={18} class="live-icon" />
+            <span>
+              {`מגיע ל${v.arrival.stop} ${formatDeparture(v.arrival.time, now, tz)}`}
+              <span class="muted"> · {formatClock(v.arrival.time, tz)}</span>
+            </span>
+          </li>
+        )}
         {delay && (
           <li>
             <Icon name="update" size={18} />
@@ -333,7 +384,10 @@ function VehicleView({ view }: ViewProps<{ id: string }>) {
           <Icon name="near_me" size={18} /> {following.value ? 'מפסיקים לעקוב' : 'עקבו אחרי הרכב'}
         </button>
       </div>
-      <p class="muted tiny">{v.source === 'gps' ? 'מקור: Open Bus של הסדנא לידע ציבורי, מתוך נתוני משרד התחבורה.' : 'מקור: Transitous.'}</p>
+      <p class="muted tiny">
+        {v.source === 'gps' ? 'מקור: Open Bus של הסדנא לידע ציבורי, מתוך נתוני משרד התחבורה.' : 'מקור: Transitous.'}
+        {v.arrival && ' זמן ההגעה: SIRI של משרד התחבורה דרך curlbus.'}
+      </p>
     </div>
   );
 }

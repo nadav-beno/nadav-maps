@@ -36,6 +36,11 @@ export interface Region {
    * Stride API). Without one, live vehicles are computed from Transitous stop times.
    */
   busPositions?: 'open-bus';
+  /**
+   * A source of live arrival predictions at stops ('curlbus': Israel's SIRI stop monitoring).
+   * Without one, stop departures come from Transitous (live only where operators publish GTFS-RT).
+   */
+  busArrivals?: 'curlbus';
 }
 
 export interface RegionGeodata {
@@ -63,6 +68,7 @@ export const REGIONS: Region[] = [
     timeZone: 'Asia/Jerusalem',
     coverage: { search: true, routing: true, transit: false, traffic: ['here'] },
     busPositions: 'open-bus',
+    busArrivals: 'curlbus',
     geodata: {
       id: 'il',
       extract: 'https://download.geofabrik.de/asia/israel-and-palestine-latest.osm.pbf',

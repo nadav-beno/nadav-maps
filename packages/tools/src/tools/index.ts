@@ -1,4 +1,4 @@
-import { distance, fuzzyScore, lineLength, sampleLine, snapToLine, nameIndex, namesFileIndex, namesFileIndexNow, normalizeQuery, parsePlaceId, prepareQuery, queryVariants, regionAt, suggestCorrections, trafficProvider, type BBox, type Correction, type LiveVehicle, type LngLat, type Place, type PreparedQuery } from '@nm/core';
+import { distance, fuzzyScore, lineLength, sampleLine, snapToLine, nameIndex, namesFileIndex, namesFileIndexNow, normalizeQuery, parsePlaceId, prepareQuery, queryVariants, regionAt, suggestCorrections, trafficProvider, type BBox, type Correction, type Departure, type LiveVehicle, type LngLat, type Place, type PreparedQuery } from '@nm/core';
 import { z } from 'zod';
 import { CATEGORIES, categoryById } from '../categories.ts';
 import { defineTool, ProviderError, type ToolContext } from '../define.ts';
@@ -12,6 +12,7 @@ import { photonReverse, photonSearch } from '../providers/photon.ts';
 import { localgeoDetails, localgeoIdentify, localgeoNamesUrl, localgeoReverse, localgeoSearch, mergePlaces } from '../providers/localgeo.ts';
 import { hereIncidents, hereTrafficTime } from '../providers/here.ts';
 import { NO_KEY_MESSAGE, tomtomIncidents, tomtomTrafficTime } from '../providers/tomtom.ts';
+import { curlbusArrivals } from '../providers/curlbus.ts';
 import { openBusVehicles } from '../providers/openbus.ts';
 import { transitDepartures, transitPlan, transitVehicles } from '../providers/transitous.ts';
 import { valhallaGuidance, valhallaRoute } from '../providers/valhalla.ts';
@@ -350,7 +351,8 @@ export const transitDirections = defineTool({
 export const transitDeparturesTool = defineTool({
   name: 'transit_departures',
   title: 'יציאות מתחנה',
-  description: 'Next public transport departures from the stops around a point (or from one stop id): line, headsign, time, and whether the time is live.',
+  description:
+    'Next public transport departures from the stops around a point (or from one stop id): line, headsign, time, and whether the time is live. In Israel, bus times around a point are live arrival predictions from the Ministry of Transport SIRI feed (predicted: true, with the bus position when known); trains and light rail come from Transitous.',
   input: z.object({
     near: point.optional().describe('[lng, lat]; departures from all stops within radius'),
     radius: z.number().int().min(20).max(1000).default(200),
@@ -358,7 +360,20 @@ export const transitDeparturesTool = defineTool({
     time: z.string().datetime({ offset: true }).optional(),
     limit: z.number().int().min(1).max(50).default(12),
   }).refine((v) => v.near || v.stopId, 'near or stopId is required'),
-  run: (input, ctx) => transitDepartures(ctx, { stopId: input.stopId, center: input.near as LngLat | undefined, radiusM: input.radius }, input.limit, input.time),
+  run: async (input, ctx): Promise<Departure[]> => {
+    const center = input.near as LngLat | undefined;
+    const timetable = () => transitDepartures(ctx, { stopId: input.stopId, center, radiusM: input.radius }, input.limit, input.time);
+    const live = !input.time && !input.stopId && center && regionAt(center).busArrivals === 'curlbus' && !!ctx.config.curlbusUrl;
+    if (!live) return timetable();
+    const [buses, other] = await Promise.allSettled([curlbusArrivals(ctx, center, input.radius), ctx.config.transitUrl ? timetable() : Promise.resolve([])]);
+    if (buses.status === 'rejected' || !buses.value) {
+      if (other.status === 'rejected') throw other.reason;
+      return other.value;
+    }
+    // Live predictions replace the timetable's buses; trains and light rail stay from Transitous.
+    const rest = other.status === 'fulfilled' ? other.value.filter((d) => d.mode !== 'bus' && d.mode !== 'coach') : [];
+    return [...buses.value, ...rest].sort((a, b) => Date.parse(a.time) - Date.parse(b.time)).slice(0, input.limit);
+  },
 });
 
 export interface LiveVehicles {

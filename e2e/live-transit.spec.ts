@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { stubNetwork } from './stubs.ts';
+import { stubCurlbus, stubNetwork } from './stubs.ts';
 
 test.beforeEach(async ({ page }) => {
   await stubNetwork(page);
@@ -53,4 +53,26 @@ test('live transit: nothing is fetched while the transit layer is off', async ({
   await expect(page.getByRole('button', { name: 'שכבות' })).toBeVisible();
   await page.waitForTimeout(1500);
   expect(live).toEqual([]);
+});
+
+test('live arrivals: a stop shows when each bus arrives, and the bus can be shown on the map', async ({ page }) => {
+  test.setTimeout(60_000);
+  const asked: string[] = [];
+  await stubCurlbus(page, asked);
+  await page.goto('./#16/32.0779/34.7752');
+  await page.getByRole('button', { name: 'תפריט' }).click();
+  await page.getByRole('button', { name: 'יציאות קרובות' }).click();
+  const rows = page.locator('.departure');
+  // Live predictions (SIRI via curlbus) for the buses; the passed bus is gone.
+  await expect(rows.first().locator('.line-chip')).toContainText('18');
+  await expect(rows.first()).toContainText('לכיוון ת. מרכזית בת ים');
+  await expect(rows.first().locator('.dep-time')).toHaveClass(/live/);
+  await expect(rows.first().locator('.dep-time')).toContainText(/בעוד [23] דק׳/);
+  await expect(rows.filter({ hasText: 'מסוף רידינג' })).toHaveCount(1);
+  expect(asked.some((u) => u.startsWith('/nearby?'))).toBe(true);
+  expect(asked).toContain('/21330+21331');
+  // Bus 18 reported where it is: tap to see it on the map, with its arrival at the stop.
+  await rows.first().getByRole('button', { name: 'איפה קו 18 עכשיו' }).click();
+  await expect(page.getByText(/מגיע לדיזנגוף סנטר בעוד [23] דק׳/)).toBeVisible();
+  await expect.poll(() => vehicles(page), { timeout: 15_000 }).toContain('18');
 });
