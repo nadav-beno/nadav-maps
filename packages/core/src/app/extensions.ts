@@ -16,3 +16,16 @@ export interface PlaceAction {
 export const placeActions = signal<PlaceAction[]>([]);
 /** Extra rows under the place card details (e.g. "photos you took here"). */
 export const placeSections = signal<PlaceAction[]>([]);
+
+/** Extra groups in the layers sheet (e.g. weather map layers), drawn after the built-in ones. */
+export interface LayerSection {
+  id: string;
+  order: number;
+  Component: ComponentType;
+}
+export const layerSections = signal<LayerSection[]>([]);
+
+/** Adds (or replaces, by id) a group in the layers sheet. */
+export function registerLayerSection(section: LayerSection): void {
+  layerSections.value = [...layerSections.value.filter((s) => s.id !== section.id), section].sort((a, b) => a.order - b.order);
+}

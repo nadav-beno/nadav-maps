@@ -1,5 +1,5 @@
 import { signal } from '@preact/signals';
-import { back, defineFeature, Icon, mapLayers, mapType, open, region, theme, type FeatureContext, type MapLayers, type MapTypePref, type ThemePref, type ViewProps } from '@nm/core/app';
+import { back, defineFeature, Icon, layerSections, mapLayers, mapType, open, region, theme, type FeatureContext, type MapLayers, type MapTypePref, type ThemePref, type ViewProps } from '@nm/core/app';
 import { addAirLayers, AirLegend, airOn, hasAir, refreshAir } from './air.tsx';
 import { AtlasIncidentView, AtlasNote, atlasConfigured, atlasInView, atlasState, initAtlas, setAtlasRunning } from './atlas.tsx';
 import { currentTraffic, hasTraffic, onTrafficClick, PROVIDER_NAME, syncTraffic, TrafficIncidentView, trafficOn, TrafficToggle } from './traffic.tsx';
@@ -95,6 +95,9 @@ function LayersView(_: ViewProps) {
       {atlasConfigured() && trafficOn.value && <AtlasNote />}
       {mapLayers.value.transit && <p class="muted small">עם השכבה הזו מוצגים גם אוטובוסים ורכבות בזמן אמת (מזום קרוב, הקישו על רכב לפרטים). בישראל האוטובוסים במיקום ה-GPS שדיווחו, בשאר המקומות במיקום משוער לפי זמני הנסיעה.</p>}
       <AirLegend />
+      {layerSections.value.map(({ id, Component }) => (
+        <Component key={id} />
+      ))}
       {mapType.value === 'satellite' && (
         <p class="muted small">
           תצלומי לוויין Sentinel-2 (רזולוציה של 10 מטר לפיקסל): מתאימים למבט על אזורים, לא לזיהוי בתים. תצלומים מפורטים יותר דורשים רישיון בתשלום.
