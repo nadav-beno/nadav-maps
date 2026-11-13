@@ -1,5 +1,5 @@
 import { decodePolyline, type BBox, type Departure, type LiveVehicle, type LngLat, type TransitItinerary, type TransitLeg, type TransitMode, type TransitStop } from '@nm/core';
-import { vehiclePositionAt } from '@nm/core';
+import { israelHeadsign, vehiclePositionAt } from '@nm/core';
 import { getJson, ProviderError, type ToolContext } from '../define.ts';
 
 /**
@@ -201,11 +201,14 @@ export function motisVehicles(segments: MotisTripSegment[], now: number): LiveVe
     const first = segs[0];
     const trip = first.trips[0];
     const live = segs.some((s) => s.realTime);
+    const route = trip.displayName?.includes('<->') ? trip.displayName : undefined;
     const sched = first.scheduledDeparture ? Date.parse(first.scheduledDeparture) : NaN;
     const v: LiveVehicle = {
       id: `motis:${id}`,
       mode: transitMode(first.mode),
-      line: (trip.displayName || trip.routeShortName || '').trim(),
+      // Israel's trains have no line number: their display name is "from-city<->to-city".
+      line: route ? (trip.routeShortName ?? '').trim() : (trip.displayName || trip.routeShortName || '').trim(),
+      headsign: route ? israelHeadsign(route) : undefined,
       color: hex(first.routeColor),
       source: live ? 'realtime' : 'schedule',
       lng: 0,

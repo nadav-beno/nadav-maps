@@ -23,6 +23,12 @@ describe('live vehicles', () => {
     expect(list.find((v) => v.line === '5')).toMatchObject({ mode: 'bus', source: 'schedule' });
   });
 
+  it("names Israel's trains by where they go (they have no line number)", () => {
+    const now = Date.now();
+    const seg = { ...motisTrips(now)[0], mode: 'REGIONAL_RAIL', trips: [{ tripId: 'il_rail_1', displayName: 'באר שבע מרכז-באר שבע<->נהריה-נהריה' }] };
+    expect(motisVehicles([seg] as never, now)[0]).toMatchObject({ mode: 'rail', line: '', headsign: 'נהריה' });
+  });
+
   it('keeps the newest GPS fix of each bus, drops old ones, names the line', () => {
     const now = Date.now();
     const list = strideVehicles(strideLocations(now), strideRoutes(), now);
