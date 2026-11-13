@@ -1,6 +1,7 @@
 import { batch, signal } from '@preact/signals';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import {
+  bearing,
   distance,
   droppedPin,
   formatArrival,
@@ -26,6 +27,7 @@ import {
   cssVar,
   ensureLayer,
   forceDark,
+  hideLocationDot,
   Icon,
   EMPTY,
   immersive,
@@ -98,6 +100,12 @@ const along = signal<{ category: string; label: string; loading: boolean; places
 const settingsOpen = signal(false);
 
 const nav = signal<NavState | null>(null);
+/** The camera follows the user (false once they pan the map, until "re-center"). */
+const following = signal(true);
+/** Showing the whole route ahead instead of following. */
+const overview = signal(false);
+/** No camera updates until the opening zoom-in to the user has played. */
+let introUntil = 0;
 let map: MapLibreMap;
 let said = new Set<number>();
 let saidFor = -1;
@@ -155,20 +163,111 @@ function drawProgress(s: NavState) {
 
 const isRoad = (s: NavState) => s.route.mode === 'car' || s.route.mode === 'motorcycle';
 
-function camera(s: NavState, pos: LngLat) {
-  const p = s.progress;
+/** Direction of travel: the GPS heading when moving, else the road's direction here. */
+function travelHeading(s: NavState): number {
+  const u = userLocation.peek();
+  return u?.heading !== null && u?.heading !== undefined && (u.speed ?? 0) > 2 ? u.heading : s.progress?.course ?? (s.route.geometry.length > 1 ? bearing(s.route.geometry[0], s.route.geometry[1]) : map.getBearing());
+}
+
+/** The user on screen sits low, like Google: more road ahead than behind. */
+const NAV_PADDING = { top: 320, bottom: 140, left: 0, right: 0 };
+
+function cameraFor(s: NavState, pos: LngLat) {
   const u = userLocation.peek();
   const view = settings.peek().view;
-  const heading = view === 'north' ? 0 : u?.heading !== null && u?.heading !== undefined && (u.speed ?? 0) > 2 ? u.heading : p?.course ?? map.getBearing();
-  map.easeTo({
+  return {
     center: pos,
-    bearing: heading,
-    pitch: view !== '3d' ? 0 : isRoad(s) ? 55 : 35,
-    zoom: isRoad(s) ? zoomForSpeed(u?.speed, p?.toNextM ?? Infinity) : 18,
-    duration: 900,
-    easing: (t) => t,
-    padding: { top: 160, bottom: 140, left: 0, right: 0 },
-  });
+    bearing: view === 'north' ? 0 : travelHeading(s),
+    pitch: view !== '3d' ? 0 : isRoad(s) ? 60 : 45,
+    zoom: isRoad(s) ? zoomForSpeed(u?.speed, s.progress?.toNextM ?? Infinity) : 18,
+    padding: NAV_PADDING,
+  };
+}
+
+function camera(s: NavState, pos: LngLat, duration = 900) {
+  if (!following.peek() || Date.now() < introUntil) return;
+  map.easeTo({ ...cameraFor(s, pos), duration, easing: (t) => t });
+}
+
+/** Pressing "start": the map flies down to the user and tilts into the road, like Google's. */
+function intro(s: NavState, pos: LngLat) {
+  const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const duration = reduce ? 0 : 1800;
+  introUntil = Date.now() + duration;
+  map.flyTo({ ...cameraFor(s, pos), duration, curve: 1.2, essential: true });
+}
+
+/** Back to following the user (the "re-center" button). */
+function recenter() {
+  const s = nav.peek();
+  following.value = true;
+  overview.value = false;
+  if (s) camera(s, puckAt(s) ?? s.route.geometry[0], 700);
+}
+
+/** The whole route still ahead, flat and north-up, until "re-center". */
+function showOverview() {
+  const s = nav.peek();
+  if (!s) return;
+  following.value = false;
+  overview.value = true;
+  const g = s.route.geometry;
+  const ahead = s.progress ? [s.progress.snapped, ...g.slice(s.progress.segment + 1)] : g;
+  let w = Infinity, so = Infinity, e = -Infinity, n = -Infinity;
+  for (const [x, y] of ahead) {
+    w = Math.min(w, x); e = Math.max(e, x); so = Math.min(so, y); n = Math.max(n, y);
+  }
+  // Flat first: bounds fitting is only exact on an untilted map.
+  map.stop();
+  map.jumpTo({ pitch: 0, bearing: 0, padding: { top: 0, bottom: 0, left: 0, right: 0 } });
+  map.fitBounds([[w, so], [e, n]], { padding: { top: 190, bottom: 170, left: 40, right: 40 }, maxZoom: 17, duration: 700 });
+}
+
+/** Where the navigation arrow goes: on the road when close to it, else where the GPS says. */
+function puckAt(s: NavState): LngLat | null {
+  const p = s.progress;
+  if (p && (p.offRouteM < 40 || s.simulate)) return p.snapped;
+  const u = userLocation.peek();
+  return u ? [u.lng, u.lat] : p?.snapped ?? null;
+}
+
+function drawPuck(s: NavState | null) {
+  if (!map.getSource('nav-puck')) return;
+  const at = s && !s.arrived ? puckAt(s) : null;
+  setGeoJSON(map, 'nav-puck', at && s ? { type: 'Feature', properties: { bearing: travelHeading(s) }, geometry: { type: 'Point', coordinates: at } } : EMPTY);
+}
+
+/** Google's blue navigation arrow with a white edge, drawn once per style. */
+function addPuckImage(m: MapLibreMap) {
+  if (m.hasImage('nav-puck')) return;
+  const size = 96;
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const g = c.getContext('2d');
+  if (!g) return;
+  g.translate(size / 2, size / 2);
+  g.shadowColor = 'rgba(0,0,0,0.35)';
+  g.shadowBlur = 8;
+  g.shadowOffsetY = 2;
+  g.beginPath();
+  g.arc(0, 0, 34, 0, Math.PI * 2);
+  g.fillStyle = '#ffffff';
+  g.fill();
+  g.shadowColor = 'transparent';
+  g.beginPath();
+  g.moveTo(0, -24);
+  g.lineTo(19, 20);
+  g.lineTo(0, 10);
+  g.lineTo(-19, 20);
+  g.closePath();
+  g.fillStyle = cssVar('--route', '#4285f4');
+  g.fill();
+  g.lineJoin = 'round';
+  g.lineWidth = 3;
+  g.strokeStyle = cssVar('--route-casing', '#1967d2');
+  g.stroke();
+  const data = g.getImageData(0, 0, size, size);
+  m.addImage('nav-puck', { width: size, height: size, data: new Uint8Array(data.data.buffer) }, { pixelRatio: 2 });
 }
 
 /** Dark map at night while navigating (unless set otherwise), checked every few minutes. */
@@ -288,7 +387,8 @@ function onPosition(pos: LngLat, accuracy: number) {
 
   nav.value = next;
   drawProgress(next);
-  camera(next, s.simulate ? p.snapped : pos);
+  drawPuck(next);
+  camera(next, puckAt(next) ?? pos);
 }
 
 function distanceBetweenSteps(s: NavState, p: Progress): number {
@@ -334,6 +434,12 @@ function start(route: Route, destination: Place | null, simulate: boolean, vias:
   void keepAwake();
   document.addEventListener('visibilitychange', onVisibility);
   drawProgress(s);
+  following.value = true;
+  overview.value = false;
+  hideLocationDot.value = true;
+  const here = userLocation.peek();
+  intro(s, here && !simulate ? [here.lng, here.lat] : route.geometry[0]);
+  drawPuck({ ...s, progress: null });
   simulatingLocation.value = simulate;
   if (simulate) startSimulation(s);
   else requestLocation();
@@ -366,6 +472,11 @@ function stop() {
   });
   if (map.getSource('nav-route')) setGeoJSON(map, 'nav-route', EMPTY);
   if (map.getSource('nav-tail')) setGeoJSON(map, 'nav-tail', EMPTY);
+  drawPuck(null);
+  hideLocationDot.value = false;
+  following.value = true;
+  overview.value = false;
+  introUntil = 0;
   map.easeTo({ pitch: 0, bearing: 0, padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration: 600 });
 }
 
@@ -701,6 +812,21 @@ function Overlay() {
       {s.simulate && <div class="nav-preview-badge">תצוגה מקדימה</div>}
       {!userLocation.value && !s.simulate && <div class="nav-wait">ממתין ל-GPS…</div>}
       {!s.arrived && <SpeedPanel s={s} />}
+      {!s.arrived && (
+        <div class="nav-side">
+          {!overview.value && (
+            <button class="nav-fab" aria-label="סקירת המסלול" onClick={showOverview}>
+              <Icon name="alt_route" />
+            </button>
+          )}
+        </div>
+      )}
+      {!s.arrived && !following.value && (
+        <button class="nav-recenter" onClick={recenter}>
+          <Icon name="navigation" size={20} />
+          מרכז מחדש
+        </button>
+      )}
       {s.arrived && <ArrivalCard s={s} />}
       {!s.arrived && (along.value || settingsOpen.value) && (settingsOpen.value ? (
         <div class="nav-along-panel" role="dialog" aria-label="הגדרות ניווט">
@@ -724,21 +850,11 @@ function Overlay() {
           <Icon name={s.muted ? 'volume_off' : 'volume_up'} />
         </button>
         <div class="nav-eta">
-          {p ? (
-            <>
-              <strong>{formatArrival(p.remainingS, Date.now(), region.value.timeZone)}</strong>
-              <span class="muted">
-                {formatDuration(p.remainingS)} · {formatDistance(p.remainingM, u)}
-              </span>
-            </>
-          ) : (
-            <>
-              <strong>{formatArrival(s.route.durationS, Date.now(), region.value.timeZone)}</strong>
-              <span class="muted">
-                {formatDuration(s.route.durationS)} · {formatDistance(s.route.distanceM, u)}
-              </span>
-            </>
-          )}
+          {/* Like Google: time left big and green, then distance and arrival time. */}
+          <strong class="nav-left">{formatDuration(p ? p.remainingS : s.route.durationS)}</strong>
+          <span class="muted">
+            {formatDistance(p ? p.remainingM : s.route.distanceM, u)} · <span class="nav-arrive">{formatArrival(p ? p.remainingS : s.route.durationS, Date.now(), region.value.timeZone)}</span>
+          </span>
           {s.arrivalNote && <span class="nav-arrival-note small">{s.arrivalNote}</span>}
         </div>
         {!s.arrived && (
@@ -778,15 +894,80 @@ function Overlay() {
         >
           {s.arrived ? 'סיום' : 'יציאה'}
         </button>
+        <p class="nav-note">ללא נתוני תנועה בשלב הזה. שימו לב לתמרורים ולמצב הדרך.</p>
       </div>
-      <p class="nav-note">ללא נתוני תנועה בשלב הזה. שימו לב לתמרורים ולמצב הדרך.</p>
     </div>
   );
 }
 
+/** The user's location, waiting up to `ms` for a first fix (asking for it if needed). */
+function locate(ms = 15000): Promise<LngLat | null> {
+  const now = userLocation.peek();
+  if (now && !simulatingLocation.peek()) return Promise.resolve([now.lng, now.lat]);
+  requestLocation();
+  return new Promise((resolve) => {
+    let unsub = () => {};
+    const timer = setTimeout(() => {
+      unsub();
+      resolve(null);
+    }, ms);
+    unsub = userLocation.subscribe((u) => {
+      if (!u || simulatingLocation.peek()) return;
+      clearTimeout(timer);
+      queueMicrotask(() => unsub());
+      resolve([u.lng, u.lat]);
+    });
+  });
+}
+
+const DRIVE_MODES = ['car', 'motorcycle', 'walk', 'bike'] as const;
+const starting = signal<string | null>(null);
+
+/** One tap from a place card straight into navigation, like Google's "Start": route from here, then go. */
+async function navigateTo(place: Place) {
+  if (starting.peek()) return;
+  starting.value = place.id;
+  try {
+    const from = await locate();
+    if (!from) {
+      toast('צריך את המיקום שלך כדי לנווט. אפשר לבחור נקודת מוצא במסך המסלול.', { label: 'מסלול', run: () => open({ kind: 'directions', props: { to: place } }) }, 7000);
+      return;
+    }
+    const to: LngLat = [place.lng, place.lat];
+    // The mode last picked in directions; transit has no turn-by-turn, so walk when close, else drive.
+    const last = load<string>('directions:mode', 'car');
+    const mode = (DRIVE_MODES as readonly string[]).includes(last) ? (last as Route['mode']) : distance(from, to) < 1500 ? 'walk' : 'car';
+    const u = userLocation.peek();
+    const [route] = await tools().call(getDirections, { waypoints: [from, to], mode, alternatives: 0, heading: u?.heading ?? undefined, includeGeometry: true });
+    if (!route) {
+      toast('לא נמצא מסלול ליעד הזה');
+      return;
+    }
+    open({ kind: 'navigate', props: { route, destination: place, waypoints: [from, to] } });
+  } catch {
+    toast('אין חיבור לחישוב מסלול. נסו שוב.');
+  } finally {
+    starting.value = null;
+  }
+}
+
+function StartAction({ place }: { place: Place }) {
+  const busy = starting.value === place.id;
+  return (
+    <button class="action start" aria-busy={busy} disabled={busy} onClick={() => void navigateTo(place)}>
+      {busy ? <span class="spinner" /> : <Icon name="navigation" />}
+      {busy ? 'מחשב…' : 'ניווט'}
+    </button>
+  );
+}
+
 /** The 'navigate' screen starts navigation; the UI itself is the full-screen overlay. */
+const startedViews = new WeakSet<object>();
+
 function NavigateView({ view }: ViewProps<{ route: Route; destination: Place | null; simulate?: boolean; waypoints?: LngLat[] }>) {
-  if (!nav.value && view.props?.route) {
+  // Once per screen: a re-render before the start has run (or after "exit") must not start again.
+  if (!nav.value && view.props?.route && !startedViews.has(view)) {
+    startedViews.add(view);
     const vias = (view.props.waypoints ?? []).slice(1, -1);
     queueMicrotask(() => start(view.props!.route, view.props!.destination ?? null, !!view.props!.simulate || /[?&]simulate=1/.test(location.search), vias));
   }
@@ -804,12 +985,28 @@ export default defineFeature({
     ctx.registerSlot('overlay', Overlay, 10);
     ctx.registerMenuItem({ id: 'nav-settings', label: 'הגדרות ניווט', icon: 'navigation', order: 55, run: () => open({ kind: 'nav-settings' }) });
     ctx.registerHomeSection({ id: 'parking', order: 5, Component: ParkingCard });
+    ctx.registerPlaceAction({ id: 'navigate', order: -10, Component: StartAction });
     ctx.onStyle((m) => {
       setGeoJSON(m, 'nav-route', EMPTY);
       ensureLayer(m, { id: 'nav-route-casing', type: 'line', source: 'nav-route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': cssVar('--route-casing', '#1967d2'), 'line-width': 14 } });
       ensureLayer(m, { id: 'nav-route', type: 'line', source: 'nav-route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': cssVar('--route', '#4285f4'), 'line-width': 10 } });
       setGeoJSON(m, 'nav-tail', EMPTY);
       ensureLayer(m, { id: 'nav-tail', type: 'line', source: 'nav-tail', layout: { 'line-cap': 'round' }, paint: { 'line-color': cssVar('--route', '#4285f4'), 'line-width': 4, 'line-dasharray': [0.1, 2] } });
+      setGeoJSON(m, 'nav-puck', EMPTY);
+      addPuckImage(m);
+      ensureLayer(m, {
+        id: 'nav-puck',
+        type: 'symbol',
+        source: 'nav-puck',
+        layout: {
+          'icon-image': 'nav-puck',
+          'icon-rotate': ['get', 'bearing'],
+          'icon-rotation-alignment': 'map',
+          'icon-pitch-alignment': 'map',
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+        },
+      });
       setGeoJSON(m, 'nav-along', EMPTY);
       ensureLayer(m, { id: 'nav-along', type: 'circle', source: 'nav-along', paint: { 'circle-radius': 9, 'circle-color': '#ffffff', 'circle-stroke-color': '#1a73e8', 'circle-stroke-width': 3 } });
       ensureLayer(m, {
@@ -824,8 +1021,16 @@ export default defineFeature({
       ensureLayer(m, { id: 'parking-label', type: 'symbol', source: 'parking', layout: { 'text-field': 'P', 'text-size': 14, 'text-allow-overlap': true }, paint: { 'text-color': '#ffffff' } });
       drawParking();
       const s = nav.peek();
-      if (s) drawProgress(s);
+      if (s) {
+        drawProgress(s);
+        drawPuck(s);
+      }
     });
+    // Panning or zooming the map by hand stops following, until "re-center" (like Google).
+    const handUp = (e: { originalEvent?: unknown }) => {
+      if (e.originalEvent && nav.peek() && following.peek()) following.value = false;
+    };
+    for (const ev of ['dragstart', 'zoomstart', 'rotatestart', 'pitchstart'] as const) ctx.map.on(ev, handUp);
     parking.subscribe(() => drawParking());
     ctx.onMapClick((_e, features) => {
       const f = features.find((x) => x.layer.id === 'parking' || x.layer.id === 'parking-label');

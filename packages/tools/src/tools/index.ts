@@ -126,7 +126,11 @@ function resultScore(pq: PreparedQuery, p: Place): number {
 
 /**
  * Re-rank search results: how well the name matches (the corrected query for corrected
- * results), the engine's own order (importance), and closeness to the map.
+ * results), the engine's own order (importance), and closeness to `near` (the user, or the
+ * map they are looking at). For businesses, streets and addresses closeness wins between
+ * equal matches, like Google: the branch in your city before the one in the next city, and
+ * never one in a far city first. Cities and regions keep the engine's importance ("פריז" is
+ * Paris, not a street nearby).
  */
 export function rankResults(places: Place[], query: string, near?: LngLat): Place[] {
   if (places.length < 2) return places;
@@ -135,11 +139,19 @@ export function rankResults(places: Place[], query: string, near?: LngLat): Plac
   const n = places.length;
   const scored = places.map((p, i) => {
     const match = resultScore(pqFor(p.correctedQuery ?? query), p);
-    const near_ = near ? Math.exp(-distance(near, [p.lng, p.lat]) / 20000) : 0;
+    const close = near ? closeness(distance(near, [p.lng, p.lat])) : 0;
+    const order = 1 - i / n;
+    const area = p.category?.key === 'place' || p.category?.key === 'boundary';
     // Weak matches all look the same (category searches: "פיצה"); only clear matches move up.
-    return { p, s: 0.5 * (match >= 0.7 ? match : 0) + 0.3 * (1 - i / n) + 0.2 * near_ };
+    const m = match >= 0.7 ? match : 0;
+    return { p, s: area ? 0.5 * m + 0.3 * order + 0.2 * close : 0.5 * m + 0.06 * order + 0.44 * close };
   });
   return scored.sort((a, b) => b.s - a.s).map((x) => x.p);
+}
+
+/** 1 here, about 0.8 two km away, 0.5 at 20 km, 0 from 300 km: a log scale, so the next street and the next city both count. */
+export function closeness(meters: number): number {
+  return Math.max(0, 1 - Math.log10(1 + meters / 1000) / Math.log10(301));
 }
 
 /**

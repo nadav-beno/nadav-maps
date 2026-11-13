@@ -1088,9 +1088,8 @@ function DirectionsView(_: ViewProps) {
               </button>
             ))}
           {r && (
-            <button class="btn big" onClick={() => open({ kind: 'navigate', props: { route: r, destination, simulate: true } })}>
-              <Icon name="play_arrow" size={20} />
-              תצוגה מקדימה
+            <button class="btn big icon-only" aria-label="תצוגה מקדימה" title="תצוגה מקדימה" onClick={() => open({ kind: 'navigate', props: { route: r, destination, simulate: true } })}>
+              <Icon name="play_arrow" size={22} />
             </button>
           )}
           <button class={`btn big ${it ? 'primary' : ''}`} aria-expanded={showSteps.value} onClick={() => (showSteps.value = !showSteps.value)}>
