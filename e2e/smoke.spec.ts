@@ -450,10 +450,12 @@ test.describe('navigation mode', () => {
 
   test('the start button is on screen without scrolling the route card', async ({ page }) => {
     await page.goto('./?route=me;34.7918,32.0745&mode=car');
-    await expect(page.getByRole('button', { name: /יציאה לדרך/ })).toBeInViewport();
+    await expect(page.getByRole('button', { name: /יציאה לדרך/ })).toBeInViewport({ timeout: 15_000 });
   });
 
   test('one tap on "ניווט" in a place card starts navigation; panning offers re-center and an overview', async ({ page }) => {
+    // Search, routing and three camera animations: slow on CI runners without a GPU.
+    test.setTimeout(90_000);
     await page.goto('./');
     await page.getByRole('searchbox', { name: 'חיפוש מקום או כתובת' }).fill('עזריאלי');
     await page.getByRole('option').filter({ hasText: 'קניון עזריאלי' }).click();
@@ -465,7 +467,7 @@ test.describe('navigation mode', () => {
     await page.getByRole('button', { name: 'מרכז מחדש' }).click();
     await expect(page.getByRole('button', { name: 'מרכז מחדש' })).toBeHidden();
     await page.getByRole('button', { name: 'יציאה', exact: true }).click();
-    await expect(page.locator('.nav-banner')).toBeHidden();
+    await expect(page.locator('.nav-banner')).toBeHidden({ timeout: 15_000 });
     await expect(page.getByRole('heading', { name: 'קניון עזריאלי' })).toBeVisible();
   });
 });

@@ -962,8 +962,12 @@ function StartAction({ place }: { place: Place }) {
 }
 
 /** The 'navigate' screen starts navigation; the UI itself is the full-screen overlay. */
+const startedViews = new WeakSet<object>();
+
 function NavigateView({ view }: ViewProps<{ route: Route; destination: Place | null; simulate?: boolean; waypoints?: LngLat[] }>) {
-  if (!nav.value && view.props?.route) {
+  // Once per screen: a re-render before the start has run (or after "exit") must not start again.
+  if (!nav.value && view.props?.route && !startedViews.has(view)) {
+    startedViews.add(view);
     const vias = (view.props.waypoints ?? []).slice(1, -1);
     queueMicrotask(() => start(view.props!.route, view.props!.destination ?? null, !!view.props!.simulate || /[?&]simulate=1/.test(location.search), vias));
   }
