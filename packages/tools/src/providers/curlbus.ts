@@ -29,7 +29,7 @@ export interface CurlbusVisit {
   location?: { lat: number | string; lon: number | string } | null;
   static_info?: {
     route?: {
-      destination?: { name?: { HE?: string; EN?: string } | null; address?: { city?: { HE?: string; EN?: string } } | null } | null;
+      destination?: { name?: { HE?: string; EN?: string } | null; address?: { city?: string | { HE?: string; EN?: string } | null; city_multilingual?: { HE?: string; EN?: string } | null } | null } | null;
       agency?: { name?: { HE?: string; EN?: string } } | null;
       headsign?: { HE?: string; EN?: string } | null;
     } | null;
@@ -60,6 +60,18 @@ const isoOf = (s?: string | null) => {
   return Number.isFinite(t) ? new Date(t).toISOString() : undefined;
 };
 
+/** Older bus positions than this are not shown (the bus has moved on). */
+const MAX_FIX_AGE_MS = 10 * 60_000;
+
+/** GTFS headsigns in Israel read "city_place" ("רמת גן_מסוף עמידר"): "place, city". */
+export function headsign(s: string): string {
+  const i = s.indexOf('_');
+  return i > 0 ? `${s.slice(i + 1).trim()}, ${s.slice(0, i).trim()}` : s.trim();
+}
+
+/** Stop names end in "/הורדה" (alighting only) at terminals: not part of the place. */
+const stopName = (s: string) => s.replace(/\/\s*(הורדה|איסוף)\s*$/, '').trim();
+
 const he = (n?: { HE?: string; EN?: string } | string | null) => (typeof n === 'string' ? n : n?.HE || n?.EN || '');
 
 /** curlbus's route endpoint takes digits only (municipal "TA…" stops come from another feed). */
@@ -75,10 +87,14 @@ export function curlbusDepartures(res: CurlbusResponse, stops: CurlbusStop[], no
       const t = curlbusTime(v.eta);
       if (!Number.isFinite(t) || t < now - 60_000 || !v.line_name) continue;
       const route = v.static_info?.route;
-      const dest = he(route?.headsign) || he(route?.destination?.name);
-      const city = he(route?.destination?.address?.city);
-      const lat = Number(v.location?.lat);
-      const lng = Number(v.location?.lon);
+      const dest = headsign(he(route?.headsign)) || stopName(he(route?.destination?.name));
+      const addr = route?.destination?.address;
+      const city = he(addr?.city_multilingual) || (typeof addr?.city === 'string' ? '' : he(addr?.city));
+      // A position is only worth showing while it is fresh (old visits keep their last fix).
+      const fixAt = curlbusTime(v.timestamp);
+      const fresh = Number.isFinite(fixAt) && now - fixAt < MAX_FIX_AGE_MS;
+      const lat = fresh ? Number(v.location?.lat) : NaN;
+      const lng = fresh ? Number(v.location?.lon) : NaN;
       const iso = new Date(t).toISOString();
       out.push({
         stop: { name: he(stop?.name) || code, lng: stop?.location?.lon ?? 0, lat: stop?.location?.lat ?? 0, stopId: `il-stop:${code}` },
@@ -111,8 +127,11 @@ export async function curlbusNearby(ctx: ToolContext, at: LngLat, radiusM: numbe
  * Live arrivals at the stops around a point (at most `maxStops` stops, curlbus allows 30).
  * Null when curlbus knows no stop there (then the timetable is all we have).
  */
-export async function curlbusArrivals(ctx: ToolContext, at: LngLat, radiusM: number, now = Date.now(), maxStops = 8): Promise<Departure[] | null> {
-  const stops = (await curlbusNearby(ctx, at, radiusM)).filter((s) => queryable(String(s.code))).slice(0, maxStops);
+export async function curlbusArrivals(ctx: ToolContext, at: LngLat, radiusM: number, now = Date.now(), maxStops = 8, codes?: string[]): Promise<Departure[] | null> {
+  const known = codes?.filter(queryable);
+  const stops = known?.length
+    ? known.map((code) => ({ code, location: { lat: at[1], lon: at[0] } }))
+    : (await curlbusNearby(ctx, at, radiusM)).filter((s) => queryable(String(s.code))).slice(0, maxStops);
   if (!stops.length) return null;
   const base = ctx.config.curlbusUrl.replace(/\/$/, '');
   const res = await getJson<CurlbusResponse>(ctx, `${base}/${stops.map((s) => s.code).join('+')}`, { headers: { accept: 'application/json' } }, 'curlbus', 10000);

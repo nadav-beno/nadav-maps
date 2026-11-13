@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_PROVIDERS } from '@nm/core';
 import { createToolClient } from './client.ts';
-import { curlbusDepartures, curlbusRadius, curlbusTime } from './providers/curlbus.ts';
+import { curlbusDepartures, curlbusRadius, curlbusTime, headsign } from './providers/curlbus.ts';
 import { relayRoute } from './flights-proxy.ts';
 import { transitDeparturesTool } from './tools/index.ts';
 import { curlbusNearby, curlbusVisits } from '../../../e2e/curlbus-fixture.ts';
@@ -22,6 +22,8 @@ describe('live bus arrivals (curlbus)', () => {
     expect(curlbusRadius(120)).toBe(150);
     expect(curlbusRadius(20)).toBe(50);
     expect(curlbusRadius(5000)).toBe(1000);
+    expect(headsign('רמת גן_מסוף עמידר')).toBe('מסוף עמידר, רמת גן');
+    expect(headsign('מסוף הלוחמים')).toBe('מסוף הלוחמים');
   });
 
   it('turns visits into live departures, soonest first, passed buses dropped', () => {
@@ -32,7 +34,9 @@ describe('live bus arrivals (curlbus)', () => {
     expect(list[0].vehicle).toMatchObject({ id: 'openbus:7701355', lng: 34.779, lat: 32.0775 });
     // When the position was recorded (the fixture says 20 s ago, whole seconds).
     expect(Math.abs(now - Date.parse(list[0].vehicle!.at!) - 20_000)).toBeLessThanOrEqual(1000);
-    expect(list[1]).toMatchObject({ headsign: 'מסוף רידינג, תל אביב יפו', agency: 'אגד' });
+    expect(list[1]).toMatchObject({ headsign: 'מסוף רדינג, תל אביב יפו', agency: 'אגד' });
+    // An hour-old position is dropped; the arrival stays.
+    expect(list[2].vehicle).toBeUndefined();
     expect(list[1].vehicle).toBeUndefined();
     // The fixture writes whole seconds, like curlbus.
     expect(Math.abs((Date.parse(list[0].time) - now) / 1000 - 150)).toBeLessThanOrEqual(1);
@@ -60,6 +64,13 @@ describe('live bus arrivals (curlbus)', () => {
     expect(nearby.get('radius')).toBe('150');
     // Nearest stops first; the municipal "TA…" stop is not queryable by code.
     expect(urls.find((u) => /curlbus\.app\/\d/.test(u))).toBe('https://curlbus.app/21330+21331');
+  });
+
+  it("asks for just the stop's own code when the card knows it", async () => {
+    const urls: string[] = [];
+    await createToolClient(DEFAULT_PROVIDERS, 'he', fakeFetch(urls)).call(transitDeparturesTool, { near: DIZENGOFF, radius: 120, stopCode: '21330' });
+    expect(urls.some((u) => u.includes('/nearby?'))).toBe(false);
+    expect(urls).toContain('https://curlbus.app/21330');
   });
 
   it('falls back to Transitous when curlbus is down', async () => {

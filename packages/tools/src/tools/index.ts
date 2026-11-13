@@ -357,6 +357,7 @@ export const transitDeparturesTool = defineTool({
     near: point.optional().describe('[lng, lat]; departures from all stops within radius'),
     radius: z.number().int().min(20).max(1000).default(200),
     stopId: z.string().max(200).optional(),
+    stopCode: z.string().regex(/^\d{1,8}$/).optional().describe("Israel: the stop's own code (the number on the sign, OSM ref); with near, live bus arrivals at just that stop"),
     time: z.string().datetime({ offset: true }).optional(),
     limit: z.number().int().min(1).max(50).default(12),
   }).refine((v) => v.near || v.stopId, 'near or stopId is required'),
@@ -365,7 +366,7 @@ export const transitDeparturesTool = defineTool({
     const timetable = () => transitDepartures(ctx, { stopId: input.stopId, center, radiusM: input.radius }, input.limit, input.time);
     const live = !input.time && !input.stopId && center && regionAt(center).busArrivals === 'curlbus' && !!ctx.config.curlbusUrl;
     if (!live) return timetable();
-    const [buses, other] = await Promise.allSettled([curlbusArrivals(ctx, center, input.radius), ctx.config.transitUrl ? timetable() : Promise.resolve([])]);
+    const [buses, other] = await Promise.allSettled([curlbusArrivals(ctx, center, input.radius, Date.now(), 8, input.stopCode ? [input.stopCode] : undefined), ctx.config.transitUrl ? timetable() : Promise.resolve([])]);
     if (buses.status === 'rejected' || !buses.value) {
       if (other.status === 'rejected') throw other.reason;
       return other.value;

@@ -1,7 +1,7 @@
 import { useSignal } from '@preact/signals';
 import { useEffect } from 'preact/hooks';
 import type { Map as MapLibreMap } from 'maplibre-gl';
-import { delayMinutes, formatClock, formatDeparture, type Departure, type LngLat, type Place } from '@nm/core';
+import { delayMinutes, formatClock, formatDeparture, type Departure, type LngLat, type Place, type PlaceDetails } from '@nm/core';
 import { back, defineFeature, Icon, LineChip, mapLayers, open, region, userLocation, type ViewProps } from '@nm/core/app';
 import { tools, transitDeparturesTool } from '@nm/tools';
 import { isTransitStop } from './stops.ts';
@@ -16,7 +16,7 @@ let map: MapLibreMap;
 
 const REFRESH_MS = 20_000;
 
-function useDepartures(at: LngLat | null, radius: number, limit: number) {
+function useDepartures(at: LngLat | null, radius: number, limit: number, stopCode?: string) {
   const list = useSignal<Departure[] | null>(null);
   const failed = useSignal(false);
   const key = at ? `${at[0].toFixed(5)},${at[1].toFixed(5)}` : '';
@@ -26,7 +26,7 @@ function useDepartures(at: LngLat | null, radius: number, limit: number) {
     const ac = new AbortController();
     const load = () =>
       tools()
-        .call(transitDeparturesTool, { near: at, radius, limit }, { signal: ac.signal })
+        .call(transitDeparturesTool, { near: at, radius, limit, stopCode }, { signal: ac.signal })
         .then((d) => {
           if (!alive) return;
           list.value = d;
@@ -42,7 +42,7 @@ function useDepartures(at: LngLat | null, radius: number, limit: number) {
       ac.abort();
       clearInterval(t);
     };
-  }, [key, radius, limit]);
+  }, [key, radius, limit, stopCode]);
   return { list: list.value, failed: failed.value };
 }
 
@@ -88,12 +88,14 @@ export function DepartureList({ departures, showStop }: { departures: Departure[
   );
 }
 
-function DeparturesBody({ at, radius, limit, showStop }: { at: LngLat | null; radius: number; limit: number; showStop?: boolean }) {
-  const { list, failed } = useDepartures(at, radius, limit);
+function DeparturesBody({ at, radius, limit, showStop, stopCode }: { at: LngLat | null; radius: number; limit: number; showStop?: boolean; stopCode?: string }) {
+  const { list, failed } = useDepartures(at, radius, limit, stopCode);
   if (failed) return <p class="muted small">לא הצלחנו לטעון זמני יציאה כרגע.</p>;
   if (list === null) return <div class="spinner" role="progressbar" aria-label="טוען זמני יציאה" />;
   if (!list.length) return <p class="muted small">אין יציאות בשעה הקרובה.</p>;
-  return <DepartureList departures={list} showStop={showStop} />;
+  // Several stops around (both sides of the street): say which stop each bus is at.
+  const stops = new Set(list.map((d) => d.stop.name));
+  return <DepartureList departures={list} showStop={showStop || stops.size > 1} />;
 }
 
 function StopNote() {
@@ -108,14 +110,17 @@ function StopNote() {
 }
 
 /** On a stop's place card: the next departures, refreshed every 20 seconds. */
-function StopSection({ place }: { place: Place }) {
-  if (!isTransitStop(place)) return null;
+function StopSection({ place, details }: { place: Place; details?: PlaceDetails | null }) {
+  if (!isTransitStop(place) && !(details && isTransitStop(details))) return null;
+  // The number on the stop's sign (OSM ref): live arrivals for exactly this stop.
+  const ref = details?.tags?.ref ?? (place as Partial<PlaceDetails>).tags?.ref;
+  const stopCode = ref && /^\d{1,8}$/.test(ref) ? ref : undefined;
   return (
     <section class="place-section transit-section" aria-label="יציאות קרובות">
       <h3 class="section-title">
         <Icon name="departure_board" size={20} /> יציאות קרובות
       </h3>
-      <DeparturesBody at={[place.lng, place.lat]} radius={120} limit={8} />
+      <DeparturesBody at={[place.lng, place.lat]} radius={120} limit={8} stopCode={stopCode} />
       <StopNote />
     </section>
   );

@@ -69,7 +69,7 @@ test('live arrivals: a stop shows when each bus arrives, and the bus can be show
   await expect(rows.first()).toContainText('לכיוון ת. מרכזית בת ים');
   await expect(rows.first().locator('.dep-time')).toHaveClass(/live/);
   await expect(rows.first().locator('.dep-time')).toContainText(/בעוד [23] דק׳/);
-  await expect(rows.filter({ hasText: 'מסוף רידינג' })).toHaveCount(1);
+  await expect(rows.filter({ hasText: 'מסוף רדינג, תל אביב יפו' })).toHaveCount(1);
   expect(asked.some((u) => u.startsWith('/nearby?'))).toBe(true);
   expect(asked).toContain('/21330+21331');
   // Bus 18 reported where it is: tap to see it on the map, with its arrival at the stop.

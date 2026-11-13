@@ -35,7 +35,8 @@ const visit = (stop: string, line: string, inS: number, now: number, extra: Reco
   location: null,
   static_info: {
     route: {
-      destination: { code: '20832', name: { HE: 'ת. מרכזית בת ים', EN: 'Bat Yam Central' }, address: { city: { HE: 'בת ים', EN: 'Bat Yam' } } },
+      // As curlbus sends it: an English city string, the names per language beside it.
+      destination: { code: '20832', name: { HE: 'ת. מרכזית בת ים/הורדה', EN: 'Bat Yam Central/Alight' }, address: { city: 'Bat Yam', city_multilingual: { HE: 'בת ים', EN: 'Bat Yam' } } },
       agency: { name: { HE: 'דן', EN: 'Dan' }, url: 'http://www.dan.co.il' },
       headsign: null,
     },
@@ -50,10 +51,11 @@ export function curlbusVisits(now = Date.now()) {
     visits: {
       '21330': [
         visit('21330', '18', 150, now, { vehicle_ref: '7701355', location: { lat: 32.0775, lon: 34.779 } }),
-        visit('21330', '61', 540, now),
+        // A position recorded long ago is not shown.
+        visit('21330', '61', 540, now, { vehicle_ref: '1234567', timestamp: py(now - 3600_000), location: { lat: '32.07', lon: '34.77' } }),
         visit('21330', '5', -180, now),
       ],
-      '21331': [visit('21331', '25', 300, now, { static_info: { route: { destination: { name: { HE: 'מסוף רידינג' }, address: { city: { HE: 'תל אביב יפו' } } }, agency: { name: { HE: 'אגד' } } } } })],
+      '21331': [visit('21331', '25', 300, now, { static_info: { route: { destination: { name: { HE: 'מסוף רדינג/הורדה' }, address: { city: 'Tel Aviv Yafo', city_multilingual: { HE: 'תל אביב יפו' } } }, agency: { name: { HE: 'אגד' } }, headsign: { HE: 'תל אביב יפו_מסוף רדינג' } } } })],
     },
   };
 }
