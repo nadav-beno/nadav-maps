@@ -54,6 +54,12 @@ export function curlbusTime(s?: string | null): number {
   return Date.parse(String(s).trim().replace(' ', 'T'));
 }
 
+/** An ISO time from a curlbus time, or undefined. */
+const isoOf = (s?: string | null) => {
+  const t = curlbusTime(s);
+  return Number.isFinite(t) ? new Date(t).toISOString() : undefined;
+};
+
 const he = (n?: { HE?: string; EN?: string } | string | null) => (typeof n === 'string' ? n : n?.HE || n?.EN || '');
 
 /** curlbus's route endpoint takes digits only (municipal "TA…" stops come from another feed). */
@@ -85,7 +91,7 @@ export function curlbusDepartures(res: CurlbusResponse, stops: CurlbusStop[], no
         predicted: true,
         cancelled: false,
         agency: he(route?.agency?.name) || undefined,
-        vehicle: Number.isFinite(lat) && Number.isFinite(lng) && (lat || lng) ? { id: v.vehicle_ref ? `openbus:${v.vehicle_ref}` : undefined, lng, lat } : undefined,
+        vehicle: Number.isFinite(lat) && Number.isFinite(lng) && (lat || lng) ? { id: v.vehicle_ref ? `openbus:${v.vehicle_ref}` : undefined, lng, lat, at: isoOf(v.timestamp) } : undefined,
       });
     }
   }

@@ -29,7 +29,9 @@ describe('live bus arrivals (curlbus)', () => {
     const list = curlbusDepartures(curlbusVisits(now), curlbusNearby(), now);
     expect(list.map((d) => d.line)).toEqual(['18', '25', '61']);
     expect(list[0]).toMatchObject({ mode: 'bus', realtime: true, predicted: true, headsign: 'ת. מרכזית בת ים', agency: 'דן', stop: { name: 'דיזנגוף סנטר' } });
-    expect(list[0].vehicle).toEqual({ id: 'openbus:7701355', lng: 34.779, lat: 32.0775 });
+    expect(list[0].vehicle).toMatchObject({ id: 'openbus:7701355', lng: 34.779, lat: 32.0775 });
+    // When the position was recorded (the fixture says 20 s ago, whole seconds).
+    expect(Math.abs(now - Date.parse(list[0].vehicle!.at!) - 20_000)).toBeLessThanOrEqual(1000);
     expect(list[1]).toMatchObject({ headsign: 'מסוף רידינג, תל אביב יפו', agency: 'אגד' });
     expect(list[1].vehicle).toBeUndefined();
     // The fixture writes whole seconds, like curlbus.

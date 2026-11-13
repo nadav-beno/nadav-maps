@@ -54,7 +54,7 @@ export function showArrivingBus(d: Departure) {
     source: 'gps',
     lng: d.vehicle.lng,
     lat: d.vehicle.lat,
-    at: new Date().toISOString(),
+    at: d.vehicle.at ?? new Date().toISOString(),
     arrival: { stop: d.stop.name, time: d.time },
   };
   if (!mapLayers.peek().transit) mapLayers.value = { ...mapLayers.peek(), transit: true };

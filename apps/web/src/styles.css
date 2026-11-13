@@ -1061,4 +1061,5 @@ textarea.code { width: 100%; font-family: ui-monospace, monospace; font-size: 12
 .vehicle-facts .live-icon { color: var(--ok); }
 .vehicle-actions { display: flex; gap: 8px; margin-bottom: 12px; }
 .departure .dep-locate { flex: none; color: var(--ok); }
+span.dep-locate { width: 40px; }
 .vehicle-facts .vehicle-arrival { font-weight: 600; }

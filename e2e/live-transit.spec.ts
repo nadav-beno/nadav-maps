@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { stubCurlbus, stubNetwork } from './stubs.ts';
+import { curlbusNearby, curlbusVisits } from './curlbus-fixture.ts';
 
 test.beforeEach(async ({ page }) => {
   await stubNetwork(page);
@@ -75,4 +76,22 @@ test('live arrivals: a stop shows when each bus arrives, and the bus can be show
   await rows.first().getByRole('button', { name: 'איפה קו 18 עכשיו' }).click();
   await expect(page.getByText(/מגיע לדיזנגוף סנטר בעוד [23] דק׳/)).toBeVisible();
   await expect.poll(() => vehicles(page), { timeout: 15_000 }).toContain('18');
+});
+
+test('live arrivals go through the relay when one is set (curlbus has no CORS)', async ({ page }) => {
+  const relayed: { url: string }[] = [];
+  await page.route('https://relay.test/flights', async (r) => {
+    if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type' } });
+    const body = r.request().postDataJSON() as { url: string };
+    relayed.push(body);
+    const u = new URL(body.url);
+    const json = u.pathname === '/nearby' ? curlbusNearby() : curlbusVisits();
+    return r.fulfill({ json, headers: { 'access-control-allow-origin': '*' } });
+  });
+  await page.goto('./?flightsrelay=https://relay.test/flights#16/32.0779/34.7752');
+  await page.getByRole('button', { name: 'תפריט' }).click();
+  await page.getByRole('button', { name: 'יציאות קרובות' }).click();
+  await expect(page.locator('.departure').first().locator('.line-chip')).toContainText('18');
+  expect(relayed.map((b) => b.url)).toContain('https://curlbus.app/21330+21331');
+  expect(relayed.some((b) => b.url.startsWith('https://curlbus.app/nearby?'))).toBe(true);
 });

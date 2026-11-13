@@ -64,6 +64,8 @@ function DepartureTime({ d }: { d: Departure }) {
 }
 
 export function DepartureList({ departures, showStop }: { departures: Departure[]; showStop?: boolean }) {
+  // Keep the times in one column when only some rows have a "where is it" button.
+  const locatable = departures.some((d) => d.vehicle);
   return (
     <ul class="departures">
       {departures.map((d, i) => (
@@ -79,6 +81,7 @@ export function DepartureList({ departures, showStop }: { departures: Departure[
               <Icon name="directions_bus" size={20} />
             </button>
           )}
+          {!d.vehicle && locatable && <span class="dep-locate" aria-hidden="true" />}
         </li>
       ))}
     </ul>
