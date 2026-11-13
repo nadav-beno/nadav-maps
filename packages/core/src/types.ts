@@ -105,6 +105,10 @@ export interface Departure {
   color?: string;
   textColor?: string;
   agency?: string;
+  /** Live arrival predicted by the operator's SIRI feed (Israel), rather than a timetable. */
+  predicted?: boolean;
+  /** Where the vehicle is now, when the feed tells (SIRI). */
+  vehicle?: { id?: string; lng: number; lat: number; /** ISO time the position was recorded. */ at?: string };
 }
 
 export interface RouteStep {

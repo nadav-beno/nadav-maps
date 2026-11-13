@@ -38,7 +38,7 @@ export class ProviderError extends Error {
 }
 
 /** Feeds without CORS headers go through our relay when one is configured (see flights-proxy.ts). */
-const RELAYED = new Set(['flights', 'opensky']);
+const RELAYED = new Set(['flights', 'opensky', 'curlbus']);
 
 function relayed(ctx: ToolContext, url: string, init: RequestInit, provider: string, signal: AbortSignal): [string, RequestInit] {
   const relay = ctx.config.flightsRelayUrl;

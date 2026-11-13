@@ -1,6 +1,6 @@
 import { signal } from '@preact/signals';
 import type { ComponentType } from 'preact';
-import type { Place } from '../types.ts';
+import type { Place, PlaceDetails } from '../types.ts';
 
 /**
  * Extension points: one feature adds UI inside another feature's screen without
@@ -9,7 +9,8 @@ import type { Place } from '../types.ts';
 export interface PlaceAction {
   id: string;
   order: number;
-  Component: ComponentType<{ place: Place }>;
+  /** `details`: the place's full OSM details (tags…) once loaded, when it has them. */
+  Component: ComponentType<{ place: Place; details?: PlaceDetails | null }>;
 }
 
 export const placeActions = signal<PlaceAction[]>([]);

@@ -5,6 +5,8 @@ import { encodePolyline } from '../packages/core/src/polyline.ts';
 import { sceneTile, TILEJSON } from './basemap-scene.ts';
 import { PLACES_LISTING, PLACES_PMTILES, PLACES_RELEASE } from './places-scene.ts';
 import { motisPlan, motisStoptimes } from './transit-fixture.ts';
+import { motisTrips, strideLocations, strideRoutes } from './vehicles-fixture.ts';
+import { curlbusNearby, curlbusVisits } from './curlbus-fixture.ts';
 import { flowTile, HERE_INCIDENTS, HERE_ROUTE, hereTrafficTile, incidentTile, INCIDENT_DETAILS, TRAFFIC_ROUTE } from './traffic-scene.ts';
 
 /**
@@ -194,7 +196,16 @@ export async function stubNetwork(page: Page): Promise<void> {
     const path = new URL(r.request().url()).pathname;
     if (path.endsWith('/plan')) return r.fulfill({ json: motisPlan(), headers: { 'access-control-allow-origin': '*' } });
     if (path.endsWith('/stoptimes')) return r.fulfill({ json: motisStoptimes(), headers: { 'access-control-allow-origin': '*' } });
+    if (path.endsWith('/map/trips')) return r.fulfill({ json: motisTrips(), headers: { 'access-control-allow-origin': '*' } });
     return r.fulfill({ status: 404, body: '' });
+  });
+  // Open Bus Stride API (Israel's live bus positions).
+  await page.route('https://open-bus-stride-api.hasadna.org.il/**', (r) => {
+    const path = new URL(r.request().url()).pathname;
+    const cors = { 'access-control-allow-origin': '*' };
+    if (path === '/siri_vehicle_locations/list') return r.fulfill({ json: strideLocations(), headers: cors });
+    if (path === '/gtfs_routes/list') return r.fulfill({ json: strideRoutes(), headers: cors });
+    return r.fulfill({ status: 404, body: '', headers: cors });
   });
   // TomTom (only used when a test opens the app with ?tomtom=test). Requests without that key fail.
   await page.route('https://api.tomtom.com/**', (r) => {
@@ -284,5 +295,19 @@ export async function stubNetwork(page: Page): Promise<void> {
       });
     }
     return r.fulfill({ json: { elements: [] } });
+  });
+}
+
+/**
+ * Live bus arrivals at Israeli stops (curlbus, SIRI stop monitoring). Opt-in: without it curlbus
+ * requests fail and stop departures fall back to Transitous, as when curlbus is down.
+ */
+export async function stubCurlbus(page: Page, asked: string[] = []) {
+  await page.route('https://curlbus.app/**', (r) => {
+    const url = new URL(r.request().url());
+    asked.push(url.pathname + url.search);
+    const cors = { 'access-control-allow-origin': '*' };
+    if (url.pathname === '/nearby') return r.fulfill({ json: curlbusNearby(), headers: cors });
+    return r.fulfill({ json: curlbusVisits(), headers: cors });
   });
 }

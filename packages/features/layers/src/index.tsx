@@ -93,6 +93,7 @@ function LayersView(_: ViewProps) {
       </div>
       {hasTraffic() && trafficOn.value && !(atlasState.value.kind === 'ok' && atlasInView.value) && <TrafficNote />}
       {atlasConfigured() && trafficOn.value && <AtlasNote />}
+      {mapLayers.value.transit && <p class="muted small">עם השכבה הזו מוצגים גם אוטובוסים ורכבות בזמן אמת (מזום קרוב, הקישו על רכב לפרטים). בישראל האוטובוסים במיקום ה-GPS שדיווחו, בשאר המקומות במיקום משוער לפי זמני הנסיעה.</p>}
       <AirLegend />
       {mapType.value === 'satellite' && (
         <p class="muted small">

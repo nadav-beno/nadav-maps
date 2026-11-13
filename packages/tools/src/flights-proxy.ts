@@ -1,5 +1,5 @@
 /**
- * The free ADS-B feeds (adsb.lol, OpenSky) send no CORS headers, so a browser on another site
+ * The free ADS-B feeds (adsb.lol, OpenSky) and curlbus (live bus arrivals in Israel) send no CORS headers, so a browser on another site
  * can't read them. This tiny relay fetches them for the web app. Its only import (world-cells.ts)
  * has none, so the same code runs as our Supabase Edge Function (`supabase/functions/flights/`),
  * in `apps/server`, and in unit tests.
@@ -44,6 +44,9 @@ export const RELAY_ROUTES: { prefix: string; post?: boolean; cacheMs: number }[]
   { prefix: 'https://api.adsb.lol/v2/callsign/', cacheMs: 4_000 },
   { prefix: 'https://adsb.im/api/0/routeset', post: true, cacheMs: 0 },
   { prefix: 'https://opensky-network.org/api/states/all', cacheMs: 30_000 },
+  // Live bus arrivals at Israeli stops (SIRI stop monitoring via curlbus, no CORS headers).
+  { prefix: 'https://curlbus.app/nearby?', cacheMs: 6 * 3600_000 },
+  { prefix: 'https://curlbus.app/', cacheMs: 15_000 },
 ];
 
 /** Sites allowed to use the relay. */

@@ -86,6 +86,11 @@ describe('overpass mapping', () => {
   it('skips elements without coordinates', () => {
     expect(elementToDetails({ type: 'relation', id: 1 }, 'he')).toBeNull();
   });
+
+  it('knows a bus stop is a bus stop (so its card shows departures)', () => {
+    expect(elementToDetails({ type: 'node', id: 9, lat: 32, lon: 34.7, tags: { name: 'דיזנגוף סנטר', highway: 'bus_stop', public_transport: 'platform' } }, 'he')?.category).toEqual({ key: 'highway', value: 'bus_stop' });
+    expect(elementToDetails({ type: 'node', id: 9, lat: 32, lon: 34.7, tags: { name: 'רציף', public_transport: 'platform' } }, 'he')?.category).toEqual({ key: 'public_transport', value: 'platform' });
+  });
 });
 
 describe('categories', () => {

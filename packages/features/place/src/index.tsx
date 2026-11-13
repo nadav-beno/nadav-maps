@@ -429,7 +429,7 @@ function PlaceView({ view }: ViewProps<{ place: Place }>) {
           {inline.length > 0 && <Attributes groups={inline} />}
 
           {placeSections.value.map(({ id, Component }) => (
-            <Component key={id} place={p} />
+            <Component key={id} place={p} details={d} />
           ))}
 
           <footer class="place-footer">

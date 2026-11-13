@@ -10,7 +10,13 @@ interface OverpassElement {
   tags?: Record<string, string>;
 }
 
-const PRIMARY_KEYS = ['amenity', 'shop', 'tourism', 'leisure', 'historic', 'office', 'craft', 'natural', 'railway', 'aeroway', 'place', 'building'];
+const PRIMARY_KEYS = ['amenity', 'shop', 'tourism', 'leisure', 'historic', 'office', 'craft', 'natural', 'railway', 'aeroway', 'public_transport', 'place', 'building'];
+
+/** The tag that says what a place is; a bus stop is often only `highway=bus_stop`. */
+function primaryKey(tags: Record<string, string>): string | undefined {
+  if (tags.highway === 'bus_stop') return 'highway';
+  return PRIMARY_KEYS.find((k) => tags[k]);
+}
 
 function nameOf(tags: Record<string, string>, lang: string): string | undefined {
   return tags[`name:${lang}`] ?? tags.name ?? tags['name:en'] ?? tags.brand;
@@ -33,7 +39,7 @@ export function elementToDetails(el: OverpassElement, lang: string): PlaceDetail
   const lat = el.lat ?? el.center?.lat;
   const lng = el.lon ?? el.center?.lon;
   if (lat === undefined || lng === undefined) return null;
-  const key = PRIMARY_KEYS.find((k) => tags[k]);
+  const key = primaryKey(tags);
   const image = tags.image?.startsWith('http')
     ? tags.image
     : tags.wikimedia_commons?.startsWith('File:')
