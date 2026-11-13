@@ -458,7 +458,15 @@ a.detail-body { color: var(--text); }
 .route-option.active .route-time { color: var(--ok); }
 .route-dist { color: var(--text-2); align-self: center; }
 .route-sub { grid-column: 1 / -1; }
-.route-actions { display: flex; gap: 8px; margin: 14px 0; flex-wrap: wrap; }
+/* Start / preview / steps stay pinned to the bottom of the card, like Google's "Start" bar. */
+.route-actions {
+  display: flex; gap: 8px; flex-wrap: wrap; position: sticky; bottom: 0; z-index: 2;
+  margin: 14px -16px 0; padding: 10px 16px; background: var(--surface); border-top: 1px solid var(--divider);
+}
+.route-actions { flex-wrap: nowrap; }
+.route-actions .btn.primary { flex: 1 1 auto; justify-content: center; }
+.route-actions .btn.big:not(.primary) { padding: 0 16px; }
+.route-actions .btn.icon-only { padding: 0; width: 48px; flex: none; justify-content: center; }
 .steps { list-style: none; margin: 0; padding: 0; }
 .step { display: flex; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--divider); align-items: flex-start; }
 .step-icon { width: 24px; flex: none; display: grid; place-items: center; color: var(--text-2); font-size: 18px; }
@@ -542,8 +550,23 @@ a.detail-body { color: var(--text); }
   background: var(--surface); box-shadow: var(--shadow-3); border-radius: 28px 28px 0 0;
 }
 .nav-eta { flex: 1; display: flex; flex-direction: column; align-items: center; }
-.nav-eta strong { font-size: 24px; color: var(--ok); }
-.nav-note { position: absolute; bottom: calc(88px + var(--safe-bottom)); inset-inline: 0; margin: 0; text-align: center; font-size: 11px; color: var(--text-2); pointer-events: none; }
+.nav-eta strong { font-size: 26px; font-weight: 600; color: var(--ok); line-height: 1.15; }
+.nav-side { position: absolute; inset-inline-end: 12px; bottom: calc(170px + var(--safe-bottom)); display: flex; flex-direction: column; gap: 10px; }
+.nav-fab {
+  display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; border: 0; cursor: pointer;
+  background: var(--surface); color: var(--text); box-shadow: var(--shadow-2);
+}
+.nav-recenter {
+  position: absolute; inset-inline-end: 12px; bottom: calc(108px + var(--safe-bottom)); display: inline-flex; align-items: center; gap: 8px;
+  height: 48px; padding: 0 20px; border-radius: 24px; border: 0; cursor: pointer; font: inherit; font-size: 16px; font-weight: 500;
+  background: var(--surface); color: var(--accent); box-shadow: var(--shadow-3);
+}
+.action-row.round .action.start .icon { background: var(--accent); color: var(--accent-text); }
+.action-row.round .action.start .spinner { width: 20px; height: 20px; margin: 10px; box-sizing: border-box; }
+.nav-bottom { flex-wrap: wrap; row-gap: 6px; }
+.nav-note { flex-basis: 100%; order: 9; margin: 0; text-align: center; font-size: 11px; color: var(--text-2); }
+.nav-eta { min-width: 0; }
+.nav-eta > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- photos ---------- */
 .photo-marker {
@@ -981,7 +1004,7 @@ button.live-sos { width: 100%; border: 0; font: inherit; cursor: pointer; text-a
 }
 .along-list .list-item { align-items: center; }
 .along-detour { flex: none; font-weight: 600; color: var(--accent); }
-.nav-arrival-note { color: var(--warn); text-align: center; }
+.nav-arrival-note { color: var(--warn); text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-arrival { position: absolute; inset-inline: 10px; bottom: calc(96px + var(--safe-bottom)); padding: 16px; border-radius: 20px; background: var(--surface); box-shadow: var(--shadow-3); }
 .nav-arrival h3 { margin: 0 0 2px; font-size: 18px; }
 .nav-arrival .chips { margin: 10px 0; }

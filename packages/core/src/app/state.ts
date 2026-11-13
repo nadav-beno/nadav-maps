@@ -77,6 +77,8 @@ export const toastMessage = signal<{ text: string; action?: { label: string; run
 export const embedded = signal(false);
 /** Full-screen modes (navigation) hide the regular chrome. */
 export const immersive = signal(false);
+/** True while navigation draws its own arrow for the user; the location feature hides its dot. */
+export const hideLocationDot = signal(false);
 
 /** Bumped when a feature needs the user's location; the location feature starts GPS. */
 export const locationRequests = signal(0);

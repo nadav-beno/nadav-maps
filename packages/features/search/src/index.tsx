@@ -49,6 +49,7 @@ import {
   save,
   selectedPlace,
   setGeoJSON,
+  simulatingLocation,
   toast,
   units,
   userLocation,
@@ -70,10 +71,17 @@ function remember(q: string) {
 
 const UNAVAILABLE = 'החיפוש לא זמין כרגע. בדקו את החיבור לאינטרנט.';
 
-/** Map center + zoom bias, so "פיצה" finds pizza near where you're looking. */
-function bias() {
+/**
+ * Where results should be near, like Google: the user, when the map shows where they are
+ * (the restaurant in your city first, not the branch in the next one), at least at city
+ * scale even when the map is zoomed out; the map centre when they are looking somewhere else.
+ */
+function bias(): { near: [number, number]; zoom: number } {
   const c = map.getCenter();
-  return { near: [c.lng, c.lat] as [number, number], zoom: map.getZoom() };
+  const zoom = map.getZoom();
+  const u = userLocation.peek();
+  if (u && !simulatingLocation.peek() && map.getBounds().contains([u.lng, u.lat])) return { near: [u.lng, u.lat], zoom: Math.max(zoom, 13) };
+  return { near: [c.lng, c.lat], zoom };
 }
 
 function origin(): [number, number] {
@@ -184,8 +192,7 @@ function localMatches(text: string, existing: Place[], limit = 3): Place[] {
       const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates;
       return { properties: f.properties ?? {}, lng, lat };
     });
-  const c = map.getCenter();
-  return matchLocalPlaces(features, text, [c.lng, c.lat], existing, limit);
+  return matchLocalPlaces(features, text, bias().near, existing, limit);
 }
 
 /** Names the map has loaded right now: street, place and POI labels, and Overture businesses. */

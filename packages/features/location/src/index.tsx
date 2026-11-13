@@ -1,7 +1,7 @@
 import { signal } from '@preact/signals';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { circle, formatDistance, plausibleFix, type Fix } from '@nm/core';
-import { cssVar, defineFeature, ensureLayer, EMPTY, Icon, immersive, load, locationRequests, open, save, setGeoJSON, toast, units, userLocation } from '@nm/core/app';
+import { cssVar, defineFeature, ensureLayer, EMPTY, hideLocationDot, Icon, immersive, load, locationRequests, open, save, setGeoJSON, toast, units, userLocation } from '@nm/core/app';
 import { PermissionsView } from './permissions.tsx';
 
 /**
@@ -46,7 +46,7 @@ let stateAfterFix: LocState = 'follow';
 function render() {
   const u = userLocation.value;
   if (!map.getSource('me-accuracy')) return;
-  if (!u) {
+  if (!u || hideLocationDot.value) {
     setGeoJSON(map, 'me-accuracy', EMPTY);
     setGeoJSON(map, 'me-dot', EMPTY);
     return;
@@ -369,6 +369,7 @@ export default defineFeature({
       render();
     });
     userLocation.subscribe(() => render());
+    hideLocationDot.subscribe(() => render());
 
     // Other features (directions) can ask for the location without moving the map.
     locationRequests.subscribe((n) => {

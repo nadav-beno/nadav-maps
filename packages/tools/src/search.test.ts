@@ -73,6 +73,14 @@ describe('result ranking', () => {
     const nearby = place('הרצל', { lat: 32.08, lng: 34.78 });
     expect(rankResults([far, nearby], 'הרצל', [34.78, 32.08])[0]).toBe(nearby);
   });
+  it('puts the branch in your city before the one in the next city, and a far city last', () => {
+    // The engine lists them by its own importance; the user is in central Tel Aviv.
+    const haifa = place('גירף', { lat: 32.8, lng: 34.99, address: 'חיפה, ישראל' });
+    const ramatGan = place('גירף', { lat: 32.083, lng: 34.812, address: 'רמת גן, ישראל' });
+    const telAviv = place('גירף', { lat: 32.074, lng: 34.78, address: 'תל אביב-יפו, ישראל' });
+    const here: [number, number] = [34.776, 32.08];
+    expect(rankResults([haifa, ramatGan, telAviv], 'גירף', here)).toEqual([telAviv, ramatGan, haifa]);
+  });
   it('knows a strong match from a weak one', () => {
     expect(hasStrongMatch([place('קניון עזריאלי')], 'עזראלי')).toBe(true);
     expect(hasStrongMatch([place('דיזנגוף', { address: 'תל אביב-יפו, ישראל' })], 'דיזנגוף תל אביב')).toBe(true);
