@@ -1,4 +1,4 @@
-import { distance, fuzzyScore, lineLength, sampleLine, snapToLine, nameIndex, namesFileIndex, namesFileIndexNow, normalizeQuery, parsePlaceId, prepareQuery, queryVariants, regionAt, suggestCorrections, trafficProvider, type BBox, type Correction, type Departure, type LiveVehicle, type LngLat, type Place, type PreparedQuery } from '@nm/core';
+import { closeness, distance, fuzzyScore, isBigArea, lineLength, sampleLine, snapToLine, nameIndex, namesFileIndex, namesFileIndexNow, normalizeQuery, parsePlaceId, prepareQuery, queryVariants, regionAt, suggestCorrections, swapKeyboardLayout, trafficProvider, type BBox, type Correction, type Departure, type LiveVehicle, type LngLat, type Place, type PreparedQuery } from '@nm/core';
 import { z } from 'zod';
 import { CATEGORIES, categoryById } from '../categories.ts';
 import { defineTool, ProviderError, type ToolContext } from '../define.ts';
@@ -37,7 +37,19 @@ export const searchPlaces = defineTool({
   }),
   async run(input, ctx) {
     const opts = { near: input.near as LngLat | undefined, zoom: input.zoom, limit: input.limit, bbox: input.bbox as BBox | undefined };
+    // "ctu" is "באו" typed with the keyboard on English: when the Hebrew reading finds
+    // something, it leads (Google turns "ctu" into "באולינג", not into a bus stop in Manila).
+    // Asked only when the Latin text found nothing within reach of the user.
+    const swapped = !input.exact ? hebrewLayoutReading(input.query) : null;
     const first = await searchText(ctx, input.query, opts);
+    const near = opts.near;
+    const nothingClose = !!near && first.places.length > 0 && !first.places.some((p) => distance(near, [p.lng, p.lat]) < 300_000);
+    const other = swapped && nothingClose ? await searchText(ctx, swapped, opts).catch(() => null) : null;
+    if (swapped && other?.places.length && hasStrongMatch(other.places, swapped)) {
+      const ids = new Set(other.places.map((p) => p.id));
+      const lead = other.places.map((p) => ({ ...p, correctedQuery: swapped }));
+      return rankResults([...lead, ...first.places.filter((p) => !ids.has(p.id))], input.query, opts.near).slice(0, input.limit);
+    }
     if (first.strong) return first.places.slice(0, input.limit);
     let results = first.places;
     // Nothing that looks like what was typed: probably a typo. Ask again with the likeliest
@@ -61,6 +73,14 @@ export const searchPlaces = defineTool({
     return rankResults(results, input.query, opts.near).slice(0, input.limit);
   },
 });
+
+/** The Hebrew a lower-case Latin query reads as on a Hebrew keyboard ("ctu" -> "באו"), or null. */
+export function hebrewLayoutReading(query: string): string | null {
+  const q = query.trim();
+  if (q.length > 24 || /[A-Z0-9]/.test(q)) return null;
+  const he = swapKeyboardLayout(q);
+  return he && /^[א-ת ]+$/.test(he) && he.replace(/ /g, '').length >= 2 ? he : null;
+}
 
 type SearchOpts = { near?: LngLat; zoom?: number; limit?: number; bbox?: BBox };
 
@@ -137,22 +157,25 @@ export function rankResults(places: Place[], query: string, near?: LngLat): Plac
   const prepared = new Map<string, PreparedQuery>();
   const pqFor = (t: string) => prepared.get(t) ?? (prepared.set(t, prepareQuery(t)), prepared.get(t)!);
   const n = places.length;
+  const dist = places.map((p) => (near ? distance(near, [p.lng, p.lat]) : 0));
+  // Something within reach (300 km) means a result on another continent is a wrong guess.
+  const anyNear = near ? dist.some((d) => d < 300_000) : false;
   const scored = places.map((p, i) => {
     const match = resultScore(pqFor(p.correctedQuery ?? query), p);
-    const close = near ? closeness(distance(near, [p.lng, p.lat])) : 0;
+    const close = near ? closeness(dist[i]) : 0;
     const order = 1 - i / n;
-    const area = p.category?.key === 'place' || p.category?.key === 'boundary';
+    const area = isBigArea(p);
     // Weak matches all look the same (category searches: "פיצה"); only clear matches move up.
     const m = match >= 0.7 ? match : 0;
-    return { p, s: area ? 0.5 * m + 0.3 * order + 0.2 * close : 0.5 * m + 0.06 * order + 0.44 * close };
+    // A city named exactly is what was meant, wherever it is ("פריז" is Paris, not the street).
+    let s = area ? 0.5 * m + 0.3 * order + 0.2 * close + (m >= 0.95 ? 0.2 : 0) : 0.5 * m + 0.06 * order + 0.44 * close;
+    if (anyNear && dist[i] > 1_500_000 && !area) s -= 1;
+    return { p, s };
   });
   return scored.sort((a, b) => b.s - a.s).map((x) => x.p);
 }
 
-/** 1 here, about 0.8 two km away, 0.5 at 20 km, 0 from 300 km: a log scale, so the next street and the next city both count. */
-export function closeness(meters: number): number {
-  return Math.max(0, 1 - Math.log10(1 + meters / 1000) / Math.log10(301));
-}
+
 
 /**
  * The result search should open right away instead of a list, like Google does for
