@@ -81,8 +81,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: places-out
-          key: places-v1-${{ steps.plkey.outputs.release || 'unknown' }}-${{ hashFiles('scripts/places/*', 'packages/core/src/overture.ts', 'packages/core/src/region.ts') }}
-          restore-keys: places-v1-
+          key: places-v2-${{ steps.plkey.outputs.release || 'unknown' }}-${{ hashFiles('scripts/places/*', 'packages/core/src/overture.ts', 'packages/core/src/region.ts', 'packages/core/src/places-index.ts') }}
+          restore-keys: places-v2-
       - name: Install tippecanoe
         id: pltools
         if: steps.plcache.outputs.cache-hit != 'true' && steps.plkey.outputs.release != ''
@@ -145,7 +145,9 @@ jobs:
               d="apps/web/dist/data/$(basename "$(dirname "$f")")"
               mkdir -p "$d"
               cp "$f" "$(dirname "$f")/places.json" "$d/"
+              if [ -d "$(dirname "$f")/places-search" ]; then cp -R "$(dirname "$f")/places-search" "$d/"; fi
             done
+            du -sh apps/web/dist/data/*/places-search 2>/dev/null || true
             du -sh apps/web/dist/data/*/places.pmtiles || true
           else
             echo "::warning::No places built or cached: the map reads Overture's own tiles everywhere."

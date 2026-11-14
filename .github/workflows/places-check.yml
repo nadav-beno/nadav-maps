@@ -10,6 +10,7 @@ on:
     paths:
       - 'scripts/places/**'
       - 'packages/core/src/overture.ts'
+      - 'packages/core/src/places-index.ts'
       - 'scripts/ci/install-tools.sh'
       - '.github/workflows/places-check.yml'
   workflow_dispatch:
@@ -51,4 +52,13 @@ jobs:
           print("largest tile", max(x["bytes"] for x in t), "bytes; most places", most)
           # A city tile holds hundreds of places; a handful means tippecanoe dropped them.
           sys.exit(0 if most >= 50 else "::error::at most %d places in one tile" % most)'
+          done
+      - name: Probe the search index
+        run: |
+          for d in "$RUNNER_TEMP"/places/*/places-search; do
+            n="$(ls "$d" | wc -l)"; size="$(du -sh "$d" | cut -f1)"
+            big="$(find "$d" -type f -size +2M | head -5)"
+            echo "$d: $n files, $size"
+            [ "$n" -ge 100 ] || { echo "::error::only $n search index files"; exit 1; }
+            [ -z "$big" ] || echo "::warning::search index files over 2 MB: $big"
           done

@@ -1,4 +1,4 @@
-import { closeness, distance, fuzzyScore, isBigArea, lineLength, sampleLine, snapToLine, nameIndex, namesFileIndex, namesFileIndexNow, normalizeQuery, parsePlaceId, prepareQuery, queryVariants, regionAt, suggestCorrections, swapKeyboardLayout, trafficProvider, type BBox, type Correction, type Departure, type LiveVehicle, type LngLat, type Place, type PreparedQuery } from '@nm/core';
+import { closeness, distance, fuzzyScore, isBigArea, samePlace, lineLength, sampleLine, snapToLine, nameIndex, namesFileIndex, namesFileIndexNow, normalizeQuery, parsePlaceId, prepareQuery, queryVariants, regionAt, suggestCorrections, swapKeyboardLayout, trafficProvider, type BBox, type Correction, type Departure, type LiveVehicle, type LngLat, type Place, type PreparedQuery } from '@nm/core';
 import { z } from 'zod';
 import { CATEGORIES, categoryById } from '../categories.ts';
 import { defineTool, ProviderError, type ToolContext } from '../define.ts';
@@ -9,6 +9,7 @@ import { airQualityAt } from '../providers/air-quality.ts';
 import { commonsPhotosNear } from '../providers/commons.ts';
 import { overpassAlongLine, overpassCategory, overpassDetails, overpassIdentify, overpassInside } from '../providers/overpass.ts';
 import { photonReverse, photonSearch } from '../providers/photon.ts';
+import { placesIndexSearch } from '../providers/places-index.ts';
 import { localgeoDetails, localgeoIdentify, localgeoNamesUrl, localgeoReverse, localgeoSearch, mergePlaces } from '../providers/localgeo.ts';
 import { hereIncidents, hereTrafficTime } from '../providers/here.ts';
 import { NO_KEY_MESSAGE, tomtomIncidents, tomtomTrafficTime } from '../providers/tomtom.ts';
@@ -41,7 +42,9 @@ export const searchPlaces = defineTool({
     // something, it leads (Google turns "ctu" into "באולינג", not into a bus stop in Manila).
     // Asked only when the Latin text found nothing within reach of the user.
     const swapped = !input.exact ? hebrewLayoutReading(input.query) : null;
-    const first = await searchText(ctx, input.query, opts);
+    // Businesses from our own places index, anywhere in the region (not only loaded tiles).
+    const businesses = placesIndexSearch(ctx, input.query, { near: opts.near, limit: input.limit }).catch(() => undefined);
+    const first = withBusinesses(await searchText(ctx, input.query, opts), await businesses);
     const near = opts.near;
     const nothingClose = !!near && first.places.length > 0 && !first.places.some((p) => distance(near, [p.lng, p.lat]) < 300_000);
     const other = swapped && nothingClose ? await searchText(ctx, swapped, opts).catch(() => null) : null;
@@ -50,7 +53,7 @@ export const searchPlaces = defineTool({
       const lead = other.places.map((p) => ({ ...p, correctedQuery: swapped }));
       return rankResults([...lead, ...first.places.filter((p) => !ids.has(p.id))], input.query, opts.near).slice(0, input.limit);
     }
-    if (first.strong) return first.places.slice(0, input.limit);
+    if (first.strong) return (first.mixed ? rankResults(first.places, input.query, opts.near) : first.places).slice(0, input.limit);
     let results = first.places;
     // Nothing that looks like what was typed: probably a typo. Ask again with the likeliest
     // corrections (at most two more searches), like Google's "showing results for".
@@ -73,6 +76,13 @@ export const searchPlaces = defineTool({
     return rankResults(results, input.query, opts.near).slice(0, input.limit);
   },
 });
+
+/** Add businesses from the places index to a search's results (minus the ones already there). */
+function withBusinesses(r: { places: Place[]; strong: boolean }, biz: Place[] | undefined): { places: Place[]; strong: boolean; mixed?: boolean } {
+  if (!biz?.length) return r;
+  const fresh = biz.filter((b) => !r.places.some((p) => samePlace(p, b, 150)));
+  return { places: [...r.places, ...fresh], strong: r.strong, mixed: fresh.length > 0 };
+}
 
 /** The Hebrew a lower-case Latin query reads as on a Hebrew keyboard ("ctu" -> "באו"), or null. */
 export function hebrewLayoutReading(query: string): string | null {

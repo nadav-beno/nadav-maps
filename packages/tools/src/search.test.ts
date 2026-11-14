@@ -160,3 +160,27 @@ describe('search like Google: near first, layout slips, villages', () => {
     expect(rankResults([far, near], 'ctu', here)[0]).toBe(near);
   });
 });
+
+describe('businesses from our own places index', () => {
+  it('finds every branch in the region, not only what the map has loaded, nearest first', async () => {
+    const { buildPlacesIndex, placesShardFile } = await import('@nm/core');
+    const shards = buildPlacesIndex([
+      { id: 'far', name: 'ארומה', lng: 34.79, lat: 31.25, brand: 'ארומה', town: 'באר שבע' },
+      { id: 'near', name: 'ארומה', lng: 34.779, lat: 32.081, brand: 'ארומה', town: 'תל אביב-יפו' },
+    ]);
+    const asked: string[] = [];
+    const fetchImpl = (async (u: string | URL | Request) => {
+      const url = new URL(String(u));
+      asked.push(url.pathname);
+      if (url.hostname === 'photon.komoot.io') return json({ features: [] });
+      if (url.pathname.endsWith('/il/places-search/index.json')) return json({ v: 1, built: 'x', shards: [...shards.keys()] });
+      const key = [...shards.keys()].find((k) => url.pathname.endsWith(`/il/places-search/${placesShardFile(k)}`));
+      if (key) return json(shards.get(key));
+      return new Response('', { status: 404 });
+    }) as typeof fetch;
+    const client = createToolClient({ ...DEFAULT_PROVIDERS, geodataUrl: 'https://example.test/data/' }, 'he', fetchImpl);
+    const res = await client.call(searchPlaces, { query: 'ארומה', near: [34.776, 32.08] });
+    expect(res.map((r) => r.id)).toEqual(['ovt:near', 'ovt:far']);
+    expect(res[0].address).toBe('תל אביב-יפו');
+  });
+});
