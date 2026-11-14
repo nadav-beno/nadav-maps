@@ -5,7 +5,8 @@
 #   scripts/places/build-all.sh <out dir> [release]
 #   PLACES_INPUT=some.parquet scripts/places/build-all.sh <out dir> test   (local check, no download)
 #
-# Writes <out dir>/<region>/places.pmtiles (+ places.json with the release). Needs Node 22,
+# Writes <out dir>/<region>/places.pmtiles (+ places.json with the release) and the search index
+# <out dir>/<region>/places-search/ (scripts/places/search-index.ts). Needs Node 22,
 # Python 3 with duckdb (`pip install duckdb`) and tippecanoe (`sudo apt-get install -y tippecanoe`).
 # Runs in the "Deploy to GitHub Pages" workflow; the files go to <site>/data/<region>/.
 set -euo pipefail
@@ -29,6 +30,8 @@ while read -r id bbox; do
   tippecanoe -q --force -o "$OUT/$id/places.pmtiles" -l place -Z13 -z15 -r1 --drop-densest-as-needed \
     -j '{"place":["any",["<=","mz",13],["all",["==","mz",14],[">=","$zoom",14]],[">=","$zoom",15]]}' \
     --no-tile-stats --attribution='© Overture Maps Foundation' "$WORK/$id.geojsonseq"
+  # The search index (every business by the first letters of its name words, for the search box).
+  node --experimental-strip-types "$ROOT/scripts/places/search-index.ts" "$WORK/$id.geojsonseq" "$OUT/$id"
   printf '{"release":"%s","built":"%s"}\n' "$RELEASE" "$(date -u +%FT%TZ)" > "$OUT/$id/places.json"
   ls -l "$OUT/$id"
   rm -f "$WORK/$id.geojsonseq"
