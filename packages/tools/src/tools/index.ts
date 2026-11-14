@@ -5,6 +5,7 @@ import { defineTool, ProviderError, type ToolContext } from '../define.ts';
 import { findFlight } from '../providers/adsb.ts';
 import { liveAircraft, type Bbox } from '../providers/live-aircraft.ts';
 import { flightRoute } from '../providers/flight-route.ts';
+import { flightTrack } from '../providers/flight-track.ts';
 import { airQualityAt } from '../providers/air-quality.ts';
 import { commonsPhotosNear } from '../providers/commons.ts';
 import { overpassAlongLine, overpassCategory, overpassDetails, overpassIdentify, overpassInside } from '../providers/overpass.ts';
@@ -523,7 +524,16 @@ export const flightRouteTool = defineTool({
   run: (input, ctx) => flightRoute(ctx, input.callsign, input.at as LngLat),
 });
 
-export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, routeGuidance, searchAlongRoute, placesInside, placePhotos, airQuality, transitDirections, transitDeparturesTool, transitVehiclesTool, placeSummary, trafficIncidents, trafficTravelTime, flightPosition, liveFlights, flightRouteTool];
+export const flightTrackTool = defineTool({
+  name: 'flight_track',
+  title: 'המסלול שהמטוס טס',
+  description:
+    'The whole path an aircraft has flown on its current flight, from takeoff until now (or until it landed), by ICAO hex ("4x801d", from live_flights). From adsb.lol\'s public ADS-B trace files (ODbL). Returns time-ordered points with position, time and altitude (m), and whether it has landed; empty when nothing was received today.',
+  input: z.object({ hex: z.string().trim().toLowerCase().regex(/^~?[0-9a-f]{6}$/, 'six hex digits') }),
+  run: (input, ctx) => flightTrack(ctx, input.hex),
+});
+
+export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, routeGuidance, searchAlongRoute, placesInside, placePhotos, airQuality, transitDirections, transitDeparturesTool, transitVehiclesTool, placeSummary, trafficIncidents, trafficTravelTime, flightPosition, liveFlights, flightRouteTool, flightTrackTool];
 
 /**
  * Start loading the region's full names list (typo dictionary) in the background, e.g. in

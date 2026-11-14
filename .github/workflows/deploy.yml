@@ -124,6 +124,9 @@ jobs:
           # OpenSky has no CORS either and doesn't answer the relay's cloud IPs: far views show the
           # middle of the map from adsb.lol instead.
           VITE_OPENSKY_URL: ''
+          # Off until set: a picked aircraft's whole flight (adsb.lol trace files). adsb.lol blocks the
+          # relay's cloud IPs on that host and asks for its keyed API, so this waits for a key.
+          VITE_TRACES_URL: ${{ vars.VITE_TRACES_URL }}
       - name: Add geodata to the site
         run: |
           if ls geodata-out/*/manifest.json >/dev/null 2>&1; then
