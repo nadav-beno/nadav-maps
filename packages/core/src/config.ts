@@ -70,6 +70,14 @@ export interface ProviderConfig {
    * headers, so the browser build sends those requests through it (packages/tools/src/flights-proxy.ts).
    */
   flightsRelayUrl: string;
+  /**
+   * Our ships relay ('' = off): the Supabase Edge Function "ships", which keeps one shared
+   * aisstream.io connection (worldwide AIS, key kept server-side) and caches positions in Postgres
+   * (packages/tools/src/ships-relay.ts).
+   */
+  shipsUrl: string;
+  /** Fintraffic Digitraffic marine API (Baltic AIS, CC BY 4.0, no key, CORS open), '' = off. */
+  digitrafficUrl: string;
   /** Flight routes by callsign (adsb.im's routeset, the database behind adsb.lol's map), '' = off. */
   routesUrl: string;
   /**
@@ -119,6 +127,8 @@ export const DEFAULT_PROVIDERS: ProviderConfig = {
   openskyUrl: 'https://opensky-network.org/api',
   flightsRelayUrl: '',
   routesUrl: 'https://adsb.im/api/0/routeset',
+  shipsUrl: '',
+  digitrafficUrl: 'https://meri.digitraffic.fi',
   planePhotosUrl: 'https://api.planespotters.net/pub/photos',
   // Off unless configured: the web build sets it to its own <base>data/ (providersFromEnv).
   geodataUrl: '',
@@ -149,6 +159,8 @@ export function providersFromEnv(env: Record<string, string | undefined>, prefix
     openskyUrl: env[prefix + 'OPENSKY_URL'] ?? DEFAULT_PROVIDERS.openskyUrl,
     flightsRelayUrl: env[prefix + 'FLIGHTS_RELAY_URL'] ?? DEFAULT_PROVIDERS.flightsRelayUrl,
     routesUrl: env[prefix + 'ROUTES_URL'] ?? DEFAULT_PROVIDERS.routesUrl,
+    shipsUrl: env[prefix + 'SHIPS_URL'] ?? DEFAULT_PROVIDERS.shipsUrl,
+    digitrafficUrl: env[prefix + 'DIGITRAFFIC_URL'] ?? DEFAULT_PROVIDERS.digitrafficUrl,
     planePhotosUrl: env[prefix + 'PLANE_PHOTOS_URL'] ?? DEFAULT_PROVIDERS.planePhotosUrl,
     // Vite's BASE_URL is set in the browser build: default to the data published with the site.
     geodataUrl: withSlash(env[prefix + 'GEODATA_URL'] ?? (env.BASE_URL !== undefined ? `${env.BASE_URL}data/` : DEFAULT_PROVIDERS.geodataUrl)),
@@ -182,12 +194,15 @@ export function withDevOverrides(cfg: ProviderConfig, href: string): ProviderCon
   // A flights relay (e2e tests stub one to try the world view).
   const relay = url.searchParams.get('flightsrelay');
   const relayOk = !!relay && /^https?:\/\/[^\s]+$/.test(relay);
-  if (!tomtom && !here && !atlas && !relayOk) return cfg;
+  const ships = url.searchParams.get('shipsrelay');
+  const shipsOk = !!ships && /^https?:\/\/[^\s]+$/.test(ships);
+  if (!tomtom && !here && !atlas && !relayOk && !shipsOk) return cfg;
   return {
     ...cfg,
     ...(tomtom ? { tomtomKey: tomtom } : {}),
     ...(here ? { hereKey: here } : {}),
     ...(atlas ? { atlasKey: atlas } : {}),
     ...(relayOk ? { flightsRelayUrl: relay } : {}),
+    ...(shipsOk ? { shipsUrl: ships } : {}),
   };
 }

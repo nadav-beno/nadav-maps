@@ -5,6 +5,7 @@ import { defineTool, ProviderError, type ToolContext } from '../define.ts';
 import { findFlight } from '../providers/adsb.ts';
 import { liveAircraft, type Bbox } from '../providers/live-aircraft.ts';
 import { flightRoute } from '../providers/flight-route.ts';
+import { liveShips, shipTrack, vesselInfo } from '../providers/ships.ts';
 import { airQualityAt } from '../providers/air-quality.ts';
 import { commonsPhotosNear } from '../providers/commons.ts';
 import { overpassAlongLine, overpassCategory, overpassDetails, overpassIdentify, overpassInside } from '../providers/overpass.ts';
@@ -500,7 +501,39 @@ export const flightRouteTool = defineTool({
   run: (input, ctx) => flightRoute(ctx, input.callsign, input.at as LngLat),
 });
 
-export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, routeGuidance, searchAlongRoute, placesInside, placePhotos, airQuality, transitDirections, transitDeparturesTool, transitVehiclesTool, placeSummary, trafficIncidents, trafficTravelTime, flightPosition, liveFlights, flightRouteTool];
+const mmsi = z.number().int().min(100_000_000).max(999_999_999).describe('The ship\'s 9-digit MMSI');
+
+export const liveShipsTool = defineTool({
+  name: 'live_ships',
+  title: 'ספינות בזמן אמת',
+  description:
+    'Every ship broadcasting AIS in a map area: name, MMSI, IMO, call sign, position, speed (knots), course, heading, navigational status, AIS ship type code, length and beam (m), draught (m), destination and ETA as typed in by the crew. Sources: aisstream.io worldwide (coastal receivers, through our relay) and Fintraffic Digitraffic for the Baltic (CC BY 4.0). Coverage is best near coasts.',
+  input: z.object({
+    bbox: z
+      .tuple([z.number().min(-540).max(540), z.number().min(-90).max(90), z.number().min(-540).max(540), z.number().min(-90).max(90)])
+      .refine(([w, s, e, n]) => e > w && n > s, 'west < east and south < north')
+      .describe('[west, south, east, north] in degrees'),
+  }),
+  run: (input, ctx) => liveShips(ctx, input.bbox as [number, number, number, number]),
+});
+
+export const shipTrackTool = defineTool({
+  name: 'ship_track',
+  title: 'המסלול של ספינה',
+  description: 'Where a ship has sailed in the last hours (up to 12 h, one point every 3 minutes while moving), oldest first. Empty when we have not heard it move.',
+  input: z.object({ mmsi }),
+  run: (input, ctx) => shipTrack(ctx, input.mmsi),
+});
+
+export const vesselInfoTool = defineTool({
+  name: 'vessel_info',
+  title: 'פרטי ספינה',
+  description: 'What Wikidata and Wikimedia Commons know about a ship by its IMO number: what it is, year built, builder, gross tonnage, owner, operator, port of registry, a Wikipedia article and a free photo. Mostly well-known ships; fields are null when unknown.',
+  input: z.object({ imo: z.number().int().min(1_000_000).max(9_999_999).describe('The 7-digit IMO number') }),
+  run: (input, ctx) => vesselInfo(ctx, input.imo),
+});
+
+export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, routeGuidance, searchAlongRoute, placesInside, placePhotos, airQuality, transitDirections, transitDeparturesTool, transitVehiclesTool, placeSummary, trafficIncidents, trafficTravelTime, flightPosition, liveFlights, flightRouteTool, liveShipsTool, shipTrackTool, vesselInfoTool];
 
 /**
  * Start loading the region's full names list (typo dictionary) in the background, e.g. in

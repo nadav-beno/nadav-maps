@@ -26,6 +26,8 @@ export interface UrlState {
   panel?: string;
   /** A calendar day for screens that show one (timeline), "YYYY-MM-DD". */
   day?: string;
+  /** A ship on the live ships map, by its MMSI ("?panel=ships&ship=428000000"). */
+  ship?: number;
   /** Shown inside another site's iframe ("?embed=1"): just the map and the card. */
   embed?: boolean;
 }
@@ -75,6 +77,8 @@ export function parseUrl(href: string): UrlState {
   if (panel) out.panel = panel;
   const day = p.get('day');
   if (day && /^\d{4}-\d{2}-\d{2}$/.test(day)) out.day = day;
+  const ship = p.get('ship');
+  if (ship && /^\d{9}$/.test(ship)) out.ship = Number(ship);
   if (p.get('embed') === '1') out.embed = true;
   return out;
 }
@@ -106,6 +110,7 @@ export function buildUrl(base: string, s: UrlState): string {
   if (s.list) p.set('list', s.list);
   if (s.panel) p.set('panel', s.panel);
   if (s.day) p.set('day', s.day);
+  if (s.ship) p.set('ship', String(s.ship));
   if (s.embed) p.set('embed', '1');
   url.hash = s.view ? viewHash(s.view.zoom, s.view.center, s.view.bearing, s.view.pitch) : url.hash;
   // URLSearchParams encodes ';' and ','; keep them readable.
