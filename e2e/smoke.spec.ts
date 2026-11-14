@@ -1012,7 +1012,8 @@ test('location: once allowed, it turns on by itself at launch', async ({ page, c
 });
 
 test('transit navigation: walk to the stop, wait, ride, get off, arrive (preview)', async ({ page }) => {
-  await page.goto('./?route=34.7741,32.0787;34.7918,32.0745&mode=transit&simrate=150');
+  // About 25 minutes of journey in about 5 seconds.
+  await page.goto('./?route=34.7741,32.0787;34.7918,32.0745&mode=transit&simrate=300');
   await expect(page.locator('.transit-option')).toHaveCount(2);
   await page.getByRole('button', { name: 'תצוגה מקדימה' }).click();
   const banner = page.locator('.tnav-banner');

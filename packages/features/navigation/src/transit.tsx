@@ -207,11 +207,12 @@ function startSimulation(it: TransitItinerary) {
   const end = new Date(it.end).getTime() + 60_000;
   const rate = simRate();
   simTimer = setInterval(() => {
-    t = Math.min(end, t + rate * 1000);
+    t = Math.min(end, t + rate * 250);
     const pos = positionAt(it, t);
     userLocation.value = { lng: pos[0], lat: pos[1], accuracy: 5, heading: null, speed: 1.3, timestamp: Date.now() };
     onPosition(pos, t);
-  }, 1000);
+    if (t >= end && simTimer) clearInterval(simTimer);
+  }, 250);
 }
 
 // --- start / stop ---
