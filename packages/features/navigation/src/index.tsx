@@ -187,7 +187,10 @@ function cameraFor(s: NavState, pos: LngLat) {
 
 function camera(s: NavState, pos: LngLat, duration = 900) {
   if (!following.peek() || Date.now() < introUntil) return;
-  map.easeTo({ ...cameraFor(s, pos), duration, easing: (t) => t });
+  // The preview moves every second: easing each step keeps the map animating without pause,
+  // which starves slow phones (and CI runners), so it jumps instead.
+  if (s.simulate) map.jumpTo(cameraFor(s, pos));
+  else map.easeTo({ ...cameraFor(s, pos), duration, easing: (t) => t });
 }
 
 /** Pressing "start": the map flies down to the user and tilts into the road, like Google's. */
