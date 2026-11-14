@@ -198,9 +198,11 @@ function tick() {
   if (++ticks % 4 === 0) render();
   else renderSelected();
   const s = selected.peek();
-  if (s && followSelected.peek()) {
+  // Keep a followed ship in view, but only nudge the camera once it has drifted well off centre:
+  // re-centring every second keeps the map (and a phone's CPU) busy for nothing.
+  if (s && followSelected.peek() && !map.isMoving()) {
     const at = map.project(s.lngLat), c = map.project(map.getCenter());
-    if (Math.hypot(at.x - c.x, at.y - c.y) > 2) map.easeTo({ center: s.lngLat, duration: 900, easing: (t) => t });
+    if (Math.hypot(at.x - c.x, at.y - c.y) > 40) map.easeTo({ center: s.lngLat, duration: 900 });
   }
 }
 

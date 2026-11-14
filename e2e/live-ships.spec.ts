@@ -76,6 +76,7 @@ test('live ships: the boat button shows ships by kind, a tap opens the ship card
   await expect(page).toHaveURL(/ship=428000001/);
   // Save it: it shows under "my ships".
   await page.getByRole('button', { name: 'שמירת הספינה' }).click();
+  await expect(page.getByRole('button', { name: 'שמורה' })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'סגירה' }).click();
   await expect(page.getByRole('region', { name: 'הספינות שלי' })).toContainText('ZIM SAMMY');
   // The boat button hides the ships again.
