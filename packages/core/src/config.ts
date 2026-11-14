@@ -73,6 +73,11 @@ export interface ProviderConfig {
   /** Flight routes by callsign (adsb.im's routeset, the database behind adsb.lol's map), '' = off. */
   routesUrl: string;
   /**
+   * Full flown tracks by ICAO hex (adsb.lol's readsb trace files, `<url><xx>/trace_full_<hex>.json`),
+   * '' = off. No CORS, so through the relay.
+   */
+  tracesUrl: string;
+  /**
    * Aircraft photos by ICAO hex (Planespotters.net's public API), '' = off. Read straight from the
    * browser (its terms forbid proxying or re-serving it), so it is not a tool.
    */
@@ -119,6 +124,7 @@ export const DEFAULT_PROVIDERS: ProviderConfig = {
   openskyUrl: 'https://opensky-network.org/api',
   flightsRelayUrl: '',
   routesUrl: 'https://adsb.im/api/0/routeset',
+  tracesUrl: 'https://adsb.lol/data/traces/',
   planePhotosUrl: 'https://api.planespotters.net/pub/photos',
   // Off unless configured: the web build sets it to its own <base>data/ (providersFromEnv).
   geodataUrl: '',
@@ -149,6 +155,7 @@ export function providersFromEnv(env: Record<string, string | undefined>, prefix
     openskyUrl: env[prefix + 'OPENSKY_URL'] ?? DEFAULT_PROVIDERS.openskyUrl,
     flightsRelayUrl: env[prefix + 'FLIGHTS_RELAY_URL'] ?? DEFAULT_PROVIDERS.flightsRelayUrl,
     routesUrl: env[prefix + 'ROUTES_URL'] ?? DEFAULT_PROVIDERS.routesUrl,
+    tracesUrl: env[prefix + 'TRACES_URL'] ?? DEFAULT_PROVIDERS.tracesUrl,
     planePhotosUrl: env[prefix + 'PLANE_PHOTOS_URL'] ?? DEFAULT_PROVIDERS.planePhotosUrl,
     // Vite's BASE_URL is set in the browser build: default to the data published with the site.
     geodataUrl: withSlash(env[prefix + 'GEODATA_URL'] ?? (env.BASE_URL !== undefined ? `${env.BASE_URL}data/` : DEFAULT_PROVIDERS.geodataUrl)),

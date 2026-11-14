@@ -1,9 +1,9 @@
 import { computed, effect, signal } from '@preact/signals';
 import { useEffect, useState } from 'preact/hooks';
 import type { Map as MapLibreMap } from 'maplibre-gl';
-import { distance, formatArrival, formatDuration, greatCircle, type LngLat } from '@nm/core';
+import { distance, formatArrival, formatClock, formatDuration, greatCircle, type LngLat } from '@nm/core';
 import { back, ensureLayer, EMPTY, Icon, isDark, open, providers, setGeoJSON, sheet, units, viewStack, type FeatureContext, type ViewProps } from '@nm/core/app';
-import { clampBbox, coverCircles, flightPosition, flightRouteTool, liveFlights, tools, type AircraftPosition, type Bbox, type FlightRoute, type LiveAircraft } from '@nm/tools';
+import { clampBbox, coverCircles, flightPosition, flightRouteTool, flightTrackTool, liveFlights, tools, type AircraftPosition, type Bbox, type FlightRoute, type LiveAircraft, type TrackPoint } from '@nm/tools';
 import { altitudeReadout, headingReadout, speedReadout } from './format.ts';
 import { addLiveIcons, altitudeBand, BANDS, iconId } from './live-icons.ts';
 import { EMERGENCY_SQUAWKS, filters, GROUPS, isFiltered, isSaved, KIND_NAME, NO_FILTERS, passes, savedFlights, setFilters, toggleSaved, type Group, type SavedFlight } from './live-filters.ts';
@@ -32,7 +32,11 @@ export const selectedHex = signal<string | null>(null);
 export const followSelected = signal(true);
 /** Extra details for the picked aircraft (type, registration) when the wide feed lacks them. */
 const details = signal<Record<string, AircraftPosition>>({});
-const trail = signal<{ hex: string; points: LngLat[] }>({ hex: '', points: [] });
+/** Positions of the picked aircraft received while it is picked (they extend the flown track). */
+const trail = signal<{ hex: string; points: TrailPoint[] }>({ hex: '', points: [] });
+type TrailPoint = Pick<TrackPoint, 'lngLat' | 'altitudeM' | 'onGround'>;
+/** The whole flight so far, from takeoff (adsb.lol's trace files); null points = still loading. */
+export const flown = signal<{ hex: string; points: TrackPoint[] | null; landed: boolean } | null>(null);
 /** Origin and destination of the picked flight (null route = unknown). */
 const route = signal<{ hex: string; route: FlightRoute | null } | null>(null);
 const now = signal(Date.now());
@@ -206,7 +210,8 @@ function noteTrail() {
   const t = trail.peek();
   const pts = t.hex === hex ? t.points : [];
   const lastPt = pts[pts.length - 1];
-  if (!lastPt || lastPt[0] !== a.lngLat[0] || lastPt[1] !== a.lngLat[1]) trail.value = { hex, points: [...pts, a.lngLat].slice(-500) };
+  if (!lastPt || lastPt.lngLat[0] !== a.lngLat[0] || lastPt.lngLat[1] !== a.lngLat[1])
+    trail.value = { hex, points: [...pts, { lngLat: a.lngLat, altitudeM: a.altitudeM, onGround: a.onGround }].slice(-500) };
 }
 
 /** Type and registration for a plane picked from the wide feed: ask the close-up feed around it. */
@@ -220,6 +225,18 @@ async function loadDetails(hex: string) {
     if (found) details.value = { ...details.peek(), [hex]: found };
   } catch {
     /* details are a bonus */
+  }
+}
+
+/** The path flown since takeoff, so the line starts at the departure airport, not where we first saw it. */
+async function loadTrack(hex: string) {
+  if (flown.peek()?.hex === hex || !providers.peek().tracesUrl) return;
+  flown.value = { hex, points: null, landed: false };
+  try {
+    const t = await tools().call(flightTrackTool, { hex });
+    if (selectedHex.peek() === hex) flown.value = { hex, points: t.points, landed: t.landed };
+  } catch {
+    if (selectedHex.peek() === hex) flown.value = { hex, points: [], landed: false };
   }
 }
 
@@ -264,6 +281,7 @@ function stop() {
   feedState.value = 'idle';
   selectedHex.value = null;
   trail.value = { hex: '', points: [] };
+  flown.value = null;
   route.value = null;
   render();
 }
@@ -346,12 +364,43 @@ function selectedData(): Parameters<typeof setGeoJSON>[2] {
     for (const [end, ap] of [['from', r.route.from], ['to', r.route.to]] as const)
       features.push({ type: 'Feature', properties: { kind: 'airport', end, code: ap.iata ?? ap.icao ?? '' }, geometry: { type: 'Point', coordinates: ap.lngLat } });
   }
+  const past: TrailPoint[] = [];
+  const fl = flown.peek();
+  if (fl?.hex === a.hex && fl.points) past.push(...fl.points);
   if (t.hex === a.hex) {
-    const line = [...t.points, a.lngLat];
-    if (line.length >= 2) features.push({ type: 'Feature', properties: { kind: 'trail' }, geometry: { type: 'LineString', coordinates: line } });
+    // Live positions newer than the trace (it is a few minutes behind).
+    const lastT = fl?.hex === a.hex && fl.points?.length ? fl.points[fl.points.length - 1] : null;
+    const from = lastT ? t.points.findIndex((p) => distance(p.lngLat, lastT.lngLat) < 50) : -1;
+    past.push(...t.points.slice(from + 1));
   }
+  past.push({ lngLat: a.lngLat, altitudeM: a.altitudeM, onGround: a.onGround });
+  features.push(...trailSegments(past));
   features.push({ type: 'Feature', properties: { kind: 'plane', hex: a.hex, cs: a.callsign, h: a.track ?? 0, i: iconFor(a) }, geometry: { type: 'Point', coordinates: a.lngLat } });
   return { type: 'FeatureCollection', features } as Parameters<typeof setGeoJSON>[2];
+}
+
+/**
+ * The flown path as runs of one altitude band each, coloured like the planes (low = orange,
+ * cruise = blue/purple), so the climb and the descent show at a glance.
+ */
+export function trailSegments(points: TrailPoint[]): unknown[] {
+  const out: unknown[] = [];
+  let run: LngLat[] = [];
+  let band = -1;
+  const flush = () => {
+    if (run.length >= 2) out.push({ type: 'Feature', properties: { kind: 'trail', c: BANDS[band].color }, geometry: { type: 'LineString', coordinates: run } });
+  };
+  for (const p of points) {
+    const b = altitudeBand(p);
+    if (b !== band && run.length) {
+      run.push(p.lngLat);
+      flush();
+      run = [run[run.length - 1]];
+    } else run.push(p.lngLat);
+    band = b;
+  }
+  flush();
+  return out;
 }
 
 function render() {
@@ -413,12 +462,20 @@ function addLayers(m: MapLibreMap) {
     paint: { 'line-color': accent, 'line-width': 2, 'line-dasharray': [1.5, 2], 'line-opacity': 0.8 },
   }, null);
   ensureLayer(m, {
+    id: 'live-flights-trail-casing',
+    type: 'line',
+    source: SEL,
+    filter: kind('trail'),
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': dark ? '#1f1f1f' : '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 2, 3.5, 10, 6] as never, 'line-opacity': 0.85 },
+  }, null);
+  ensureLayer(m, {
     id: 'live-flights-trail',
     type: 'line',
     source: SEL,
     filter: kind('trail'),
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': accent, 'line-width': 3, 'line-opacity': 0.9 },
+    paint: { 'line-color': ['coalesce', ['get', 'c'], accent] as never, 'line-width': ['interpolate', ['linear'], ['zoom'], 2, 2, 10, 3.5] as never },
   }, null);
   ensureLayer(m, {
     id: 'live-flights-airports',
@@ -488,6 +545,7 @@ export function setupLive(ctx: FeatureContext) {
     void selectedHex.value;
     void route.value;
     void trail.value;
+    void flown.value;
     void feed.value;
     void filters.value;
     render();
@@ -695,6 +753,49 @@ function RouteLine({ a }: { a: AircraftPosition }) {
         )}
       </div>
     </div>
+  );
+}
+
+/** Zoom out to the whole flight: from takeoff, through where it is now, to where it lands. */
+function showWholeFlight(a: AircraftPosition) {
+  const pts = flown.peek()?.points ?? [];
+  const all: LngLat[] = [...pts.map((p) => p.lngLat), a.lngLat];
+  const r = route.peek();
+  if (r?.hex === a.hex && r.route) all.push(r.route.to.lngLat);
+  let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity;
+  for (const [x, y] of all) {
+    w = Math.min(w, x); e = Math.max(e, x); s = Math.min(s, y); n = Math.max(n, y);
+  }
+  followSelected.value = false;
+  // Across the antimeridian a box would wrap the wrong way round: just centre on the plane.
+  if (e - w > 180) return map.easeTo({ center: a.lngLat, zoom: 3 });
+  map.fitBounds([[w, s], [e, n]], { padding: 60, maxZoom: 11, duration: 800 });
+}
+
+/** "Took off 08:12 · 1,240 km flown", under the route. */
+function FlownLine({ a }: { a: AircraftPosition }) {
+  const fl = flown.value;
+  if (!fl || fl.hex !== a.hex) return null;
+  if (!fl.points) return <p class="live-flown small muted" role="status">טוענים את המסלול שהמטוס עשה…</p>;
+  const pts = fl.points;
+  if (pts.length < 2) return null;
+  let m = 0;
+  for (let i = 1; i < pts.length; i++) m += distance(pts[i - 1].lngLat, pts[i].lngLat);
+  m += distance(pts[pts.length - 1].lngLat, a.lngLat);
+  const km = units.value === 'imperial' ? `${Math.round(m / 1609.34).toLocaleString('en-US')} מייל` : `${Math.round(m / 1000).toLocaleString('en-US')} ק״מ`;
+  const first = pts[0];
+  const clock = (t: number) => formatClock(new Date(t).toISOString());
+  const tookOff = first.onGround || (first.altitudeM ?? Infinity) < 1500;
+  return (
+    <p class="live-flown small muted">
+      <Icon name="flight_takeoff" size={16} />
+      {tookOff ? 'המריא' : 'נקלט לראשונה'} ב־<span dir="ltr">{clock(first.t)}</span>
+      {' · '}
+      {fl.landed ? 'נחת ב־' : ''}
+      {fl.landed && <span dir="ltr">{clock(pts[pts.length - 1].t)}</span>}
+      {fl.landed ? ' · ' : ''}
+      טס <span dir="ltr">{km}</span>
+    </p>
   );
 }
 
@@ -917,6 +1018,7 @@ export function AircraftView({ view }: ViewProps<{ hex: string }>) {
     if (selectedHex.peek() !== hex) selectedHex.value = hex;
     void loadDetails(hex);
     void loadRoute(hex);
+    void loadTrack(hex);
     if (sheet.peek() === 'peek') sheet.value = 'half';
     // Leaving the card (back, or another screen replacing it) un-picks the plane.
     return () => {
@@ -985,6 +1087,7 @@ export function AircraftView({ view }: ViewProps<{ hex: string }>) {
         </p>
       )}
       <RouteLine a={a} />
+      <FlownLine a={a} />
       <div class="flight-grid">
         <div class="flight-stat">
           <div class="flight-stat-label">
@@ -1051,6 +1154,12 @@ export function AircraftView({ view }: ViewProps<{ hex: string }>) {
           <Icon name="my_location" />
           {followSelected.value ? 'המפה עוקבת' : 'מעקב כבוי'}
         </button>
+        {(flown.value?.hex === a.hex && (flown.value.points?.length ?? 0) > 1) && (
+          <button class="chip" onClick={() => showWholeFlight(a)}>
+            <Icon name="route" />
+            כל המסלול
+          </button>
+        )}
         <button class="chip" aria-pressed={isSaved(a)} onClick={() => toggleSaved(a)}>
           <Icon name={isSaved(a) ? 'bookmark' : 'bookmark_outline'} />
           {isSaved(a) ? 'שמורה' : 'שמירת הטיסה'}
@@ -1058,12 +1167,12 @@ export function AircraftView({ view }: ViewProps<{ hex: string }>) {
         {a.callsign && (
           <a class="chip" href={`https://globe.adsb.lol/?icao=${encodeURIComponent(a.hex)}`} target="_blank" rel="noopener">
             <Icon name="open_in_new" />
-            מסלול מלא ב-adsb.lol
+            ב-adsb.lol
           </a>
         )}
       </div>
       <p class="muted small flight-privacy">
-        הקו הכחול הוא הדרך שהמטוס עשה מאז שפתחתם אותו. בין העדכונים המטוס ממשיך לנוע לפי המהירות והכיוון האחרונים.
+        הקו הצבעוני הוא כל הדרך שהמטוס עשה מאז ההמראה, בצבע הגובה שבו טס (מ-adsb.lol). בין העדכונים המטוס ממשיך לנוע לפי המהירות והכיוון האחרונים.
       </p>
     </div>
   );
