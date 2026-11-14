@@ -401,10 +401,10 @@ test('moving the map offers "search this area" and runs the search again', async
   await expect(page.locator('.list').getByText('קפה לנדוור')).toBeVisible();
   const pill = page.getByRole('button', { name: 'חיפוש באזור הזה' });
   await expect(pill).toBeHidden();
-  // Drag the map well past a third of its width (on phones, above the half-open sheet).
+  // Drag the map well past a third of its width (on phones, above the half-open sheet and clear of the map buttons).
   const desktop = info.project.name === 'desktop';
   const y = desktop ? 400 : 230;
-  const [x0, x1] = desktop ? [80, 480] : [40, 330];
+  const [x0, x1] = desktop ? [80, 480] : [80, 370];
   await page.mouse.move(x0, y);
   await page.mouse.down();
   // Few steps: each pointer move re-renders the map, which is slow with software WebGL in CI.
