@@ -51,4 +51,16 @@ describe('navigation engine', () => {
     expect(said.has(1)).toBe(true);
     expect(promptDue('car', 50, said)).toBeNull();
   });
+  it('in town a car hears the turn at 500 m, 150 m and at the turn, like Google', () => {
+    const said = new Set<number>();
+    const town = 40 / 3.6;
+    expect(promptDue('car', 1400, said, town)).toBeNull();
+    expect(promptDue('car', 480, said, town)).toBe(0);
+    said.add(0);
+    expect(promptDue('car', 140, said, town)).toBe(1);
+    said.add(1);
+    expect(promptDue('car', 30, said, town)).toBe(2);
+    // On the highway, the long-range prompts.
+    expect(promptDue('car', 1400, new Set(), 100 / 3.6)).toBe(0);
+  });
 });

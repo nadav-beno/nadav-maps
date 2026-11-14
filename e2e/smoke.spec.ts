@@ -1010,3 +1010,17 @@ test('location: once allowed, it turns on by itself at launch', async ({ page, c
   await expect(page.getByRole('heading', { name: 'הרשאות מיקום ותנועה' })).toBeVisible();
   await expect(page.locator('.perm-row').first()).toContainText('מאושר');
 });
+
+test('transit navigation: walk to the stop, wait, ride, get off, arrive (preview)', async ({ page }) => {
+  await page.goto('./?route=34.7741,32.0787;34.7918,32.0745&mode=transit&simrate=150');
+  await expect(page.locator('.transit-option')).toHaveCount(2);
+  await page.getByRole('button', { name: 'תצוגה מקדימה' }).click();
+  const banner = page.locator('.tnav-banner');
+  await expect(banner).toContainText('הליכה לתחנה דיזנגוף/ארלוזורוב');
+  await expect(banner.locator('.line-chip')).toContainText('18');
+  await expect(page.locator('.tnav-legs li')).toHaveCount(3);
+  await expect(banner).toContainText('רדו בתחנה עזריאלי', { timeout: 15000 });
+  await expect(banner).toContainText('הגעתם', { timeout: 15000 });
+  await page.getByRole('button', { name: 'סיום' }).click();
+  await expect(page.locator('.tnav-banner')).toHaveCount(0);
+});

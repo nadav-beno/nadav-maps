@@ -46,7 +46,8 @@ import {
   type ViewProps,
 } from '@nm/core/app';
 import { getDirections, placeDetails, routeGuidance, searchAlongRoute, searchNearby, spokenInstruction, tools, type AlongPlace } from '@nm/tools';
-import { cumulative, progressOn, promptDue, type Progress } from './engine.ts';
+import { cumulative, progressOn, promptDue, PROMPTS, type Progress } from './engine.ts';
+import { setupTransitNav } from './transit.tsx';
 
 interface NavState {
   route: Route;
@@ -377,9 +378,17 @@ function onPosition(pos: LngLat, accuracy: number) {
     said = new Set();
     saidFor = p.nextIndex;
   }
-  const due = p.next ? promptDue(s.route.mode, p.toNextM, said) : null;
+  const due = p.next ? promptDue(s.route.mode, p.toNextM, said, userLocation.peek()?.speed) : null;
   if (due !== null && p.next) {
     said.add(due);
+    // On foot or by bike the phone is in a pocket: a buzz at each prompt, a double one at the turn.
+    if (!isRoad(s) && !s.simulate) {
+      try {
+        navigator.vibrate?.(due === PROMPTS[s.route.mode].length - 1 ? [200, 100, 200] : 150);
+      } catch {
+        /* no vibration */
+      }
+    }
     let text = spokenInstruction(p.next, p.toNextM > 60 ? p.toNextM : undefined);
     if (p.after && p.toNextM < 150 && distanceBetweenSteps(s, p) < 120) text += `, ואז ${spokenInstruction(p.after)}`;
     speak(text);
@@ -982,6 +991,7 @@ export default defineFeature({
     map = ctx.map;
     ctx.registerView('navigate', NavigateView);
     ctx.registerView('nav-settings', NavSettingsView);
+    setupTransitNav(ctx, { voice: () => settings.peek().voice });
     ctx.registerSlot('overlay', Overlay, 10);
     ctx.registerMenuItem({ id: 'nav-settings', label: 'הגדרות ניווט', icon: 'navigation', order: 55, run: () => open({ kind: 'nav-settings' }) });
     ctx.registerHomeSection({ id: 'parking', order: 5, Component: ParkingCard });
