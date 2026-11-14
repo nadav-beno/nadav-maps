@@ -44,6 +44,8 @@ export const RELAY_ROUTES: { prefix: string; post?: boolean; cacheMs: number }[]
   { prefix: 'https://api.adsb.lol/v2/callsign/', cacheMs: 4_000 },
   { prefix: 'https://adsb.im/api/0/routeset', post: true, cacheMs: 0 },
   { prefix: 'https://opensky-network.org/api/states/all', cacheMs: 30_000 },
+  // A picked aircraft's whole flight (readsb trace files; up to a few MB, so not kept in memory).
+  { prefix: 'https://adsb.lol/data/traces/', cacheMs: 0 },
   // Live bus arrivals at Israeli stops (SIRI stop monitoring via curlbus, no CORS headers).
   { prefix: 'https://curlbus.app/nearby?', cacheMs: 6 * 3600_000 },
   { prefix: 'https://curlbus.app/', cacheMs: 15_000 },

@@ -149,11 +149,19 @@ function draw(s: TransitNav | null, pos?: LngLat) {
   setGeoJSON(map, 'tnav-me', s && pos && s.simulate ? { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: pos } } : EMPTY);
 }
 
-function camera(s: TransitNav, pos: LngLat, duration = 800) {
+let lastCam: { pos: LngLat; zoom: number } | null = null;
+
+function camera(s: TransitNav, pos: LngLat, duration = 800, force = false) {
   if (!following.peek()) return;
   // On foot close in; on a ride further out, so the stop to get off at comes into view early.
   const zoom = s.state.phase === 'ride' ? (s.state.toEndM < 1200 ? 15.5 : 14) : 17;
-  map.easeTo({ center: pos, zoom, pitch: 0, bearing: 0, padding: { top: 200, bottom: 240, left: 0, right: 0 }, duration });
+  // Only when the view would change visibly: a map that never stops animating starves slow phones.
+  if (!force && lastCam && lastCam.zoom === zoom && distance(lastCam.pos, pos) < (zoom >= 17 ? 15 : 60)) return;
+  lastCam = { pos, zoom };
+  const opts = { center: pos, zoom, pitch: 0, bearing: 0, padding: { top: 200, bottom: 240, left: 0, right: 0 } };
+  // The sped-up preview jumps instead of easing: at 4 steps a second the animations never end.
+  if (s.simulate && !force) map.jumpTo(opts);
+  else map.easeTo({ ...opts, duration });
 }
 
 function here(s: TransitNav): LngLat | null {
@@ -165,7 +173,7 @@ function recenter() {
   following.value = true;
   const s = transitNav.peek();
   const p = s && here(s);
-  if (s && p) camera(s, p, 600);
+  if (s && p) camera(s, p, 600, true);
 }
 
 // --- preview: the journey played back quickly, the clock sped up ---
@@ -232,7 +240,8 @@ function start(it: TransitItinerary, destination: Place | null, simulate: boolea
   speak(first?.kind === 'walk' && ride ? `יוצאים לדרך. הלכו לתחנה ${ride.from.name}` : 'יוצאים לדרך');
   draw(s);
   const p = here(s);
-  if (p) camera(s, p, 1200);
+  lastCam = null;
+  if (p) camera(s, p, 1200, true);
   simulatingLocation.value = simulate;
   if (simulate) {
     hideLocationDot.value = true;

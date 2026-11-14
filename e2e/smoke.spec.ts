@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { stubGeodata, stubNetwork } from './stubs.ts';
 import { encodePlusCode } from '../packages/core/src/plus-code.ts';
-import { adsbAreaResponse, adsbResponse, fakeGps, FLIGHT_FIXES, openskyResponse, routesetResponse, worldResponse } from './flight-fixture.ts';
+import { adsbAreaResponse, adsbResponse, fakeGps, FLIGHT_FIXES, openskyResponse, routesetResponse, traceResponse, worldResponse } from './flight-fixture.ts';
 import { TAKEOUT_DAY, TAKEOUT_FIXTURE } from './timeline-fixture.ts';
 
 test.beforeEach(async ({ page }) => {
@@ -401,10 +401,10 @@ test('moving the map offers "search this area" and runs the search again', async
   await expect(page.locator('.list').getByText('קפה לנדוור')).toBeVisible();
   const pill = page.getByRole('button', { name: 'חיפוש באזור הזה' });
   await expect(pill).toBeHidden();
-  // Drag the map well past a third of its width (on phones, above the half-open sheet).
+  // Drag the map well past a third of its width (on phones, above the half-open sheet and clear of the map buttons).
   const desktop = info.project.name === 'desktop';
   const y = desktop ? 400 : 230;
-  const [x0, x1] = desktop ? [80, 480] : [40, 330];
+  const [x0, x1] = desktop ? [80, 480] : [80, 370];
   await page.mouse.move(x0, y);
   await page.mouse.down();
   // Few steps: each pointer move re-renders the map, which is slow with software WebGL in CI.
@@ -675,6 +675,10 @@ test('live flights: planes around the map close up, a plane card, and the whole 
     return r.fulfill({ json: adsbAreaResponse(), headers: cors });
   });
   await page.route('https://adsb.im/api/0/routeset', (r) => r.fulfill({ json: routesetResponse(), headers: cors }));
+  await page.route('https://adsb.lol/data/traces/**', (r) => {
+    asked.push(r.request().url());
+    return r.request().url().includes('trace_full_738075') ? r.fulfill({ json: traceResponse(), headers: cors }) : r.fulfill({ status: 404, body: '', headers: cors });
+  });
   await page.route('https://opensky-network.org/**', (r) => {
     asked.push(r.request().url());
     return r.fulfill({ json: openskyResponse(Math.floor(Date.now() / 1000)), headers: cors });
@@ -713,6 +717,20 @@ test('live flights: planes around the map close up, a plane card, and the whole 
   await expect(page.locator('.live-route')).toContainText('TLV');
   await expect(page.locator('.live-route')).toContainText('JFK');
   await expect(page.locator('.live-route')).toContainText('נשארו');
+  // The whole way it flew since takeoff, coloured by altitude: from adsb.lol's trace files, by hex only.
+  await expect(page.locator('.live-flown')).toContainText('המריא');
+  await expect(page.locator('.live-flown')).toContainText('טס');
+  expect(asked).toContain('https://adsb.lol/data/traces/75/trace_full_738075.json');
+  const trail = () => page.evaluate(() => {
+    const map = (window as unknown as { map: MapLike }).map;
+    const fs = map.queryRenderedFeatures({ layers: ['live-flights-trail'] }) as unknown as { properties: { c: string } }[];
+    return [...new Set(fs.map((f) => f.properties.c))].length;
+  });
+  // Ground grey, then the low and climbing bands: more than one colour.
+  await expect.poll(trail, { timeout: 10_000 }).toBeGreaterThan(1);
+  // One tap shows the whole flight, takeoff to destination, and stops following the plane.
+  await page.getByRole('button', { name: 'כל המסלול' }).click();
+  await expect(page.getByRole('button', { name: 'מעקב כבוי' })).toBeVisible();
   await page.getByRole('button', { name: 'סגירה' }).click();
 
   // The whole world: OpenSky, one call without a box.
@@ -1012,7 +1030,8 @@ test('location: once allowed, it turns on by itself at launch', async ({ page, c
 });
 
 test('transit navigation: walk to the stop, wait, ride, get off, arrive (preview)', async ({ page }) => {
-  // About 25 minutes of journey in about 5 seconds.
+  // About 25 minutes of journey in about 5 seconds (slower on a busy phone runner).
+  test.slow();
   await page.goto('./?route=34.7741,32.0787;34.7918,32.0745&mode=transit&simrate=300');
   await expect(page.locator('.transit-option')).toHaveCount(2);
   await page.getByRole('button', { name: 'תצוגה מקדימה' }).click();
@@ -1020,8 +1039,8 @@ test('transit navigation: walk to the stop, wait, ride, get off, arrive (preview
   await expect(banner).toContainText('הליכה לתחנה דיזנגוף/ארלוזורוב');
   await expect(banner.locator('.line-chip')).toContainText('18');
   await expect(page.locator('.tnav-legs li')).toHaveCount(3);
-  await expect(banner).toContainText('רדו בתחנה עזריאלי', { timeout: 15000 });
-  await expect(banner).toContainText('הגעתם', { timeout: 15000 });
+  await expect(banner).toContainText('רדו בתחנה עזריאלי', { timeout: 30000 });
+  await expect(banner).toContainText('הגעתם', { timeout: 30000 });
   await page.getByRole('button', { name: 'סיום' }).click();
   await expect(page.locator('.tnav-banner')).toHaveCount(0);
 });

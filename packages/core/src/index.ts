@@ -29,3 +29,4 @@ export * from './transit-nav.ts';
 export * from './result-filters.ts';
 export * from './vehicles.ts';
 export * from './places-index.ts';
+export * from './ais.ts';
