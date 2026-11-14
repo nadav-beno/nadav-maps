@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { stubNetwork } from './stubs.ts';
 
 test.beforeEach(async ({ page }) => {
@@ -20,9 +20,7 @@ function relayShips() {
   ];
 }
 
-test('live ships: the boat button shows ships by kind, a tap opens the ship card with destination, flag and track', async ({ page }) => {
-  test.setTimeout(60_000);
-  const bodies: Record<string, unknown>[] = [];
+async function stubRelay(page: Page, bodies: Record<string, unknown>[]) {
   await page.route('https://relay.test/ships', (r) => {
     if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: { ...cors, 'access-control-allow-headers': 'content-type' } });
     const body = r.request().postDataJSON() as Record<string, unknown>;
@@ -36,6 +34,15 @@ test('live ships: the boat button shows ships by kind, a tap opens the ship card
       headers: cors,
     }),
   );
+}
+
+// Phones in CI draw the map in software and are slow: give these room.
+const SLOW = 120_000;
+
+test('live ships: the boat button shows ships by kind, with a legend and filters', async ({ page }) => {
+  test.setTimeout(SLOW);
+  const bodies: Record<string, unknown>[] = [];
+  await stubRelay(page, bodies);
   await page.goto('./?shipsrelay=https://relay.test/ships#11/32.85/34.95');
   await page.getByRole('button', { name: 'ספינות בזמן אמת' }).click();
   await expect(page.locator('.live-status')).toContainText('5 ספינות במפה', { timeout: 15_000 });
@@ -55,6 +62,16 @@ test('live ships: the boat button shows ships by kind, a tap opens the ship card
   await page.getByRole('button', { name: 'רק בתנועה' }).click();
   await expect(page.locator('.live-status')).toContainText('3 ספינות במפה');
   await page.getByRole('button', { name: 'הצגת הכול' }).click();
+  await expect(page.locator('.live-status')).toContainText('5 ספינות במפה');
+});
+
+test('live ships: a ship found by name opens its card with destination, flag, track and facts', async ({ page }) => {
+  test.setTimeout(SLOW);
+  const bodies: Record<string, unknown>[] = [];
+  await stubRelay(page, bodies);
+  await page.goto('./?shipsrelay=https://relay.test/ships#11/32.85/34.95');
+  await page.getByRole('button', { name: 'ספינות בזמן אמת' }).click();
+  await expect(page.locator('.live-status')).toContainText('5 ספינות במפה', { timeout: 15_000 });
   // Find a ship by name and open its card.
   await page.getByRole('textbox', { name: 'חיפוש ספינה' }).fill('zim');
   await page.getByRole('button', { name: /ZIM SAMMY/ }).click();
