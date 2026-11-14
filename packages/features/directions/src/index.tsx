@@ -505,8 +505,32 @@ function LegChips({ it }: { it: TransitItinerary }) {
   );
 }
 
-function TransitOption({ it, i }: { it: TransitItinerary; i: number }) {
+/** Seconds from now until the journey's first ride leaves (or until it starts, walking only). */
+function waitS(it: TransitItinerary): number {
   const firstRide = it.legs.find((l) => l.kind === 'ride');
+  return (new Date(firstRide?.start ?? it.start).getTime() - Date.now()) / 1000;
+}
+
+/**
+ * Leaving now but nothing runs for a while (a Saturday, a holiday, the middle of the night):
+ * say so plainly, instead of a list that starts at 17:27 as if that were now.
+ */
+function NoServiceNote({ its }: { its: TransitItinerary[] }) {
+  if (when.value.kind !== 'now' || !its.length) return null;
+  const soonest = Math.min(...its.map(waitS));
+  if (soonest < 60 * 60) return null;
+  const first = its.reduce((a, b) => (waitS(b) < waitS(a) ? b : a));
+  const ride = first.legs.find((l) => l.kind === 'ride');
+  return (
+    <p class="note warn transit-gap" role="status">
+      <Icon name="schedule" size={18} /> אין כרגע שירות במסלול הזה. הנסיעה הקרובה יוצאת ב-{clock(ride?.start ?? first.start)}, בעוד {formatDuration(soonest)}.
+    </p>
+  );
+}
+
+function TransitOption({ it, i, onDetails }: { it: TransitItinerary; i: number; onDetails: () => void }) {
+  const firstRide = it.legs.find((l) => l.kind === 'ride');
+  const wait = waitS(it);
   const sub = [
     firstRide ? `יציאה ב-${clock(firstRide.start)} מ${firstRide.from.name}` : 'הליכה בלבד',
     it.walkM > 0 ? `הליכה ${formatDistance(it.walkM, units.value)}` : '',
@@ -517,9 +541,11 @@ function TransitOption({ it, i }: { it: TransitItinerary; i: number }) {
       class={`route-option transit-option ${i === active.value ? 'active' : ''}`}
       aria-pressed={i === active.value}
       onClick={() => {
+        // Like Google: picking an option opens its step-by-step.
         active.value = i;
         drawRoutes();
         fitRoutes();
+        onDetails();
       }}
     >
       <span class="tr-span" dir="ltr">
@@ -535,6 +561,7 @@ function TransitOption({ it, i }: { it: TransitItinerary; i: number }) {
         )}
         {sub.join(' · ')}
       </span>
+      {when.value.kind === 'now' && wait >= 20 * 60 && <span class="tr-wait small">יוצא בעוד {formatDuration(wait)}</span>}
     </button>
   );
 }
@@ -1061,11 +1088,19 @@ function DirectionsView(_: ViewProps) {
           ))}
         </ul>
       )}
+      {!loading.value && transit && <NoServiceNote its={its} />}
       {!loading.value && transit && its.length > 0 && (
         <ul class="route-options">
           {its.map((x, i) => (
             <li key={i}>
-              <TransitOption it={x} i={i} />
+              <TransitOption
+                it={x}
+                i={i}
+                onDetails={() => {
+                  showSteps.value = true;
+                  requestAnimationFrame(() => document.querySelector('.tr-steps')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+                }}
+              />
             </li>
           ))}
         </ul>
