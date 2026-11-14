@@ -274,6 +274,7 @@ export function overturePlace(props: Record<string, unknown>, lng: number, lat: 
     lat,
     address,
     category: props.basic_category ? { key: 'overture', value: String(props.basic_category) } : undefined,
+    ...(brand ? { brand } : {}),
     contact: {
       phone: phones[0],
       website: websites[0],

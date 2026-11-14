@@ -25,6 +25,34 @@ test('search with autocomplete opens a place card with details', async ({ page }
   await expect(page).toHaveURL(/place=osm:n2002/);
 });
 
+test('search like Google: a chain row for all branches, and what you opened comes back first', async ({ page }) => {
+  const branch = (id: number, lng: number, lat: number, street: string) => ({
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [lng, lat] },
+    properties: { osm_type: 'N', osm_id: id, osm_key: 'amenity', osm_value: 'cafe', name: 'ארומה', street, city: 'תל אביב-יפו', country: 'ישראל', countrycode: 'IL' },
+  });
+  await page.route('https://photon.komoot.io/api**', (r) => {
+    const q = new URL(r.request().url()).searchParams.get('q') ?? '';
+    const features = q.startsWith('ארו') ? [branch(7001, 34.78, 32.08, 'דיזנגוף'), branch(7002, 34.79, 32.07, 'אבן גבירול')] : [];
+    return r.fulfill({ json: { type: 'FeatureCollection', features } });
+  });
+  await page.goto('./#14/32.08/34.78');
+  const box = page.getByRole('searchbox', { name: 'חיפוש מקום או כתובת' });
+  await box.fill('ארומ');
+  const chain = page.getByRole('option').filter({ hasText: 'כל הסניפים' });
+  await expect(chain).toBeVisible();
+  await chain.click();
+  await expect(page.locator('div.result').filter({ hasText: 'ארומה' })).toHaveCount(2, { timeout: 10_000 });
+  await page.locator('div.result').filter({ hasText: 'ארומה' }).first().click();
+  await expect(page.getByRole('heading', { name: 'ארומה' })).toBeVisible();
+  // Back on the map: the place opened and the search both wait in the history.
+  await box.fill('');
+  await box.focus();
+  await expect(page.locator('.suggestion.history').filter({ hasText: 'ארומה' }).first()).toBeVisible();
+  await box.fill('א');
+  await expect(page.locator('.suggestion.history').filter({ hasText: 'ארומה' }).first()).toBeVisible();
+});
+
 test('route from a shared link shows alternatives and steps', async ({ page }) => {
   await page.goto('./?route=34.7741,32.0787;34.7918,32.0745&mode=car');
   await expect(page.locator('.route-option .route-time').first()).toHaveText('4 דק׳');

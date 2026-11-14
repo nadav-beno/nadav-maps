@@ -28,6 +28,8 @@ export interface Place {
   extent?: BBox;
   /** Set by search when the query had a typo: the corrected query that found this place. */
   correctedQuery?: string;
+  /** The chain a business belongs to ("ארומה"), when the data says so (Overture brand). */
+  brand?: string;
 }
 
 export interface PlaceDetails extends Place {

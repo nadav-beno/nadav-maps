@@ -7,6 +7,7 @@ import {
   cuisinesOf,
   distance,
   droppedPin,
+  findChain,
   filterOpenNow,
   formatCoords,
   formatDistance,
@@ -14,6 +15,7 @@ import {
   lightKey,
   makeIndex,
   matchLocalPlaces,
+  matchText,
   mergeSuggestions,
   movedEnough,
   nameIndex,
@@ -56,17 +58,44 @@ import {
   viewStack,
   type ViewProps,
 } from '@nm/core/app';
-import { CATEGORIES, categoryById, categoryLabel, confidentResult, parseCategoryQuery, prefetchSearchNames, reverseGeocode, searchNearby, searchPlaces, tools } from '@nm/tools';
+import { CATEGORIES, categoryById, categoryFromText, categoryLabel, confidentResult, parseCategoryQuery, prefetchSearchNames, reverseGeocode, searchNearby, searchPlaces, tools } from '@nm/tools';
 
 let map: MapLibreMap;
 
-const RECENT_KEY = 'search:recent';
-const recent = signal<string[]>(load(RECENT_KEY, []));
-function remember(q: string) {
+/** Search history, like Google's: what was searched and the places that were opened, newest first. */
+type HistoryItem = { q: string; p?: undefined } | { p: Place; q?: undefined };
+const HISTORY_KEY = 'search:history';
+const HISTORY_MAX = 15;
+const history = signal<HistoryItem[]>(
+  load<HistoryItem[] | null>(HISTORY_KEY, null) ?? load<string[]>('search:recent', []).map((q) => ({ q })),
+);
+function addHistory(item: HistoryItem) {
   if (incognito.peek()) return;
-  const next = [q, ...recent.value.filter((r) => r !== q)].slice(0, 8);
-  recent.value = next;
-  save(RECENT_KEY, next);
+  const same = (h: HistoryItem) => (item.p ? h.p?.id === item.p.id : h.q === item.q);
+  const next = [item, ...history.value.filter((h) => !same(h))].slice(0, HISTORY_MAX);
+  history.value = next;
+  save(HISTORY_KEY, next);
+}
+function remember(q: string) {
+  addHistory({ q });
+}
+/** Keep only what is needed to show and reopen a place (no contact details). */
+function rememberPlace(p: Place) {
+  if (p.id.startsWith('pt:')) return;
+  const { id, name, lng, lat, address, category, osm, extent, brand } = p;
+  addHistory({ p: { id, name, lng, lat, address, category, osm, extent, brand } });
+}
+/** History entries that start like what is being typed (at most `limit`). */
+function historyMatches(text: string, limit = 2): HistoryItem[] {
+  const t = matchText(text);
+  const glued = t.replace(/ /g, '');
+  if (!t) return [];
+  return history.value
+    .filter((h) => {
+      const n = matchText(h.p?.name ?? h.q ?? '');
+      return n !== t && (n.startsWith(t) || n.replace(/ /g, '').startsWith(glued) || n.split(' ').some((w) => w.startsWith(t)));
+    })
+    .slice(0, limit);
 }
 
 const UNAVAILABLE = 'החיפוש לא זמין כרגע. בדקו את החיבור לאינטרנט.';
@@ -135,6 +164,31 @@ function fitPlaces(places: Place[]) {
 }
 
 let lastResults: Place[] = [];
+
+/** How far the nearby results reach: four times the third-nearest, at least 5 km. */
+function reach(places: Place[], near: [number, number]): number {
+  const d = places.map((p) => distance(near, [p.lng, p.lat])).sort((a, b) => a - b);
+  return Math.max(5000, 4 * (d[Math.min(2, d.length - 1)] ?? 0));
+}
+
+/**
+ * The list keeps what is nearby first: a result far beyond the rest ("פיצה", a building of that
+ * name in another town) goes to the end instead of sitting between the pizzerias.
+ */
+function localFirst(places: Place[], near: [number, number]): Place[] {
+  if (places.length < 4) return places;
+  const r = reach(places, near);
+  const inside = places.filter((p) => distance(near, [p.lng, p.lat]) <= r);
+  return [...inside, ...places.filter((p) => !inside.includes(p))];
+}
+
+/** The results the map frames: the nearby ones, so one far result does not zoom the map out to the whole country. */
+function nearCluster(places: Place[], near: [number, number]): Place[] {
+  if (places.length < 3) return places;
+  const r = reach(places, near);
+  const inside = places.filter((p) => distance(near, [p.lng, p.lat]) <= r);
+  return inside.length ? inside : places;
+}
 
 // ---------------------------------------------------------------------------
 // "Search this area": once a result list is up and the map moves away from it, offer to
@@ -272,6 +326,7 @@ export function focusPlace(p: Place) {
 }
 
 function choose(p: Place) {
+  rememberPlace(p);
   setResults(EMPTY);
   openPlace(p);
   afterPanelChange(() => focusPlace(p));
@@ -297,7 +352,7 @@ function prefetchNames() {
   else setTimeout(run, 2000);
 }
 
-async function runSearch(q: string, opts: { openView?: boolean; area?: boolean; filter?: string; exact?: boolean } = {}): Promise<Place[]> {
+async function runSearch(q: string, opts: { openView?: boolean; area?: boolean; filter?: string; exact?: boolean; chain?: boolean } = {}): Promise<Place[]> {
   remember(q);
   prefetchNames();
   // "קפה בפלורנטין": find the place, then the category around it.
@@ -311,14 +366,15 @@ async function runSearch(q: string, opts: { openView?: boolean; area?: boolean; 
   }
   const args = { ...bias(), limit: 15, ...(opts.area ? { bbox: areaBBox() } : {}) };
   const remote = opts.exact ? await tools().call(searchPlaces, { query: q, ...args, exact: true }) : await searchCorrected(q, args);
-  const local = localMatches(q, remote);
-  const results = mergeSuggestions(remote, local, q);
+  // A chain's branches mostly come from the business tiles, so ask them for more than a few.
+  const local = localMatches(q, remote, opts.chain ? 15 : 3);
+  const results = localFirst(mergeSuggestions(remote, local, q, bias().near), bias().near);
   const corrected = remote.find((r) => r.correctedQuery)?.correctedQuery;
   lastResults = results;
   if (opts.openView !== false) {
     // One clear answer (a street, city or landmark well ahead of the rest) opens right away.
-    const sure = !opts.area && results[0] === remote[0] ? confidentResult(remote, q) : null;
-    if ((results.length === 1 && !opts.area) || sure) {
+    const sure = !opts.area && !opts.chain && results[0] === remote[0] ? confidentResult(remote, q) : null;
+    if ((results.length === 1 && !opts.area && !opts.chain) || sure) {
       choose(sure ?? results[0]);
     } else {
       const filter = opts.filter;
@@ -327,7 +383,7 @@ async function runSearch(q: string, opts: { openView?: boolean; area?: boolean; 
       areaPill.value = false;
       anchor = null;
       afterPanelChange(() => {
-        if (!opts.area) fitPlaces(results.slice(0, 8));
+        if (!opts.area) fitPlaces(nearCluster(results.slice(0, 8), bias().near));
         armArea();
       });
     }
@@ -469,7 +525,14 @@ function SearchBar() {
     return () => removeEventListener('keydown', onKey);
   });
 
-  const suggestions = mergeSuggestions(remote.value, local.value, q.value);
+  const typedText = q.value.trim();
+  const merged = typedText.length >= 2 ? mergeSuggestions(remote.value, local.value, q.value, bias().near) : [];
+  // Like Google: what you searched before that starts the same way, then the chain
+  // ("ארומה · כל הסניפים"), then places; five or six rows, not a long list.
+  const past = typedText.length >= 1 && !parseMapLink(typedText) ? historyMatches(typedText) : [];
+  const pastIds = new Set(past.flatMap((h) => (h.p ? [h.p.id] : [])));
+  const chain = findChain(merged, q.value, (n) => !!categoryFromText(n));
+  const suggestions = merged.filter((p) => !pastIds.has(p.id)).slice(0, chain ? 5 : 6);
 
   const suggest = (text: string) => {
     clearTimeout(timerRef.current);
@@ -560,8 +623,9 @@ function SearchBar() {
     inputRef.current?.focus();
   };
 
-  const typed = q.value.trim().length >= 2 || !!link.value;
-  const showDropdown = focused.value && (suggestions.length > 0 || !!link.value || (!typed && recent.value.length > 0) || !!error.value);
+  const typed = q.value.trim().length >= 1 || !!link.value;
+  const showDropdown =
+    focused.value && (suggestions.length > 0 || past.length > 0 || !!link.value || (!typed && history.value.length > 0) || !!error.value);
 
   const isHome = currentView.value.kind === 'home';
   const showBack = focused.value || !isHome;
@@ -680,25 +744,56 @@ function SearchBar() {
         <ul id="search-suggestions" class="suggestions" role="listbox" aria-label="הצעות חיפוש">
           {error.value && <li class="suggestion error">{error.value}</li>}
           {link.value && <LinkRow link={link.value} onFollow={followLink} />}
-          {!typed
-            ? recent.value.map((r) => (
-                <li key={r} role="option" aria-selected={false}>
-                  <button
-                    class="suggestion"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => {
-                      q.value = r;
-                      void submit();
-                    }}
-                  >
-                    <span class="li-icon" aria-hidden="true">
-                      <Icon name="history" size={20} />
-                    </span>
-                    <span class="li-title">{r}</span>
-                  </button>
-                </li>
-              ))
-            : suggestions.map((p, i) => (
+          {(!typed ? history.value.slice(0, 8) : past).map((h) => (
+            <li key={h.p ? `h:${h.p.id}` : `q:${h.q}`} role="option" aria-selected={false}>
+              <button
+                class="suggestion history"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  if (h.p) {
+                    pick(h.p);
+                  } else {
+                    q.value = h.q!;
+                    void submit();
+                  }
+                }}
+              >
+                <span class="li-icon" aria-hidden="true">
+                  <Icon name="history" size={20} />
+                </span>
+                <span class="li-body">
+                  <span class="li-title">
+                    <Highlighted text={h.p?.name ?? h.q!} query={q.value} />
+                  </span>
+                  {h.p && <span class="li-sub">{[categoryLabel(h.p.category), h.p.address].filter(Boolean).join(' · ')}</span>}
+                </span>
+                {h.p && <span class="sugg-dist small muted">{formatDistance(distance(origin(), [h.p.lng, h.p.lat]), units.value)}</span>}
+              </button>
+            </li>
+          ))}
+          {typed && chain && (
+            <li key="chain" role="option" aria-selected={false}>
+              <button
+                class="suggestion chain"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  q.value = chain.name;
+                  close();
+                  void runSearch(chain.name, { exact: true, chain: true }).catch(() => openError(chain.name));
+                }}
+              >
+                <PlaceBadge place={chain.branches[0]} size={32} />
+                <span class="li-body">
+                  <span class="li-title">
+                    <Highlighted text={chain.name} query={q.value} /> <span class="muted">· כל הסניפים</span>
+                  </span>
+                  <span class="li-sub">{chain.branches.length > 2 ? `${chain.branches.length} סניפים בסביבה` : 'הסניף הקרוב ראשון'}</span>
+                </span>
+              </button>
+            </li>
+          )}
+          {typed &&
+            suggestions.map((p, i) => (
                 <li key={p.id} id={`sugg-${i}`} role="option" aria-selected={i === active.value}>
                   <button
                     class={`suggestion ${i === active.value ? 'active' : ''}`}

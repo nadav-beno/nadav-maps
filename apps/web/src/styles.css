@@ -377,6 +377,7 @@ label.btn { cursor: pointer; }
 }
 .suggestion:hover, .suggestion.active { background: var(--bg-2); }
 .suggestion.error { color: var(--danger); font-size: 14px; }
+.suggestion.chain .li-title .muted { font-weight: 400; }
 .suggestion .li-icon { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; background: var(--bg-2); color: var(--text-2); font-size: 15px; }
 .suggestion .li-body { display: flex; flex-direction: column; min-width: 0; }
 .suggestion .li-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -497,7 +498,10 @@ a.detail-body { color: var(--text); }
 .tr-sep { color: var(--text-3); }
 .tr-walk { display: inline-flex; align-items: center; gap: 1px; color: var(--text-2); }
 .live { color: var(--ok); display: inline-flex; align-items: center; gap: 2px; }
-.tr-steps { list-style: none; margin: 4px 0 0; padding: 0; }
+.tr-steps { list-style: none; margin: 4px 0 0; padding: 0; scroll-margin-top: 8px; }
+.tr-wait { grid-column: 1 / -1; color: var(--warn); font-weight: 500; }
+.transit-gap { display: flex; gap: 6px; align-items: flex-start; margin: 4px 0 8px; padding: 10px 12px; border-radius: 12px; background: var(--bg-2); color: var(--warn); font-size: 14px; line-height: 1.4; }
+.transit-gap .icon { flex: none; margin-top: 1px; }
 .tr-step { display: flex; gap: 14px; }
 .tr-rail { flex: none; width: 6px; margin: 4px 9px; border-radius: 3px; }
 .tr-rail.walk { background: repeating-linear-gradient(to bottom, var(--text-3) 0 4px, transparent 4px 9px); width: 4px; margin: 4px 10px; }
