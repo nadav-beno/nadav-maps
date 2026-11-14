@@ -17,3 +17,4 @@ export { aqiLabel, type AirQuality } from './providers/air-quality.ts';
 export { type Photo } from './providers/commons.ts';
 export { costingOptions, speedLimitsOf, lanesOf } from './providers/valhalla.ts';
 export { sortItineraries } from './providers/transitous.ts';
+export { BALTIC, isFresh, type Ship, type LiveShips, type VesselInfo } from './providers/ships.ts';

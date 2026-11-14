@@ -12,6 +12,7 @@ import measure from '@nm/feature-measure';
 import contribute from '@nm/feature-contribute';
 import transit from '@nm/feature-transit';
 import flight from '@nm/feature-flight';
+import ships from '@nm/feature-ships';
 import timeline from '@nm/feature-timeline';
 
 /**
@@ -19,4 +20,4 @@ import timeline from '@nm/feature-timeline';
  * To remove one: delete it from this list (or switch it off with its flag).
  * Order matters only for what appears first in menus and on the home screen.
  */
-export const FEATURES: Feature[] = [search, place, location, directions, transit, navigation, layers, measure, flight, saved, timeline, contribute, photos, settings];
+export const FEATURES: Feature[] = [search, place, location, directions, transit, navigation, layers, measure, flight, ships, saved, timeline, contribute, photos, settings];

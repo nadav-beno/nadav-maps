@@ -1086,3 +1086,21 @@ textarea.code { width: 100%; font-family: ui-monospace, monospace; font-size: 12
 .departure .dep-locate { flex: none; color: var(--ok); }
 span.dep-locate { width: 40px; }
 .vehicle-facts .vehicle-arrival { font-weight: 600; }
+
+/* Live ships */
+.ships-ctrl .icon { transform: none; }
+.ship-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex: none; box-shadow: 0 0 0 1.5px var(--surface); }
+.ship-legend { margin: 8px 0 0; }
+.ship-legend .chip .ship-dot { margin-inline-end: 2px; }
+.ship-legend .chip[aria-pressed='false'] .ship-dot { opacity: 0.35; }
+.ship-shapes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0 0; }
+.ship-shape-arrow { display: inline-block; width: 8px; height: 14px; background: var(--text-2); clip-path: polygon(50% 0, 100% 35%, 100% 100%, 0 100%, 0 35%); }
+.ship-shape-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--text-2); }
+.ship-badge { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; color: #fff; flex: none; }
+.ship-sub { margin: -2px 0 10px; color: var(--text-2); font-size: 14px; }
+.ship-facts { margin: 0 0 12px; }
+.ship-facts h3 { margin: 0 0 4px; }
+.ship-facts dl { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; }
+.ship-facts dl > div { display: flex; flex-direction: column; padding: 6px 0; border-bottom: 1px solid var(--border); min-width: 0; }
+.ship-facts dt { font-size: 12px; color: var(--text-2); }
+.ship-facts dd { margin: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; }
