@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { stubGeodata, stubNetwork } from './stubs.ts';
 import { encodePlusCode } from '../packages/core/src/plus-code.ts';
-import { adsbAreaResponse, adsbResponse, fakeGps, FLIGHT_FIXES, openskyResponse, routesetResponse, worldResponse } from './flight-fixture.ts';
+import { adsbAreaResponse, adsbResponse, fakeGps, FLIGHT_FIXES, openskyResponse, routesetResponse, traceResponse, worldResponse } from './flight-fixture.ts';
 import { TAKEOUT_DAY, TAKEOUT_FIXTURE } from './timeline-fixture.ts';
 
 test.beforeEach(async ({ page }) => {
@@ -647,6 +647,10 @@ test('live flights: planes around the map close up, a plane card, and the whole 
     return r.fulfill({ json: adsbAreaResponse(), headers: cors });
   });
   await page.route('https://adsb.im/api/0/routeset', (r) => r.fulfill({ json: routesetResponse(), headers: cors }));
+  await page.route('https://adsb.lol/data/traces/**', (r) => {
+    asked.push(r.request().url());
+    return r.request().url().includes('trace_full_738075') ? r.fulfill({ json: traceResponse(), headers: cors }) : r.fulfill({ status: 404, body: '', headers: cors });
+  });
   await page.route('https://opensky-network.org/**', (r) => {
     asked.push(r.request().url());
     return r.fulfill({ json: openskyResponse(Math.floor(Date.now() / 1000)), headers: cors });
@@ -685,6 +689,20 @@ test('live flights: planes around the map close up, a plane card, and the whole 
   await expect(page.locator('.live-route')).toContainText('TLV');
   await expect(page.locator('.live-route')).toContainText('JFK');
   await expect(page.locator('.live-route')).toContainText('נשארו');
+  // The whole way it flew since takeoff, coloured by altitude: from adsb.lol's trace files, by hex only.
+  await expect(page.locator('.live-flown')).toContainText('המריא');
+  await expect(page.locator('.live-flown')).toContainText('טס');
+  expect(asked).toContain('https://adsb.lol/data/traces/75/trace_full_738075.json');
+  const trail = () => page.evaluate(() => {
+    const map = (window as unknown as { map: MapLike }).map;
+    const fs = map.queryRenderedFeatures({ layers: ['live-flights-trail'] }) as unknown as { properties: { c: string } }[];
+    return [...new Set(fs.map((f) => f.properties.c))].length;
+  });
+  // Ground grey, then the low and climbing bands: more than one colour.
+  await expect.poll(trail, { timeout: 10_000 }).toBeGreaterThan(1);
+  // One tap shows the whole flight, takeoff to destination, and stops following the plane.
+  await page.getByRole('button', { name: 'כל המסלול' }).click();
+  await expect(page.getByRole('button', { name: 'מעקב כבוי' })).toBeVisible();
   await page.getByRole('button', { name: 'סגירה' }).click();
 
   // The whole world: OpenSky, one call without a box.

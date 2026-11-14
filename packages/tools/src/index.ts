@@ -12,6 +12,7 @@ export { parseIncident, NO_KEY_MESSAGE, type TrafficIncident, type TrafficTime }
 export { parseHereIncident, hereRouteSummary } from './providers/here.ts';
 export { parseAdsb, callsignCandidates, aircraftKind, type AircraftPosition, type AircraftKind, type FlightLookup } from './providers/adsb.ts';
 export { parseRouteset, currentLeg, type FlightRoute, type RouteAirport } from './providers/flight-route.ts';
+export { currentFlight, mergeTraces, parseTrace, traceUrls, type FlightTrack, type TrackPoint } from './providers/flight-track.ts';
 export { parseOpenSky, coverCircles, clampBbox, openskyCredits, type LiveAircraft, type Bbox } from './providers/live-aircraft.ts';
 export { aqiLabel, type AirQuality } from './providers/air-quality.ts';
 export { type Photo } from './providers/commons.ts';

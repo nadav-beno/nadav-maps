@@ -794,6 +794,7 @@ kbd {
 .live-route-city { font-size: 13px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .live-route-arrow { color: var(--text-2); }
 .live-route-left { grid-column: 1 / -1; }
+.live-flown { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: -4px 0 12px; }
 .live-emergency { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; padding: 8px 12px; border-radius: 12px; background: color-mix(in srgb, #d93025 14%, var(--surface)); color: #d93025; font-weight: 500; }
 button.live-sos { width: 100%; border: 0; font: inherit; cursor: pointer; text-align: start; }
 .live-kind { margin: 0 0 2px; }
