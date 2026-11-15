@@ -14,6 +14,6 @@ export default defineFeature({
     ctx.registerSlot('controls', GameButton, 7);
     ctx.registerSlot('overlay', GameOverlay);
     setupGame(ctx);
-    if (ctx.initialUrl.panel === 'game') openGame();
+    // No deep link on purpose: entering the app always shows the map (old `?panel=game` links just open the map).
   },
 });
