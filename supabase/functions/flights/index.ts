@@ -14,4 +14,7 @@ const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 const store = url && key ? postgrestStore(url, key) : undefined;
 const defer = typeof EdgeRuntime !== 'undefined' ? (p: Promise<unknown>) => EdgeRuntime!.waitUntil(p) : undefined;
 
-Deno.serve((req) => handleFlightsRelay(req, fetch, Date.now(), { store, defer }));
+// Our adsb.lol key (Edge Function secret ADSBLOL_API_KEY); the trace files are refused without it.
+const adsbKey = Deno.env.get('ADSBLOL_API_KEY') || undefined;
+
+Deno.serve((req) => handleFlightsRelay(req, fetch, Date.now(), { store, defer, adsbKey }));
