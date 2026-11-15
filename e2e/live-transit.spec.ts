@@ -24,7 +24,8 @@ test('live transit: GPS buses and a moving tram appear with the transit layer, a
   test.setTimeout(60_000);
   const stride: string[] = [];
   page.on('request', (r) => r.url().includes('open-bus-stride-api') && stride.push(r.url()));
-  await page.goto('./#15/32.076/34.783');
+  // Centred a little west so bus 18 is not under the left column of map buttons on phones.
+  await page.goto('./#15/32.076/34.7805');
   await page.getByRole('button', { name: 'שכבות' }).click();
   await page.getByRole('button', { name: 'תחבורה ציבורית' }).click();
   // Two GPS buses (lines 18, 25) and the light rail from Transitous; the timetable bus is dropped where GPS exists.

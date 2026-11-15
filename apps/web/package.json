@@ -16,6 +16,7 @@
     "@nm/feature-directions": "workspace:*",
     "@nm/feature-flight": "workspace:*",
     "@nm/feature-ships": "workspace:*",
+    "@nm/feature-game": "workspace:*",
     "@nm/feature-layers": "workspace:*",
     "@nm/feature-location": "workspace:*",
     "@nm/feature-measure": "workspace:*",

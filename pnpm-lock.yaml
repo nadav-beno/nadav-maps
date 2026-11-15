@@ -77,6 +77,9 @@ importers:
       '@nm/feature-flight':
         specifier: workspace:*
         version: link:../../packages/features/flight
+      '@nm/feature-game':
+        specifier: workspace:*
+        version: link:../../packages/features/game
       '@nm/feature-layers':
         specifier: workspace:*
         version: link:../../packages/features/layers
@@ -229,6 +232,24 @@ importers:
       world-atlas:
         specifier: 2.0.2
         version: 2.0.2
+
+  packages/features/game:
+    dependencies:
+      '@nm/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@nm/tools':
+        specifier: workspace:*
+        version: link:../../tools
+      '@preact/signals':
+        specifier: ^2.11.3
+        version: 2.11.3(preact@11.0.1)
+      maplibre-gl:
+        specifier: ^6.13.0
+        version: 6.13.0
+      preact:
+        specifier: ^11.0.1
+        version: 11.0.1
 
   packages/features/layers:
     dependencies:
