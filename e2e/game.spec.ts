@@ -82,11 +82,14 @@ test('game mode: tutorial, a wave, losing, pausing and leaving', async ({ page }
   await page.getByRole('button', { name: 'המשך' }).click();
   await expect(page.getByText('הנה פולש ראשון')).toBeVisible();
   // Shoot the first invader, then the fast one.
-  await expect.poll(async () => (await tapInvader(page), (await state(page))!.step), { timeout: 30_000, intervals: [1500] }).toBe(2);
-  await expect(page.getByText('את הפולש המהיר הזה')).toBeVisible();
-  await page.waitForTimeout(600);
-  await shot(page, '3-tutorial-lead');
-  await expect.poll(async () => (await tapInvader(page), (await state(page))!.step), { timeout: 30_000, intervals: [1500] }).toBe(3);
+  // A lucky tap can down the fast invader too before the next poll, so the step may jump to 3.
+  await expect.poll(async () => (await tapInvader(page), (await state(page))!.step), { timeout: 30_000, intervals: [1500] }).toBeGreaterThanOrEqual(2);
+  if ((await state(page))!.step === 2) {
+    await expect(page.getByText('את הפולש המהיר הזה')).toBeVisible();
+    await page.waitForTimeout(600);
+    await shot(page, '3-tutorial-lead');
+  }
+  await expect.poll(async () => ((await state(page))!.step < 3 && (await tapInvader(page)), (await state(page))!.step), { timeout: 30_000, intervals: [1500] }).toBe(3);
   await page.getByRole('button', { name: 'הבנתי' }).click();
   await expect(page.getByText('מטוס האספקה')).toBeVisible();
   // Catch the supply plane, then its capsule.
