@@ -1,5 +1,5 @@
-import type { LngLat } from '@nm/core';
-import { getJson, type ToolContext } from '../define.ts';
+import { distance, type LngLat } from '@nm/core';
+import { getJson, ProviderError, type ToolContext } from '../define.ts';
 
 /**
  * Weather from Open-Meteo (https://open-meteo.com): free for non-commercial use without a key,
@@ -247,5 +247,96 @@ export function parseGridPoint(d: OmForecast, asked: LngLat): WeatherGridPoint {
     cloud: col('cloud_cover'),
     vis: col('visibility'),
     code: col('weather_code'),
+  };
+}
+
+// ---------- the sea (Open-Meteo marine API) ----------
+
+export interface MarineHour {
+  time: number;
+  /** Significant wave height, m. */
+  wave: number | null;
+  /** Degrees the waves come from. */
+  waveDir: number | null;
+  /** s. */
+  period: number | null;
+  swell: number | null;
+  /** °C. */
+  sea: number | null;
+}
+
+export interface MarineForecast {
+  /** The sea cell the values are for (the nearest one to the asked point). */
+  lng: number;
+  lat: number;
+  /** Metres from the asked point to that cell. */
+  offshore: number;
+  current: MarineHour;
+  /** Next 48 hours. */
+  hourly: MarineHour[];
+  /** Daily max wave height, 7 days from today (local midnights). */
+  daily: { time: number; waveMax: number | null }[];
+}
+
+const MARINE_HOURLY = 'wave_height,wave_direction,wave_period,swell_wave_height,sea_surface_temperature';
+
+/** A point farther than this from the nearest sea cell is not on the coast. */
+export const MARINE_MAX_OFFSHORE_M = 20_000;
+
+export async function marineForecast(ctx: ToolContext, at: LngLat): Promise<MarineForecast | null> {
+  if (!ctx.config.marineUrl) return null;
+  const q = new URLSearchParams({
+    latitude: coord(at[1]),
+    longitude: coord(at[0]),
+    current: MARINE_HOURLY,
+    hourly: MARINE_HOURLY,
+    forecast_hours: '48',
+    daily: 'wave_height_max',
+    forecast_days: '7',
+    cell_selection: 'sea',
+    timezone: 'auto',
+    timeformat: 'unixtime',
+  });
+  let d: OmForecast;
+  try {
+    d = await getJson<OmForecast>(ctx, `${ctx.config.marineUrl}?${q}`, {}, 'open-meteo');
+  } catch (e) {
+    // Inland points far from any sea cell come back as 400 "No data is available".
+    if (e instanceof ProviderError && e.status === 400) return null;
+    throw e;
+  }
+  return parseMarine(d, at);
+}
+
+export function parseMarine(d: OmForecast, asked: LngLat): MarineForecast | null {
+  const cell: LngLat = [d.longitude, d.latitude];
+  const offshore = distance(asked, cell);
+  const c = d.current ?? {};
+  const h = d.hourly ?? {};
+  const day = d.daily ?? {};
+  const current: MarineHour = {
+    time: num(c.time) ?? Math.floor(Date.now() / 1000),
+    wave: num(c.wave_height),
+    waveDir: num(c.wave_direction),
+    period: num(c.wave_period),
+    swell: num(c.swell_wave_height),
+    sea: num(c.sea_surface_temperature),
+  };
+  const hourly = (h.time ?? []).map((time, i) => ({
+    time,
+    wave: at(h, 'wave_height', i),
+    waveDir: at(h, 'wave_direction', i),
+    period: at(h, 'wave_period', i),
+    swell: at(h, 'swell_wave_height', i),
+    sea: at(h, 'sea_surface_temperature', i),
+  }));
+  if (offshore > MARINE_MAX_OFFSHORE_M || (current.wave === null && !hourly.some((x) => x.wave !== null))) return null;
+  return {
+    lng: cell[0],
+    lat: cell[1],
+    offshore: Math.round(offshore),
+    current,
+    hourly,
+    daily: (day.time ?? []).map((time, i) => ({ time, waveMax: at(day, 'wave_height_max', i) })),
   };
 }

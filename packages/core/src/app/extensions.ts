@@ -29,3 +29,20 @@ export const layerSections = signal<LayerSection[]>([]);
 export function registerLayerSection(section: LayerSection): void {
   layerSections.value = [...layerSections.value.filter((s) => s.id !== section.id), section].sort((a, b) => a.order - b.order);
 }
+
+/**
+ * Extra lines about a destination at the time of arrival (e.g. the weather when you get
+ * there), shown under the chosen route in directions and under a flight's route.
+ */
+export interface ArrivalSection {
+  id: string;
+  order: number;
+  /** `at`: the destination; `time`: expected arrival, Unix seconds; `name`: the destination's name. */
+  Component: ComponentType<{ at: [number, number]; time: number; name?: string }>;
+}
+export const arrivalSections = signal<ArrivalSection[]>([]);
+
+/** Adds (or replaces, by id) a line about the destination at arrival time. */
+export function registerArrivalSection(section: ArrivalSection): void {
+  arrivalSections.value = [...arrivalSections.value.filter((s) => s.id !== section.id), section].sort((a, b) => a.order - b.order);
+}

@@ -1,7 +1,7 @@
 import type { LngLat } from '@nm/core';
 import { latticeFor, pointKey, type Lattice } from '@nm/core';
 import { load, providers, save } from '@nm/core/app';
-import { tools, weatherForecastTool, weatherGridTool, type WeatherForecast, type WeatherGridPoint } from '@nm/tools';
+import { marineForecastTool, tools, weatherForecastTool, weatherGridTool, type MarineForecast, type WeatherForecast, type WeatherGridPoint } from '@nm/tools';
 
 export const hasWeather = () => !!providers.peek().weatherUrl;
 
@@ -88,4 +88,26 @@ export { latticeFor };
 export function seriesAt(p: WeatherGridPoint, key: keyof Omit<WeatherGridPoint, 'lng' | 'lat' | 'start'>, t: number): number | null {
   const i = Math.floor((t - p.start) / 3600);
   return i >= 0 ? (p[key][i] ?? null) : null;
+}
+
+// ---------- the sea ----------
+
+const marine = new Map<string, { at: number; data: Promise<MarineForecast | null> }>();
+
+export const hasMarine = () => !!providers.peek().marineUrl;
+
+/** Waves and sea temperature near a point (null away from the sea), cached for 30 minutes. */
+export function marineAt(at: LngLat): Promise<MarineForecast | null> {
+  if (!hasMarine()) return Promise.resolve(null);
+  const key = `${at[0].toFixed(2)},${at[1].toFixed(2)}`;
+  const hit = marine.get(key);
+  if (hit && Date.now() - hit.at < GRID_TTL) return hit.data;
+  const data = tools()
+    .call(marineForecastTool, { at })
+    .catch(() => {
+      marine.delete(key);
+      return null;
+    });
+  marine.set(key, { at: Date.now(), data });
+  return data;
 }

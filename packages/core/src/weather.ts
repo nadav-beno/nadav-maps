@@ -102,6 +102,23 @@ export function windFrom(deg: number | null | undefined): string {
   return DIRS[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
 }
 
+const FROM = ['מצפון', 'מצפון-מזרח', 'ממזרח', 'מדרום-מזרח', 'מדרום', 'מדרום-מערב', 'ממערב', 'מצפון-מערב'];
+
+/** "ממערב": where something (waves, swell) comes from, as a phrase that fits any noun. */
+export function comingFrom(deg: number | null | undefined): string {
+  if (deg === null || deg === undefined || !Number.isFinite(deg)) return '';
+  return FROM[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+}
+
+/**
+ * Wind as a vector: east (u) and north (v) components, same unit as `speed`. `dirFrom` is
+ * meteorological (where the wind blows from), so a westerly (270°) blows toward the east.
+ */
+export function windUV(speed: number, dirFrom: number): [number, number] {
+  const th = (dirFrom * Math.PI) / 180;
+  return [-speed * Math.sin(th), -speed * Math.cos(th)];
+}
+
 /** Beaufort force from km/h. */
 export function beaufort(kmh: number): number {
   const limits = [1, 6, 12, 20, 29, 39, 50, 62, 75, 89, 103, 118];
@@ -206,6 +223,48 @@ export function fmtPressure(hpa: number | null | undefined, units: Units = 'metr
   return units === 'imperial' ? `${(hpa * 0.02953).toFixed(2)} inHg` : `${Math.round(hpa)} hPa`;
 }
 
+// ---------- the sea ----------
+
+export interface SeaState {
+  /** Hebrew label as Israeli forecasts word it. */
+  label: string;
+  /** 0 calm … 5 very rough. */
+  level: number;
+}
+
+/** Sea state from significant wave height in metres (bands close to the IMS wording). */
+export function seaState(m: number | null | undefined): SeaState | null {
+  if (m === null || m === undefined || !Number.isFinite(m)) return null;
+  const bands: [number, string][] = [
+    [0.5, 'שקט'],
+    [1, 'נוח'],
+    [1.5, 'גלי'],
+    [2.5, 'גלי עד סוער'],
+    [4, 'סוער'],
+  ];
+  const i = bands.findIndex(([max]) => m < max);
+  return i < 0 ? { label: 'סוער מאוד', level: 5 } : { label: bands[i][1], level: i };
+}
+
+/** Places where the sea matters (beach cards show the waves): OSM and Overture categories. */
+export function isSeaPlace(category: { key: string; value: string } | undefined): boolean {
+  if (!category) return false;
+  const v = category.value;
+  if (category.key === 'overture') return /^(beach|marina|surfing|diving|boat|harbor|port|pier)/.test(v);
+  return (
+    (category.key === 'natural' && (v === 'beach' || v === 'coastline' || v === 'bay')) ||
+    (category.key === 'leisure' && (v === 'beach_resort' || v === 'marina' || v === 'slipway')) ||
+    (category.key === 'man_made' && (v === 'pier' || v === 'breakwater' || v === 'lighthouse')) ||
+    (category.key === 'sport' && (v === 'surfing' || v === 'scuba_diving' || v === 'swimming' || v === 'kitesurfing'))
+  );
+}
+
+export function fmtWaves(m: number | null | undefined, units: Units = 'metric'): string {
+  if (m === null || m === undefined) return '–';
+  if (units === 'imperial') return `${(m * 3.28084).toFixed(1)} רגל`;
+  return `${m.toFixed(1)} מ׳`;
+}
+
 // ---------- colour ramps for the map layers ----------
 
 export type Rgba = [number, number, number, number];
@@ -289,6 +348,18 @@ export function rampColor(ramp: Ramp, v: number): Rgba {
 
 export function rgbaCss([r, g, b, a]: Rgba): string {
   return `rgba(${Math.round(r)},${Math.round(g)},${Math.round(b)},${Number(a.toFixed(3))})`;
+}
+
+// ---------- daily satellite image ----------
+
+/** UTC date "YYYY-MM-DD" `daysBack` days before `now` (1 = yesterday, the newest full image). */
+export function satDate(daysBack: number, now: number = Date.now()): string {
+  return new Date(now - daysBack * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** The tile template for one day ({date} filled in). */
+export function satTiles(template: string, daysBack: number, now?: number): string {
+  return template.replace('{date}', satDate(daysBack, now));
 }
 
 // ---------- the point lattice behind the map layers ----------

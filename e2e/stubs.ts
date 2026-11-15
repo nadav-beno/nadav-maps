@@ -8,7 +8,7 @@ import { motisPlan, motisStoptimes } from './transit-fixture.ts';
 import { motisTrips, strideLocations, strideRoutes } from './vehicles-fixture.ts';
 import { curlbusNearby, curlbusVisits } from './curlbus-fixture.ts';
 import { flowTile, HERE_INCIDENTS, HERE_ROUTE, hereTrafficTile, incidentTile, INCIDENT_DETAILS, TRAFFIC_ROUTE } from './traffic-scene.ts';
-import { omForecast, omGrid } from './weather-fixture.ts';
+import { omForecast, omGrid, omMarine } from './weather-fixture.ts';
 
 /**
  * Tests never hit the real map servers: tiles, search, routing and place details
@@ -198,6 +198,17 @@ export async function stubNetwork(page: Page): Promise<void> {
     const list = omGrid(lats, lngs);
     return r.fulfill({ json: lats.length === 1 ? list[0] : list, headers: cors });
   });
+  // Open-Meteo marine: the sea off the Israeli coast (west of ~34.9° E); inland gets the API's 400.
+  await page.route('https://marine-api.open-meteo.com/**', (r) => {
+    const q = new URL(r.request().url()).searchParams;
+    const lat = Number(q.get('latitude') ?? 32);
+    const lng = Number(q.get('longitude') ?? 34.8);
+    const cors = { 'access-control-allow-origin': '*' };
+    if (lng > 34.9) return r.fulfill({ status: 400, json: { error: true, reason: 'No data is available for this location' }, headers: cors });
+    return r.fulfill({ json: omMarine(lat, lng), headers: cors });
+  });
+  // NASA GIBS daily satellite tiles.
+  await page.route('https://gibs.earthdata.nasa.gov/**', (r) => r.fulfill({ body: PIXEL, contentType: 'image/png', headers: { 'access-control-allow-origin': '*' } }));
   await page.route('https://air-quality-api.open-meteo.com/**', (r) => {
     const n = (new URL(r.request().url()).searchParams.get('latitude') ?? '').split(',').length;
     const list = Array.from({ length: n }, (_, i) => ({ latitude: 32, longitude: 34.8, current: { time: '2026-10-17T06:00', european_aqi: 20 + ((i * 13) % 60), pm2_5: 8, pm10: 18 } }));
@@ -270,6 +281,10 @@ export async function stubNetwork(page: Page): Promise<void> {
           ],
         },
       });
+    }
+    // A beach (its place card shows the sea).
+    if (body.includes('8008')) {
+      return r.fulfill({ json: { elements: [{ type: 'node', id: 8008, lat: 32.0835, lon: 34.7676, tags: { name: 'חוף גורדון', natural: 'beach', surface: 'sand' } }] } });
     }
     // The Overture bistro tapped on the map, matched to its OSM node (service options, attributes).
     if (body.includes('"name"="ביסטרו הכרמל"')) {

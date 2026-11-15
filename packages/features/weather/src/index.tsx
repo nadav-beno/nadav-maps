@@ -1,10 +1,11 @@
 import { signal } from '@preact/signals';
 import { useEffect, useState } from 'preact/hooks';
 import type { LngLat, Place } from '@nm/core';
-import { fmtTemp, uvBand, weatherIcon, weatherText } from '@nm/core';
-import { defineFeature, Icon, open, registerLayerSection, units, userLocation, type FeatureContext } from '@nm/core/app';
-import type { WeatherForecast } from '@nm/tools';
-import { forecastAt, hasWeather, nearestGridPoint, seriesAt } from './data.ts';
+import { fmtTemp, fmtWaves, isSeaPlace, seaState, uvBand, weatherIcon, weatherText } from '@nm/core';
+import { defineFeature, Icon, open, registerArrivalSection, registerLayerSection, units, userLocation, type FeatureContext } from '@nm/core/app';
+import type { MarineForecast, WeatherForecast } from '@nm/tools';
+import { clock, dayLabel } from './format.ts';
+import { forecastAt, hasWeather, marineAt, nearestGridPoint, seriesAt } from './data.ts';
 import { initWeatherLayers, WeatherLayerSection, WeatherTimeBar } from './layers.tsx';
 import { WeatherView, type WeatherViewProps } from './view.tsx';
 
@@ -93,15 +94,75 @@ function WeatherSummary({ f }: { f: WeatherForecast }) {
   );
 }
 
+function useMarine(at: LngLat | null): MarineForecast | null {
+  const [m, setM] = useState<MarineForecast | null>(null);
+  const key = at ? `${at[0].toFixed(2)},${at[1].toFixed(2)}` : '';
+  useEffect(() => {
+    setM(null);
+    if (!at) return;
+    let live = true;
+    marineAt(at).then((r) => live && setM(r));
+    return () => {
+      live = false;
+    };
+  }, [key]);
+  return m;
+}
+
 function PlaceWeather({ place }: { place: Place }) {
-  const f = useForecast([place.lng, place.lat]);
+  const at: LngLat = [place.lng, place.lat];
+  const f = useForecast(at);
+  const sea = useMarine(isSeaPlace(place.category) ? at : null);
   if (!f) return null;
+  const c = sea?.current;
+  const state = seaState(c?.wave);
   return (
     <section class="wx-place-row" aria-label="מזג אוויר במקום">
-      <button class="list-item" onClick={() => openWeather([place.lng, place.lat], place.name)}>
+      <button class="list-item" onClick={() => openWeather(at, place.name)}>
         <WeatherSummary f={f} />
       </button>
+      {c && (
+        <button class="list-item wx-sea-row" aria-label="מצב הים" onClick={() => openWeather(at, place.name)}>
+          <Icon name="waves" size={28} />
+          <span class="li-body">
+            <span class="li-title">
+              ים {state?.label ?? ''} · גלים {fmtWaves(c.wave, units.value)}
+            </span>
+            {c.sea !== null && <span class="li-sub">טמפרטורת המים {fmtTemp(c.sea, units.value)}</span>}
+          </span>
+          <Icon name="chevron_left" size={20} />
+        </button>
+      )}
     </section>
+  );
+}
+
+/** "The weather when you get there": under a route in directions and a flight's route. */
+function ArrivalWeather({ at, time, name }: { at: LngLat; time: number; name?: string }) {
+  const f = useForecast(at);
+  if (!f) return null;
+  const h = f.hourly.find((x) => x.time <= time && time < x.time + 3600);
+  const d = h ? undefined : f.daily.find((x) => x.time <= time && time < x.time + 86400);
+  if (!h && !d) return null;
+  const code = h ? h.code : d!.code;
+  const isDay = h ? h.isDay : true;
+  const temp = h ? fmtTemp(h.temp, units.value) : `${fmtTemp(d!.max, units.value)} / ${fmtTemp(d!.min, units.value)}`;
+  const pop = h ? h.pop : d!.pop;
+  const where = name ? `ב${name}` : 'ביעד';
+  return (
+    <button class="list-item wx-arrival" aria-label={`מזג האוויר ${where} בהגעה`} onClick={() => openWeather(at, name)}>
+      <Icon name={weatherIcon(code, isDay)} size={24} />
+      <span class="li-body">
+        <span class="li-title">
+          {temp} · {weatherText(code, isDay)}
+          {(pop ?? 0) >= 30 ? ` · ${Math.round(pop!)}% גשם` : ''}
+        </span>
+        <span class="li-sub">
+          מזג האוויר {where} {h ? `בשעת ההגעה (${clock(time, f.timeZone)})` : `ב${dayLabel(d!.time, f.timeZone, f.daily.indexOf(d!) || 1)}`}
+        </span>
+      </span>
+      <Icon name="chevron_left" size={20} />
+    </button>
   );
 }
 
@@ -130,6 +191,7 @@ export default defineFeature({
     ctx.registerView('weather', WeatherView);
     ctx.registerPlaceSection({ id: 'weather', order: 8, Component: PlaceWeather });
     ctx.registerHomeSection({ id: 'weather', order: 15, Component: HomeWeather });
+    registerArrivalSection({ id: 'weather', order: 10, Component: ArrivalWeather });
     ctx.registerSlot('controls', WeatherChip, 20);
     ctx.registerSlot('overlay', WeatherTimeBar, 5);
     registerLayerSection({ id: 'weather', order: 10, Component: WeatherLayerSection });

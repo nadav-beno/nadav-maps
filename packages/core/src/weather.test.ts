@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   beaufort,
+  comingFrom,
+  fmtWaves,
+  isSeaPlace,
+  seaState,
   fmtPrecip,
   fmtTemp,
   fmtVisibility,
@@ -18,6 +22,9 @@ import {
   weatherScene,
   weatherText,
   windFrom,
+  windUV,
+  satDate,
+  satTiles,
 } from './weather.ts';
 
 describe('weather conditions', () => {
@@ -131,5 +138,43 @@ describe('weather in the search box', () => {
     expect(parseWeatherQuery('weather in London')?.candidates).toEqual(['London']);
     expect(parseWeatherQuery('קפה בתל אביב')).toBeNull();
     expect(parseWeatherQuery('weatherford')).toBeNull();
+  });
+});
+
+describe('the sea', () => {
+  it('words the sea state like Israeli forecasts', () => {
+    expect(seaState(0.3)?.label).toBe('שקט');
+    expect(seaState(0.8)?.label).toBe('נוח');
+    expect(seaState(1.2)?.label).toBe('גלי');
+    expect(seaState(2)?.label).toBe('גלי עד סוער');
+    expect(seaState(3)?.label).toBe('סוער');
+    expect(seaState(5)).toEqual({ label: 'סוער מאוד', level: 5 });
+    expect(seaState(null)).toBeNull();
+    expect(isSeaPlace({ key: 'natural', value: 'beach' })).toBe(true);
+    expect(isSeaPlace({ key: 'overture', value: 'beach' })).toBe(true);
+    expect(isSeaPlace({ key: 'amenity', value: 'cafe' })).toBe(false);
+    expect(comingFrom(290)).toBe('ממערב');
+    expect(fmtWaves(0.84)).toBe('0.8 מ׳');
+    expect(fmtWaves(1, 'imperial')).toBe('3.3 רגל');
+  });
+});
+
+describe('wind vectors', () => {
+  it('points where the wind blows to', () => {
+    const [u, v] = windUV(10, 270); // westerly: toward the east
+    expect(u).toBeCloseTo(10);
+    expect(v).toBeCloseTo(0);
+    const [u2, v2] = windUV(10, 0); // northerly: toward the south
+    expect(u2).toBeCloseTo(0);
+    expect(v2).toBeCloseTo(-10);
+  });
+});
+
+describe('satellite day', () => {
+  it('names the UTC day', () => {
+    const now = Date.UTC(2026, 10, 14, 1, 30);
+    expect(satDate(1, now)).toBe('2026-11-13');
+    expect(satDate(0, now)).toBe('2026-11-14');
+    expect(satTiles('https://x/{date}/{z}/{y}/{x}.jpg', 2, now)).toBe('https://x/2026-11-12/{z}/{y}/{x}.jpg');
   });
 });

@@ -1,10 +1,11 @@
 import { signal } from '@preact/signals';
 import { useEffect } from 'preact/hooks';
-import { fmtTemp, fmtVisibility, latticeFor, rampColor, renderField, rgbaCss, WEATHER_RAMPS, type Lattice, type Rgba, type WeatherLayerId } from '@nm/core';
-import { EMPTY, ensureLayer, firstSymbolLayer, Icon, isDark, load, save, setGeoJSON, units, type FeatureContext } from '@nm/core/app';
+import { fmtTemp, fmtVisibility, latticeFor, satDate, satTiles, windUV, rampColor, renderField, rgbaCss, WEATHER_RAMPS, type Lattice, type Rgba, type WeatherLayerId } from '@nm/core';
+import { EMPTY, ensureLayer, firstSymbolLayer, Icon, isDark, load, providers, save, setGeoJSON, units, type FeatureContext } from '@nm/core/app';
 import type { WeatherGridPoint } from '@nm/tools';
 import { fillLattice, gridPoint, hasWeather, seriesAt } from './data.ts';
 import { clock, dayLabel } from './format.ts';
+import { initWindParticles, setWindField } from './particles.ts';
 
 type MapLibreMap = FeatureContext['map'];
 
@@ -43,6 +44,9 @@ export const wxTime = signal<number>(hourNow());
 export const wxLoading = signal(false);
 export const wxError = signal(false);
 const playing = signal(false);
+/** The daily satellite image: days back (1 = yesterday, the newest full day), or null when off. */
+export const wxSat = signal<number | null>(null);
+const hasSat = () => !!providers.peek().weatherSatUrl;
 
 let map: MapLibreMap | undefined;
 let lattice: Lattice | null = null;
@@ -52,14 +56,50 @@ let seq = 0;
 export function showWeatherLayer(id: WeatherLayerId | null) {
   wxLayer.value = id;
   wxTime.value = hourNow();
-  if (map) refreshWeatherLayer(map);
+  if (id !== null) wxSat.value = null;
+  if (map) {
+    refreshWeatherLayer(map);
+    applySat(map);
+  }
+}
+
+/** One layer at a time: the satellite image replaces the forecast layers. */
+export function showSatellite(daysBack: number | null) {
+  if (daysBack !== null) wxLayer.value = null;
+  wxSat.value = daysBack;
+  if (map) {
+    refreshWeatherLayer(map);
+    applySat(map);
+  }
+}
+
+let satShown = '';
+function applySat(m: MapLibreMap) {
+  const d = wxSat.peek();
+  const tiles = d !== null && hasSat() ? satTiles(providers.peek().weatherSatUrl, d) : '';
+  if (tiles === satShown && (!tiles || m.getLayer('wx-sat'))) return;
+  if (m.getLayer('wx-sat')) m.removeLayer('wx-sat');
+  if (m.getSource('wx-sat')) m.removeSource('wx-sat');
+  satShown = tiles;
+  if (!tiles) return;
+  m.addSource('wx-sat', {
+    type: 'raster',
+    tiles: [tiles],
+    tileSize: 256,
+    maxzoom: 9,
+    attribution: 'תמונת לוויין: NASA GIBS / VIIRS',
+  });
+  ensureLayer(m, { id: 'wx-sat', type: 'raster', source: 'wx-sat', paint: { 'raster-opacity': 0.92, 'raster-fade-duration': 150 } }, firstSymbolLayer(m));
 }
 
 export function initWeatherLayers(m: MapLibreMap, onStyle: FeatureContext['onStyle']) {
   map = m;
+  initWindParticles(m);
   onStyle((mm) => {
     addLayers(mm);
     if (wxLayer.peek()) refreshWeatherLayer(mm);
+    satShown = '';
+    applySat(mm);
   });
   m.on('moveend', () => wxLayer.peek() && refreshWeatherLayer(m));
   wxTime.subscribe(() => map && draw(map));
@@ -170,6 +210,7 @@ function draw(m: MapLibreMap) {
   if (!id || !lattice) {
     m.setLayoutProperty('wx-field', 'visibility', 'none');
     setGeoJSON(m, 'wx-points', EMPTY);
+    setWindField(null);
     return;
   }
   const def = byId(id);
@@ -186,6 +227,16 @@ function draw(m: MapLibreMap) {
     m.setLayoutProperty('wx-field', 'visibility', 'none');
     return;
   }
+  if (id === 'wind') {
+    const uv = l.lats.map((lat, j) =>
+      l.lngs.map((lng, i) => {
+        const sp = values[j][i];
+        const dir = sp === null ? null : seriesAt(gridPoint(lng, lat)!, 'dir', t);
+        return sp === null || dir === null ? null : windUV(sp, dir);
+      }),
+    );
+    setWindField({ l, u: uv.map((r) => r.map((x) => x?.[0] ?? null)), v: uv.map((r) => r.map((x) => x?.[1] ?? null)) });
+  } else setWindField(null);
   const W = Math.min(480, l.lngs.length * 12);
   const H = Math.max(2, Math.min(720, Math.round((W * hy) / wx)));
   const canvas = document.createElement('canvas');
@@ -259,6 +310,14 @@ export function WeatherLayerSection() {
             {d.label}
           </button>
         ))}
+        {hasSat() && (
+          <button class="layer-opt" aria-pressed={wxSat.value !== null} onClick={() => showSatellite(wxSat.value !== null ? null : 1)}>
+            <span class="layer-thumb wx-thumb wx-thumb-sat">
+              <Icon name="satellite" size={22} />
+            </span>
+            לוויין
+          </button>
+        )}
       </div>
     </>
   );
@@ -282,6 +341,7 @@ export function WeatherTimeBar() {
     }, 800);
     return () => clearInterval(h);
   }, [playing.value]);
+  if (wxSat.value !== null) return <SatBar daysBack={wxSat.value} />;
   if (!id || !hasWeather()) return null;
   const def = byId(id);
   const start = hourNow();
@@ -333,6 +393,35 @@ export function WeatherTimeBar() {
         {wxLoading.value ? 'טוען…' : wxError.value ? 'חלק מהנתונים לא זמינים כרגע.' : def.id === 'precip' ? 'משקעים לפי מודל התחזית (לא מכ״ם). ' : ''}
         Open-Meteo, CC BY 4.0
       </p>
+    </div>
+  );
+}
+
+/** The bar while the satellite image is on: which day (the last week), and the source. */
+function SatBar({ daysBack }: { daysBack: number }) {
+  const date = satDate(daysBack);
+  const nice = new Intl.DateTimeFormat('he-IL', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`));
+  const when = daysBack === 1 ? `אתמול, ${nice}` : daysBack === 2 ? `שלשום, ${nice}` : nice;
+  return (
+    <div class="wx-timebar" role="region" aria-label="שכבת לוויין">
+      <div class="wx-tb-row">
+        <Icon name="satellite" size={20} />
+        <input
+          type="range"
+          min={0}
+          max={6}
+          step={1}
+          value={7 - daysBack}
+          aria-label="יום התמונה"
+          aria-valuetext={when}
+          onInput={(e) => showSatellite(7 - Number((e.target as HTMLInputElement).value))}
+        />
+        <span class="wx-tb-when">{when}</span>
+        <button class="icon-btn small" aria-label="הסתרת שכבת מזג האוויר" onClick={() => showSatellite(null)}>
+          <Icon name="close" size={20} />
+        </button>
+      </div>
+      <p class="muted tiny wx-tb-note">תמונה יומית אחת מהלוויין (צילום בשעות הצהריים, לא בזמן אמת), ברזולוציה של עד כ-300 מ׳. NASA GIBS / VIIRS.</p>
     </div>
   );
 }

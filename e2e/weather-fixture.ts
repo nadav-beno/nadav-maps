@@ -96,3 +96,25 @@ export function omGrid(lats: number[], lngs: number[]) {
     };
   });
 }
+
+/** The sea off Tel Aviv: nearest sea cell ~3 km west of the asked point. */
+export function omMarine(lat = 32.08, lng = 34.78) {
+  const h0 = hour();
+  const time = Array.from({ length: 48 }, (_, i) => h0 + i * 3600);
+  const day0 = h0 - ((h0 + 2 * 3600) % 86400);
+  return {
+    latitude: lat,
+    longitude: lng - 0.03,
+    timezone: 'Asia/Jerusalem',
+    current: { time: h0, wave_height: 0.8, wave_direction: 290, wave_period: 6.2, swell_wave_height: 0.5, sea_surface_temperature: 24.6 },
+    hourly: {
+      time,
+      wave_height: time.map((_, i) => 0.8 + 0.6 * Math.sin(i / 8)),
+      wave_direction: time.map(() => 290),
+      wave_period: time.map(() => 6.2),
+      swell_wave_height: time.map(() => 0.5),
+      sea_surface_temperature: time.map(() => 24.6),
+    },
+    daily: { time: Array.from({ length: 7 }, (_, i) => day0 + i * 86400), wave_height_max: [1.2, 1.6, 2.1, 1.1, 0.7, 0.6, 0.9] },
+  };
+}

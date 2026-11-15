@@ -2,13 +2,16 @@ import { useEffect, useState } from 'preact/hooks';
 import type { LngLat, Units } from '@nm/core';
 import {
   beaufort,
+  comingFrom,
   feelsLikeNote,
   fmtPrecip,
   fmtPressure,
   fmtTemp,
   fmtVisibility,
+  fmtWaves,
   fmtWind,
   moonPhase,
+  seaState,
   uvBand,
   visibilityLabel,
   weatherIcon,
@@ -18,8 +21,8 @@ import {
   windLabel,
 } from '@nm/core';
 import { back, Icon, providers, units, type ViewProps } from '@nm/core/app';
-import { airQuality, aqiLabel, reverseGeocode, tools, type AirQuality, type WeatherForecast, type WeatherHour } from '@nm/tools';
-import { forecastAt } from './data.ts';
+import { airQuality, aqiLabel, reverseGeocode, tools, type AirQuality, type MarineForecast, type WeatherForecast, type WeatherHour } from '@nm/tools';
+import { forecastAt, marineAt } from './data.ts';
 import { clock, dayLabel, hourLabel } from './format.ts';
 import { showWeatherLayer } from './layers.tsx';
 
@@ -247,7 +250,8 @@ interface TileDef {
   value: string;
   sub?: string;
   extra?: preact.ComponentChildren;
-  chart?: { values: (number | null)[]; fmt: (v: number) => string; color: string };
+  /** `times` defaults to the next 24 hours of the forecast. */
+  chart?: { values: (number | null)[]; fmt: (v: number) => string; color: string; times?: number[] };
 }
 
 function Tiles({ f, next, u }: { f: WeatherForecast; next: WeatherHour[]; u: Units }) {
@@ -265,6 +269,15 @@ function Tiles({ f, next, u }: { f: WeatherForecast; next: WeatherHour[]; u: Uni
       live = false;
     };
   }, [f.lng, f.lat, hasAir]);
+  const [sea, setSea] = useState<MarineForecast | null>(null);
+  useEffect(() => {
+    let live = true;
+    setSea(null);
+    marineAt([f.lng, f.lat]).then((r) => live && setSea(r));
+    return () => {
+      live = false;
+    };
+  }, [f.lng, f.lat]);
 
   const c = f.current;
   const tz = f.timeZone;
@@ -317,6 +330,9 @@ function Tiles({ f, next, u }: { f: WeatherForecast; next: WeatherHour[]; u: Uni
     extra: <Compass dir={c.dir} />,
     chart: { values: series('wind'), fmt: (v) => fmtWind(v, u), color: '#63e6be' },
   });
+
+  // The sea (only near the coast)
+  if (sea) tiles.push(seaTile(sea, u));
 
   // Precipitation
   const past = f.hourly.filter((h) => h.time < c.time && h.time >= c.time - 86400).reduce((s, h) => s + (h.precip ?? 0), 0);
@@ -421,11 +437,33 @@ function Tiles({ f, next, u }: { f: WeatherForecast; next: WeatherHour[]; u: Uni
             {t.extra}
             {t.sub && <span class="wx-tile-sub">{t.sub}</span>}
           </button>
-          {open === t.id && t.chart && <Chart times={day.map((h) => h.time)} tz={tz} {...t.chart} />}
+          {open === t.id && t.chart && <Chart {...t.chart} times={t.chart.times ?? day.map((h) => h.time)} tz={tz} />}
         </section>
       ))}
     </div>
   );
+}
+
+function seaTile(m: MarineForecast, u: Units): TileDef {
+  const c = m.current;
+  const state = seaState(c.wave);
+  const hours = m.hourly.filter((h) => h.time >= c.time - 1800).slice(0, 24);
+  const peak = hours.reduce((a, h) => Math.max(a, h.wave ?? 0), 0);
+  const tomorrow = m.daily[1]?.waveMax;
+  const parts = [
+    c.waveDir !== null ? `גלים ${comingFrom(c.waveDir)}` : '',
+    c.period !== null ? `מחזור ${Math.round(c.period)} שניות` : '',
+    c.sea !== null ? `טמפרטורת המים ${fmtTemp(c.sea, u)}` : '',
+  ].filter(Boolean);
+  return {
+    id: 'sea',
+    icon: 'waves',
+    title: 'מצב הים',
+    value: `${fmtWaves(c.wave, u)}${state ? ` · ${state.label}` : ''}`,
+    sub: `${parts.join(', ')}.${peak > (c.wave ?? 0) + 0.2 ? ` עד ${fmtWaves(peak, u)} ב-24 השעות הקרובות.` : ''}${tomorrow !== null && tomorrow !== undefined ? ` מחר עד ${fmtWaves(tomorrow, u)} (${seaState(tomorrow)?.label}).` : ''}`,
+    extra: c.waveDir !== null ? <Compass dir={c.waveDir} /> : undefined,
+    chart: { values: hours.map((h) => h.wave), times: hours.map((h) => h.time), fmt: (v) => fmtWaves(v, u), color: '#1c7ed6' },
+  };
 }
 
 /** 24 hours of one variable as a line, with a few hour ticks. */

@@ -1148,7 +1148,8 @@ span.dep-locate { width: 40px; }
 .wx-credit { margin: 12px 0 8px; }
 .wx-map-btn { margin-bottom: 16px; }
 .wx-place-row .list-item, .wx-home .list-item { width: 100%; border: 0; background: var(--bg-2); border-radius: 14px; padding: 10px 12px; color: var(--text); text-align: start; display: flex; align-items: center; gap: 12px; font: inherit; }
-.wx-place-row { margin: 8px 0; }
+.wx-place-row { margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.wx-sea-row .icon:first-child { color: #1c7ed6; }
 .wx-place-row .li-body, .wx-home .li-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .wx-place-row .li-title, .wx-home .li-title { font-weight: 500; }
 .wx-place-row .li-sub, .wx-home .li-sub { font-size: 13px; color: var(--text-2); }
@@ -1160,6 +1161,7 @@ span.dep-locate { width: 40px; }
 .wx-thumb-uv { background: linear-gradient(135deg, #4eb400, #f7e400, #f85900, #d8001d); }
 .wx-thumb-cloud { background: radial-gradient(circle at 40% 50%, #9aa3ad 0 30%, transparent 31%), radial-gradient(circle at 65% 40%, #b8c0c8 0 26%, transparent 27%), #dfe7ef; }
 .wx-thumb-vis { background: linear-gradient(180deg, #c8ccd2, #9aa0a6); }
+.wx-thumb-sat { background: radial-gradient(circle at 35% 45%, #f4f6f8 0 22%, transparent 23%), radial-gradient(circle at 70% 60%, #e9edf1 0 18%, transparent 19%), linear-gradient(135deg, #2f6b3a, #8a7a4c 55%, #1f4e79 56%); color: #fff; }
 .wx-timebar {
   position: fixed; z-index: 14; inset-inline-start: calc(12px + var(--safe-x, 0px)); inset-inline-end: calc(72px + var(--safe-x, 0px));
   bottom: calc(var(--sheet-h) + var(--tabs-h) + 16px); max-width: 520px;
@@ -1175,3 +1177,12 @@ span.dep-locate { width: 40px; }
 .wx-legend-scale { height: 8px; border-radius: 4px; }
 .wx-legend-ticks { display: flex; justify-content: space-between; color: var(--text-2); }
 .wx-tb-note { margin: 2px 0 0; }
+.arrival-sections { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.wx-arrival { width: 100%; border: 0; background: var(--bg-2); border-radius: 14px; padding: 8px 12px; color: var(--text); text-align: start; display: flex; align-items: center; gap: 12px; font: inherit; cursor: pointer; }
+.wx-arrival .li-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.wx-arrival .li-title { font-weight: 500; }
+.wx-arrival .li-sub { font-size: 13px; color: var(--text-2); }
+.wx-arrival .icon { color: var(--text-2); }
+.live-route-arrival { grid-column: 1 / -1; }
+.live-route .wx-arrival { background: var(--bg); }
+.wx-particles { position: absolute; inset: 0; pointer-events: none; }

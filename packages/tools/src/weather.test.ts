@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_PROVIDERS } from '@nm/core';
-import { omForecast, omGrid } from '../../../e2e/weather-fixture.ts';
+import { omForecast, omGrid, omMarine } from '../../../e2e/weather-fixture.ts';
 import { createToolClient } from './client.ts';
-import { weatherForecastTool, weatherGridTool } from './tools/index.ts';
+import { marineForecastTool, weatherForecastTool, weatherGridTool } from './tools/index.ts';
+import { ProviderError } from './define.ts';
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
 
@@ -55,5 +56,34 @@ describe('weather tools (Open-Meteo)', () => {
     expect(r[1].lng).toBe(35);
     expect(r[0].temp).toHaveLength(48);
     expect(r[0].start).toBeGreaterThan(0);
+  });
+
+  it('reads the sea at the nearest sea cell, and nothing far inland', async () => {
+    let url = '';
+    let body: unknown = omMarine();
+    let status = 200;
+    const client = createToolClient(DEFAULT_PROVIDERS, 'he', (async (u: string) => {
+      url = u;
+      return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch);
+    const m = await client.call(marineForecastTool, { at: [34.78, 32.08] });
+    const q = new URL(url).searchParams;
+    expect(url.startsWith('https://marine-api.open-meteo.com/v1/marine?')).toBe(true);
+    expect(q.get('cell_selection')).toBe('sea');
+    expect(m?.current.wave).toBe(0.8);
+    expect(m?.current.sea).toBe(24.6);
+    expect(m?.hourly).toHaveLength(48);
+    expect(m?.daily).toHaveLength(7);
+    expect(m!.offshore).toBeGreaterThan(2000);
+    expect(m!.offshore).toBeLessThan(4000);
+    // Nearest sea cell 50 km away: not a coastal point.
+    body = { ...omMarine(), longitude: 34.78 + 0.5 };
+    expect(await client.call(marineForecastTool, { at: [34.78, 32.08] }, { cache: false })).toBeNull();
+    // The API answers 400 when there is no sea cell at all.
+    body = { error: true, reason: 'No data is available for this location' };
+    status = 400;
+    expect(await client.call(marineForecastTool, { at: [35.2, 31.8] }, { cache: false })).toBeNull();
+    status = 500;
+    await expect(client.call(marineForecastTool, { at: [35.2, 31.8] }, { cache: false })).rejects.toBeInstanceOf(ProviderError);
   });
 });

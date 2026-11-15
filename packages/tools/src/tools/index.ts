@@ -6,7 +6,7 @@ import { findFlight } from '../providers/adsb.ts';
 import { liveAircraft, type Bbox } from '../providers/live-aircraft.ts';
 import { flightRoute } from '../providers/flight-route.ts';
 import { airQualityAt } from '../providers/air-quality.ts';
-import { weatherForecast, weatherGrid } from '../providers/open-meteo.ts';
+import { marineForecast, weatherForecast, weatherGrid } from '../providers/open-meteo.ts';
 import { commonsPhotosNear } from '../providers/commons.ts';
 import { overpassAlongLine, overpassCategory, overpassDetails, overpassIdentify, overpassInside } from '../providers/overpass.ts';
 import { photonReverse, photonSearch } from '../providers/photon.ts';
@@ -350,6 +350,15 @@ export const weatherGridTool = defineTool({
   run: (input, ctx) => weatherGrid(ctx, input.points as LngLat[], input.hours),
 });
 
+export const marineForecastTool = defineTool({
+  name: 'marine_forecast',
+  title: 'מצב הים',
+  description:
+    'The sea near a coastal point: significant wave height (m), wave direction (degrees from) and period (s), swell height, sea surface temperature (°C), now, hourly for 48 hours and the daily max wave height for 7 days. Uses the nearest sea cell; null for points more than ~20 km from the sea or when the source is switched off. From Open-Meteo marine (CC BY 4.0).',
+  input: z.object({ at: point.describe('[lng, lat]') }),
+  run: (input, ctx) => marineForecast(ctx, input.at as LngLat),
+});
+
 export const placeSummary = defineTool({
   name: 'place_summary',
   title: 'תיאור מקום מוויקיפדיה',
@@ -522,7 +531,7 @@ export const flightRouteTool = defineTool({
   run: (input, ctx) => flightRoute(ctx, input.callsign, input.at as LngLat),
 });
 
-export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, routeGuidance, searchAlongRoute, placesInside, placePhotos, airQuality, weatherForecastTool, weatherGridTool, transitDirections, transitDeparturesTool, transitVehiclesTool, placeSummary, trafficIncidents, trafficTravelTime, flightPosition, liveFlights, flightRouteTool];
+export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, routeGuidance, searchAlongRoute, placesInside, placePhotos, airQuality, weatherForecastTool, weatherGridTool, marineForecastTool, transitDirections, transitDeparturesTool, transitVehiclesTool, placeSummary, trafficIncidents, trafficTravelTime, flightPosition, liveFlights, flightRouteTool];
 
 /**
  * Start loading the region's full names list (typo dictionary) in the background, e.g. in

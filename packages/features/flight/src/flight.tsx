@@ -3,6 +3,7 @@ import { useEffect, useState } from 'preact/hooks';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { distance, formatArrival, formatDuration, greatCircle, searchWorld, worldName, type LngLat, type World } from '@nm/core';
 import {
+  arrivalSections,
   back,
   cssVar,
   EMPTY,
@@ -468,6 +469,13 @@ function DestinationCard({ here, speedMs }: { here: LngLat | null; speedMs: numb
             </>
           )}
         </div>
+        {eta !== null && arrivalSections.value.length > 0 && (
+          <div class="arrival-sections">
+            {arrivalSections.value.map((s) => (
+              <s.Component key={s.id} at={d.lngLat} time={Math.round((Date.now() / 1000 + eta) / 900) * 900} name={d.name} />
+            ))}
+          </div>
+        )}
       </div>
       <button class="icon-btn" aria-label="שינוי יעד" title="שינוי יעד" onClick={() => setPicking(true)}>
         <Icon name="edit" size={20} />
