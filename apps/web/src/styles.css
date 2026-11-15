@@ -196,7 +196,8 @@ label.btn { cursor: pointer; }
 }
 @media (min-width: 768px) { .map-controls { top: 12px; } }
 /* Not enough room above the "my location" button: a second column toward the map. */
-.map-controls.wrapped { display: grid; grid-auto-flow: column; grid-template-rows: repeat(var(--ctrl-rows), auto); justify-items: center; gap: 12px; }
+.map-controls.wrapped { display: grid; grid-auto-flow: column; grid-template-rows: repeat(var(--ctrl-rows), auto); justify-items: center; gap: 12px; pointer-events: none; }
+.map-controls.wrapped > * { pointer-events: auto; }
 .ctrl {
   display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; padding: 0;
   border: 0; background: var(--surface); color: var(--text-2); box-shadow: var(--shadow-2);
