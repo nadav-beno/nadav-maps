@@ -45,6 +45,18 @@ describe('flights relay', () => {
     expect(upstream.mock.calls[0][1]?.method).toBe('POST');
   });
 
+  it('sends our adsb.lol key only to adsb.lol', async () => {
+    const upstream = vi.fn(async () => new Response('{}'));
+    const trace = 'https://adsb.lol/data/traces/0f/trace_full_06a10f.json';
+    await handleFlightsRelay(post({ url: trace }), upstream as unknown as typeof fetch, 0, { adsbKey: 'k' });
+    await handleFlightsRelay(post({ url: 'https://opensky-network.org/api/states/all?x=1' }), upstream as unknown as typeof fetch, 0, { adsbKey: 'k' });
+    await handleFlightsRelay(post({ url: trace + '?2' }), upstream as unknown as typeof fetch, 0);
+    const keyOf = (i: number) => (upstream.mock.calls[i] as unknown as [string, RequestInit])[1].headers as Record<string, string>;
+    expect(keyOf(0)['x-api-key']).toBe('k');
+    expect(keyOf(1)['x-api-key']).toBeUndefined();
+    expect(keyOf(2)['x-api-key']).toBeUndefined();
+  });
+
   it('refuses other sites, other URLs and other methods', async () => {
     const upstream = vi.fn();
     expect((await handleFlightsRelay(post({ url: 'https://api.adsb.lol/v2/point/1/2/3' }, 'https://other.example'), upstream)).status).toBe(403);
