@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { decodeGeohash, parseMapLink } from './map-link.ts';
-import { matchLocalPlaces, matchText, mergeSuggestions, movedEnough, nameMatches, samePlace, type LocalFeature } from './local-search.ts';
+import { findChain, matchLocalPlaces, matchText, mergeSuggestions, movedEnough, nameMatches, nameMatchesExactly, samePlace, type LocalFeature } from './local-search.ts';
 import { filterOpenNow, openNowStates } from './hours.ts';
 import { buildUrl, parseUrl } from './url-state.ts';
 import type { Place } from './types.ts';
@@ -215,5 +215,34 @@ describe('open now filter', () => {
     const r = filterOpenNow(places, s);
     expect(r.places.map((p) => p.id)).toEqual(['open', 'always']);
     expect(r.unknown).toBe(2);
+  });
+});
+
+describe('suggestions like Google', () => {
+  const here: [number, number] = [34.776, 32.08];
+  const biz = (name: string, lat: number, lng: number, extra: Partial<Place> = {}): Place => ({ id: `ovt:${name}${lat}`, name, lat, lng, category: { key: 'overture', value: 'pharmacy' }, ...extra });
+  it('never puts a far branch before the one around the corner', () => {
+    const rehovot = biz('סופרפארם', 31.89, 34.81);
+    const migdal = biz('סופר-פארם', 32.67, 35.24);
+    const dizengoff = biz('סופר פארם', 32.087, 34.774);
+    const out = mergeSuggestions([], [rehovot, migdal, dizengoff], 'סופרפארם', here);
+    expect(out[0]).toBe(dizengoff);
+    expect(out.indexOf(rehovot)).toBeLessThan(out.indexOf(migdal));
+  });
+  it('matches a name with or without the space or hyphen', () => {
+    expect(nameMatchesExactly('סופר-פארם', 'סופרפארם')).toBe(true);
+    expect(nameMatchesExactly('סופר פארם אבן גבירול', 'סופרפארם')).toBe(true);
+    const f = (name: string, lat: number) => ({ properties: { id: name + lat, '@name': name, confidence: 0.9 }, lng: 34.78, lat });
+    const out = matchLocalPlaces([f('סופר-פארם', 32.7), f('סופר פארם', 32.081)], 'סופרפארם', here, [], 3);
+    expect(out[0].name).toBe('סופר פארם');
+  });
+  it('finds the chain behind the suggestions', () => {
+    const a = biz('ארומה', 32.081, 34.78, { brand: 'ארומה' });
+    const b = biz('ארומה דיזנגוף', 32.09, 34.774, { brand: 'ארומה' });
+    const c = biz('ארוסה', 32.07, 34.77);
+    expect(findChain([a, b, c], 'ארו')).toEqual({ name: 'ארומה', branches: [a, b] });
+    expect(findChain([biz('ארומה', 32.08, 34.78), biz('ארומה', 32.07, 34.77)], 'ארומה')?.branches).toHaveLength(2);
+    expect(findChain([a], 'ארומה')).toBeNull();
+    expect(findChain([biz('פיצה', 32.08, 34.78), biz('פיצה', 32.07, 34.77)], 'פיצה', (n) => n === 'פיצה')).toBeNull();
   });
 });

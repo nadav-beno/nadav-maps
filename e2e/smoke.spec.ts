@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { stubGeodata, stubNetwork } from './stubs.ts';
 import { encodePlusCode } from '../packages/core/src/plus-code.ts';
-import { adsbAreaResponse, adsbResponse, fakeGps, FLIGHT_FIXES, openskyResponse, routesetResponse, worldResponse } from './flight-fixture.ts';
+import { adsbAreaResponse, adsbResponse, fakeGps, FLIGHT_FIXES, openskyResponse, routesetResponse, traceResponse, worldResponse } from './flight-fixture.ts';
 import { TAKEOUT_DAY, TAKEOUT_FIXTURE } from './timeline-fixture.ts';
 
 test.beforeEach(async ({ page }) => {
@@ -23,6 +23,34 @@ test('search with autocomplete opens a place card with details', async ({ page }
   await expect(page.getByRole('heading', { name: 'קניון עזריאלי' })).toBeVisible();
   await expect(page.getByText('נגיש לכיסאות גלגלים')).toBeVisible();
   await expect(page).toHaveURL(/place=osm:n2002/);
+});
+
+test('search like Google: a chain row for all branches, and what you opened comes back first', async ({ page }) => {
+  const branch = (id: number, lng: number, lat: number, street: string) => ({
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [lng, lat] },
+    properties: { osm_type: 'N', osm_id: id, osm_key: 'amenity', osm_value: 'cafe', name: 'ארומה', street, city: 'תל אביב-יפו', country: 'ישראל', countrycode: 'IL' },
+  });
+  await page.route('https://photon.komoot.io/api**', (r) => {
+    const q = new URL(r.request().url()).searchParams.get('q') ?? '';
+    const features = q.startsWith('ארו') ? [branch(7001, 34.78, 32.08, 'דיזנגוף'), branch(7002, 34.79, 32.07, 'אבן גבירול')] : [];
+    return r.fulfill({ json: { type: 'FeatureCollection', features } });
+  });
+  await page.goto('./#14/32.08/34.78');
+  const box = page.getByRole('searchbox', { name: 'חיפוש מקום או כתובת' });
+  await box.fill('ארומ');
+  const chain = page.getByRole('option').filter({ hasText: 'כל הסניפים' });
+  await expect(chain).toBeVisible();
+  await chain.click();
+  await expect(page.locator('div.result').filter({ hasText: 'ארומה' })).toHaveCount(2, { timeout: 10_000 });
+  await page.locator('div.result').filter({ hasText: 'ארומה' }).first().click();
+  await expect(page.getByRole('heading', { name: 'ארומה' })).toBeVisible();
+  // Back on the map: the place opened and the search both wait in the history.
+  await box.fill('');
+  await box.focus();
+  await expect(page.locator('.suggestion.history').filter({ hasText: 'ארומה' }).first()).toBeVisible();
+  await box.fill('א');
+  await expect(page.locator('.suggestion.history').filter({ hasText: 'ארומה' }).first()).toBeVisible();
 });
 
 test('route from a shared link shows alternatives and steps', async ({ page }) => {
@@ -375,11 +403,10 @@ test('moving the map offers "search this area" and runs the search again', async
   await expect(page.locator('.list').getByText('קפה לנדוור')).toBeVisible();
   const pill = page.getByRole('button', { name: 'חיפוש באזור הזה' });
   await expect(pill).toBeHidden();
-  // Drag the map well past a third of its width (on phones, above the half-open sheet).
+  // Drag the map well past a third of its width (on phones, above the half-open sheet and clear of the map buttons).
   const desktop = info.project.name === 'desktop';
   const y = desktop ? 400 : 230;
-  // Start right of the round map controls (layers, flights, weather) on phones.
-  const [x0, x1] = desktop ? [80, 480] : [90, 370];
+  const [x0, x1] = desktop ? [80, 480] : [80, 370];
   await page.mouse.move(x0, y);
   await page.mouse.down();
   // Few steps: each pointer move re-renders the map, which is slow with software WebGL in CI.
@@ -651,6 +678,10 @@ test('live flights: planes around the map close up, a plane card, and the whole 
     return r.fulfill({ json: adsbAreaResponse(), headers: cors });
   });
   await page.route('https://adsb.im/api/0/routeset', (r) => r.fulfill({ json: routesetResponse(), headers: cors }));
+  await page.route('https://adsb.lol/data/traces/**', (r) => {
+    asked.push(r.request().url());
+    return r.request().url().includes('trace_full_738075') ? r.fulfill({ json: traceResponse(), headers: cors }) : r.fulfill({ status: 404, body: '', headers: cors });
+  });
   await page.route('https://opensky-network.org/**', (r) => {
     asked.push(r.request().url());
     return r.fulfill({ json: openskyResponse(Math.floor(Date.now() / 1000)), headers: cors });
@@ -690,6 +721,20 @@ test('live flights: planes around the map close up, a plane card, and the whole 
   await expect(page.locator('.live-route')).toContainText('JFK');
   await expect(page.locator('.live-route')).toContainText('נשארו');
   await expect(page.locator('.live-route .wx-arrival')).toContainText('בשעת ההגעה');
+  // The whole way it flew since takeoff, coloured by altitude: from adsb.lol's trace files, by hex only.
+  await expect(page.locator('.live-flown')).toContainText('המריא');
+  await expect(page.locator('.live-flown')).toContainText('טס');
+  expect(asked).toContain('https://adsb.lol/data/traces/75/trace_full_738075.json');
+  const trail = () => page.evaluate(() => {
+    const map = (window as unknown as { map: MapLike }).map;
+    const fs = map.queryRenderedFeatures({ layers: ['live-flights-trail'] }) as unknown as { properties: { c: string } }[];
+    return [...new Set(fs.map((f) => f.properties.c))].length;
+  });
+  // Ground grey, then the low and climbing bands: more than one colour.
+  await expect.poll(trail, { timeout: 10_000 }).toBeGreaterThan(1);
+  // One tap shows the whole flight, takeoff to destination, and stops following the plane.
+  await page.getByRole('button', { name: 'כל המסלול' }).click();
+  await expect(page.getByRole('button', { name: 'מעקב כבוי' })).toBeVisible();
   await page.getByRole('button', { name: 'סגירה' }).click();
 
   // The whole world: OpenSky, one call without a box.

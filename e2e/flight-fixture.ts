@@ -39,6 +39,23 @@ export function adsbAreaResponse() {
   };
 }
 
+/** adsb.lol's trace_full for El Al 1 (738075): taxi and takeoff at TLV, climbing out west. */
+export function traceResponse(nowS = Math.floor(Date.now() / 1000)) {
+  const start = nowS - 600;
+  return {
+    icao: '738075',
+    timestamp: start,
+    trace: [
+      [0, 32.0, 34.9, 'ground', 10, 270, 0],
+      [60, 32.005, 34.885, 'ground', 150, 270, 0],
+      [90, 32.01, 34.86, 800, 170, 280, 0],
+      [200, 32.04, 34.8, 3500, 220, 285, 0],
+      [400, 32.08, 34.7, 7000, 270, 280, 0],
+      [560, 32.098, 34.63, 8800, 295, 272, 0],
+    ],
+  };
+}
+
 /** adsb.im /api/0/routeset for El Al 1: Tel Aviv to New York. */
 export function routesetResponse() {
   return [

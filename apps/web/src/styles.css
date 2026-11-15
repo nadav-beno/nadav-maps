@@ -377,6 +377,7 @@ label.btn { cursor: pointer; }
 }
 .suggestion:hover, .suggestion.active { background: var(--bg-2); }
 .suggestion.error { color: var(--danger); font-size: 14px; }
+.suggestion.chain .li-title .muted { font-weight: 400; }
 .suggestion .li-icon { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; background: var(--bg-2); color: var(--text-2); font-size: 15px; }
 .suggestion .li-body { display: flex; flex-direction: column; min-width: 0; }
 .suggestion .li-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -497,7 +498,10 @@ a.detail-body { color: var(--text); }
 .tr-sep { color: var(--text-3); }
 .tr-walk { display: inline-flex; align-items: center; gap: 1px; color: var(--text-2); }
 .live { color: var(--ok); display: inline-flex; align-items: center; gap: 2px; }
-.tr-steps { list-style: none; margin: 4px 0 0; padding: 0; }
+.tr-steps { list-style: none; margin: 4px 0 0; padding: 0; scroll-margin-top: 8px; }
+.tr-wait { grid-column: 1 / -1; color: var(--warn); font-weight: 500; }
+.transit-gap { display: flex; gap: 6px; align-items: flex-start; margin: 4px 0 8px; padding: 10px 12px; border-radius: 12px; background: var(--bg-2); color: var(--warn); font-size: 14px; line-height: 1.4; }
+.transit-gap .icon { flex: none; margin-top: 1px; }
 .tr-step { display: flex; gap: 14px; }
 .tr-rail { flex: none; width: 6px; margin: 4px 9px; border-radius: 3px; }
 .tr-rail.walk { background: repeating-linear-gradient(to bottom, var(--text-3) 0 4px, transparent 4px 9px); width: 4px; margin: 4px 10px; }
@@ -794,6 +798,7 @@ kbd {
 .live-route-city { font-size: 13px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .live-route-arrow { color: var(--text-2); }
 .live-route-left { grid-column: 1 / -1; }
+.live-flown { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: -4px 0 12px; }
 .live-emergency { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; padding: 8px 12px; border-radius: 12px; background: color-mix(in srgb, #d93025 14%, var(--surface)); color: #d93025; font-weight: 500; }
 button.live-sos { width: 100%; border: 0; font: inherit; cursor: pointer; text-align: start; }
 .live-kind { margin: 0 0 2px; }
@@ -1186,3 +1191,20 @@ span.dep-locate { width: 40px; }
 .live-route-arrival { grid-column: 1 / -1; }
 .live-route .wx-arrival { background: var(--bg); }
 .wx-particles { position: absolute; inset: 0; pointer-events: none; }
+/* Live ships */
+.ships-ctrl .icon { transform: none; }
+.ship-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex: none; box-shadow: 0 0 0 1.5px var(--surface); }
+.ship-legend { margin: 8px 0 0; }
+.ship-legend .chip .ship-dot { margin-inline-end: 2px; }
+.ship-legend .chip[aria-pressed='false'] .ship-dot { opacity: 0.35; }
+.ship-shapes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0 0; }
+.ship-shape-arrow { display: inline-block; width: 8px; height: 14px; background: var(--text-2); clip-path: polygon(50% 0, 100% 35%, 100% 100%, 0 100%, 0 35%); }
+.ship-shape-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--text-2); }
+.ship-badge { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; color: #fff; flex: none; }
+.ship-sub { margin: -2px 0 10px; color: var(--text-2); font-size: 14px; }
+.ship-facts { margin: 0 0 12px; }
+.ship-facts h3 { margin: 0 0 4px; }
+.ship-facts dl { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; }
+.ship-facts dl > div { display: flex; flex-direction: column; padding: 6px 0; border-bottom: 1px solid var(--border); min-width: 0; }
+.ship-facts dt { font-size: 12px; color: var(--text-2); }
+.ship-facts dd { margin: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; }

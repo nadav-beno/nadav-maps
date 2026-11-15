@@ -29,6 +29,8 @@ export interface UrlState {
   day?: string;
   /** A point for screens about a spot rather than a place (weather), [lng, lat]. */
   at?: LngLat;
+  /** A ship on the live ships map, by its MMSI ("?panel=ships&ship=428000000"). */
+  ship?: number;
   /** Shown inside another site's iframe ("?embed=1"): just the map and the card. */
   embed?: boolean;
 }
@@ -80,6 +82,8 @@ export function parseUrl(href: string): UrlState {
   if (day && /^\d{4}-\d{2}-\d{2}$/.test(day)) out.day = day;
   const at = p.get('at')?.split(',').map(Number);
   if (at?.length === 2 && at.every(Number.isFinite) && Math.abs(at[0]) <= 180 && Math.abs(at[1]) <= 90) out.at = [at[0], at[1]];
+  const ship = p.get('ship');
+  if (ship && /^\d{9}$/.test(ship)) out.ship = Number(ship);
   if (p.get('embed') === '1') out.embed = true;
   return out;
 }
@@ -112,6 +116,7 @@ export function buildUrl(base: string, s: UrlState): string {
   if (s.panel) p.set('panel', s.panel);
   if (s.day) p.set('day', s.day);
   if (s.at) p.set('at', `${round(s.at[0], 4)},${round(s.at[1], 4)}`);
+  if (s.ship) p.set('ship', String(s.ship));
   if (s.embed) p.set('embed', '1');
   url.hash = s.view ? viewHash(s.view.zoom, s.view.center, s.view.bearing, s.view.pitch) : url.hash;
   // URLSearchParams encodes ';' and ','; keep them readable.

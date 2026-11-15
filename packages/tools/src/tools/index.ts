@@ -1,10 +1,12 @@
-import { distance, fuzzyScore, lineLength, sampleLine, snapToLine, nameIndex, namesFileIndex, namesFileIndexNow, normalizeQuery, parsePlaceId, prepareQuery, queryVariants, regionAt, suggestCorrections, trafficProvider, type BBox, type Correction, type Departure, type LiveVehicle, type LngLat, type Place, type PreparedQuery } from '@nm/core';
+import { closeness, distance, fuzzyScore, isBigArea, lineLength, sampleLine, snapToLine, nameIndex, namesFileIndex, namesFileIndexNow, normalizeQuery, parsePlaceId, prepareQuery, queryVariants, regionAt, suggestCorrections, swapKeyboardLayout, trafficProvider, type BBox, type Correction, type Departure, type LiveVehicle, type LngLat, type Place, type PreparedQuery } from '@nm/core';
 import { z } from 'zod';
 import { CATEGORIES, categoryById } from '../categories.ts';
 import { defineTool, ProviderError, type ToolContext } from '../define.ts';
 import { findFlight } from '../providers/adsb.ts';
 import { liveAircraft, type Bbox } from '../providers/live-aircraft.ts';
 import { flightRoute } from '../providers/flight-route.ts';
+import { liveShips, shipTrack, vesselInfo } from '../providers/ships.ts';
+import { flightTrack } from '../providers/flight-track.ts';
 import { airQualityAt } from '../providers/air-quality.ts';
 import { marineForecast, weatherForecast, weatherGrid } from '../providers/open-meteo.ts';
 import { commonsPhotosNear } from '../providers/commons.ts';
@@ -38,7 +40,19 @@ export const searchPlaces = defineTool({
   }),
   async run(input, ctx) {
     const opts = { near: input.near as LngLat | undefined, zoom: input.zoom, limit: input.limit, bbox: input.bbox as BBox | undefined };
+    // "ctu" is "באו" typed with the keyboard on English: when the Hebrew reading finds
+    // something, it leads (Google turns "ctu" into "באולינג", not into a bus stop in Manila).
+    // Asked only when the Latin text found nothing within reach of the user.
+    const swapped = !input.exact ? hebrewLayoutReading(input.query) : null;
     const first = await searchText(ctx, input.query, opts);
+    const near = opts.near;
+    const nothingClose = !!near && first.places.length > 0 && !first.places.some((p) => distance(near, [p.lng, p.lat]) < 300_000);
+    const other = swapped && nothingClose ? await searchText(ctx, swapped, opts).catch(() => null) : null;
+    if (swapped && other?.places.length && hasStrongMatch(other.places, swapped)) {
+      const ids = new Set(other.places.map((p) => p.id));
+      const lead = other.places.map((p) => ({ ...p, correctedQuery: swapped }));
+      return rankResults([...lead, ...first.places.filter((p) => !ids.has(p.id))], input.query, opts.near).slice(0, input.limit);
+    }
     if (first.strong) return first.places.slice(0, input.limit);
     let results = first.places;
     // Nothing that looks like what was typed: probably a typo. Ask again with the likeliest
@@ -62,6 +76,14 @@ export const searchPlaces = defineTool({
     return rankResults(results, input.query, opts.near).slice(0, input.limit);
   },
 });
+
+/** The Hebrew a lower-case Latin query reads as on a Hebrew keyboard ("ctu" -> "באו"), or null. */
+export function hebrewLayoutReading(query: string): string | null {
+  const q = query.trim();
+  if (q.length > 24 || /[A-Z0-9]/.test(q)) return null;
+  const he = swapKeyboardLayout(q);
+  return he && /^[א-ת ]+$/.test(he) && he.replace(/ /g, '').length >= 2 ? he : null;
+}
 
 type SearchOpts = { near?: LngLat; zoom?: number; limit?: number; bbox?: BBox };
 
@@ -138,22 +160,25 @@ export function rankResults(places: Place[], query: string, near?: LngLat): Plac
   const prepared = new Map<string, PreparedQuery>();
   const pqFor = (t: string) => prepared.get(t) ?? (prepared.set(t, prepareQuery(t)), prepared.get(t)!);
   const n = places.length;
+  const dist = places.map((p) => (near ? distance(near, [p.lng, p.lat]) : 0));
+  // Something within reach (300 km) means a result on another continent is a wrong guess.
+  const anyNear = near ? dist.some((d) => d < 300_000) : false;
   const scored = places.map((p, i) => {
     const match = resultScore(pqFor(p.correctedQuery ?? query), p);
-    const close = near ? closeness(distance(near, [p.lng, p.lat])) : 0;
+    const close = near ? closeness(dist[i]) : 0;
     const order = 1 - i / n;
-    const area = p.category?.key === 'place' || p.category?.key === 'boundary';
+    const area = isBigArea(p);
     // Weak matches all look the same (category searches: "פיצה"); only clear matches move up.
     const m = match >= 0.7 ? match : 0;
-    return { p, s: area ? 0.5 * m + 0.3 * order + 0.2 * close : 0.5 * m + 0.06 * order + 0.44 * close };
+    // A city named exactly is what was meant, wherever it is ("פריז" is Paris, not the street).
+    let s = area ? 0.5 * m + 0.3 * order + 0.2 * close + (m >= 0.95 ? 0.2 : 0) : 0.5 * m + 0.06 * order + 0.44 * close;
+    if (anyNear && dist[i] > 1_500_000 && !area) s -= 1;
+    return { p, s };
   });
   return scored.sort((a, b) => b.s - a.s).map((x) => x.p);
 }
 
-/** 1 here, about 0.8 two km away, 0.5 at 20 km, 0 from 300 km: a log scale, so the next street and the next city both count. */
-export function closeness(meters: number): number {
-  return Math.max(0, 1 - Math.log10(1 + meters / 1000) / Math.log10(301));
-}
+
 
 /**
  * The result search should open right away instead of a list, like Google does for
@@ -531,7 +556,48 @@ export const flightRouteTool = defineTool({
   run: (input, ctx) => flightRoute(ctx, input.callsign, input.at as LngLat),
 });
 
-export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, routeGuidance, searchAlongRoute, placesInside, placePhotos, airQuality, weatherForecastTool, weatherGridTool, marineForecastTool, transitDirections, transitDeparturesTool, transitVehiclesTool, placeSummary, trafficIncidents, trafficTravelTime, flightPosition, liveFlights, flightRouteTool];
+const mmsi = z.number().int().min(100_000_000).max(999_999_999).describe('The ship\'s 9-digit MMSI');
+
+export const liveShipsTool = defineTool({
+  name: 'live_ships',
+  title: 'ספינות בזמן אמת',
+  description:
+    'Every ship broadcasting AIS in a map area: name, MMSI, IMO, call sign, position, speed (knots), course, heading, navigational status, AIS ship type code, length and beam (m), draught (m), destination and ETA as typed in by the crew. Sources: aisstream.io worldwide (coastal receivers, through our relay) and Fintraffic Digitraffic for the Baltic (CC BY 4.0). Coverage is best near coasts.',
+  input: z.object({
+    bbox: z
+      .tuple([z.number().min(-540).max(540), z.number().min(-90).max(90), z.number().min(-540).max(540), z.number().min(-90).max(90)])
+      .refine(([w, s, e, n]) => e > w && n > s, 'west < east and south < north')
+      .describe('[west, south, east, north] in degrees'),
+  }),
+  run: (input, ctx) => liveShips(ctx, input.bbox as [number, number, number, number]),
+});
+
+export const shipTrackTool = defineTool({
+  name: 'ship_track',
+  title: 'המסלול של ספינה',
+  description: 'Where a ship has sailed in the last hours (up to 12 h, one point every 3 minutes while moving), oldest first. Empty when we have not heard it move.',
+  input: z.object({ mmsi }),
+  run: (input, ctx) => shipTrack(ctx, input.mmsi),
+});
+
+export const vesselInfoTool = defineTool({
+  name: 'vessel_info',
+  title: 'פרטי ספינה',
+  description: 'What Wikidata and Wikimedia Commons know about a ship by its IMO number: what it is, year built, builder, gross tonnage, owner, operator, port of registry, a Wikipedia article and a free photo. Mostly well-known ships; fields are null when unknown.',
+  input: z.object({ imo: z.number().int().min(1_000_000).max(9_999_999).describe('The 7-digit IMO number') }),
+  run: (input, ctx) => vesselInfo(ctx, input.imo),
+});
+
+export const flightTrackTool = defineTool({
+  name: 'flight_track',
+  title: 'המסלול שהמטוס טס',
+  description:
+    'The whole path an aircraft has flown on its current flight, from takeoff until now (or until it landed), by ICAO hex ("4x801d", from live_flights). From adsb.lol\'s public ADS-B trace files (ODbL). Returns time-ordered points with position, time and altitude (m), and whether it has landed; empty when nothing was received today.',
+  input: z.object({ hex: z.string().trim().toLowerCase().regex(/^~?[0-9a-f]{6}$/, 'six hex digits') }),
+  run: (input, ctx) => flightTrack(ctx, input.hex),
+});
+
+export const TOOLS = [searchPlaces, reverseGeocode, placeDetails, identifyPlace, searchNearby, getDirections, routeGuidance, searchAlongRoute, placesInside, placePhotos, airQuality, weatherForecastTool, weatherGridTool, marineForecastTool, transitDirections, transitDeparturesTool, transitVehiclesTool, placeSummary, trafficIncidents, trafficTravelTime, flightPosition, liveFlights, flightRouteTool, flightTrackTool, liveShipsTool, shipTrackTool, vesselInfoTool];
 
 /**
  * Start loading the region's full names list (typo dictionary) in the background, e.g. in

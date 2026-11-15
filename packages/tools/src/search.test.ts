@@ -129,3 +129,34 @@ describe('category near a place', () => {
     expect(categoryFromText('דיזנגוף')).toBeUndefined();
   });
 });
+
+describe('search like Google: near first, layout slips, villages', () => {
+  const here: [number, number] = [34.776, 32.08];
+  it('reads a Latin query typed on the wrong keyboard as Hebrew when nothing near matches it', async () => {
+    const manila = { geometry: { coordinates: [121.0, 14.6] }, properties: { osm_type: 'N', osm_id: 9, osm_key: 'highway', osm_value: 'bus_stop', name: 'CTU', countrycode: 'PH' } };
+    const { client } = photon({ ctu: [manila], באו: [feature('באולינג', 4, { osm_key: 'leisure', osm_value: 'bowling_alley' })] });
+    const res = await client.call(searchPlaces, { query: 'ctu', near: here, zoom: 14 });
+    expect(res[0]).toMatchObject({ name: 'באולינג', correctedQuery: 'באו' });
+  });
+  it('keeps a Latin query that finds something nearby', async () => {
+    const { asked, client } = photon({ aroma: [feature('Aroma', 5, { osm_key: 'amenity', osm_value: 'cafe' })] });
+    const res = await client.call(searchPlaces, { query: 'aroma', near: here });
+    expect(res[0].name).toBe('Aroma');
+    expect(asked).toEqual(['aroma']);
+  });
+  it('puts the mall around the corner before a village of a similar name', () => {
+    const village = place('עזריאל', { lat: 32.3, lng: 34.93, category: { key: 'place', value: 'village' }, correctedQuery: 'עזריאל' });
+    const mall = place('עזריאלי', { lat: 32.074, lng: 34.792, category: { key: 'shop', value: 'mall' } });
+    expect(rankResults([village, mall], 'עזרילי', here)[0]).toBe(mall);
+  });
+  it('still knows a city by its name', () => {
+    const paris = place('פריז', { lat: 48.85, lng: 2.35, category: { key: 'place', value: 'city' } });
+    const street = place('פריז', { lat: 32.07, lng: 34.77, category: { key: 'highway', value: 'residential' } });
+    expect(rankResults([paris, street], 'פריז', here)[0]).toBe(paris);
+  });
+  it('drops a result on another continent below anything within reach', () => {
+    const far = place('CTU', { lat: 14.6, lng: 121, category: { key: 'highway', value: 'bus_stop' } });
+    const near = place('CTU Acupuncture', { lat: 32.07, lng: 34.78 });
+    expect(rankResults([far, near], 'ctu', here)[0]).toBe(near);
+  });
+});
