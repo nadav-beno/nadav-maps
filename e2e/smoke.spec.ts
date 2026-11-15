@@ -666,7 +666,8 @@ test.describe('flight mode', () => {
 });
 
 test('live flights: planes around the map close up, a plane card, and the whole world from OpenSky', async ({ page }) => {
-  test.setTimeout(90_000);
+  // Long and many-step; on a busy CI runner (the game tests draw at 60 fps alongside) 90 s was not enough.
+  test.setTimeout(150_000);
   const cors = { 'access-control-allow-origin': '*' };
   const asked: string[] = [];
   await page.route('https://api.adsb.lol/**', (r) => {

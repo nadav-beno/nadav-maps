@@ -30,6 +30,7 @@ traffic car_crash warning foggy rainy ac_unit air flood block
 speed height flight_land flight_takeoff radar timer
 anchor sailing explore
 timeline calendar_month upload_file delete_sweep
+school shield sports_esports pause help replay workspace_premium military_tech rocket_launch
 two_wheeler toll add_road drag_indicator bolt straight mic favorite label north_west code sort visibility_off stairs stars location_off
 brightness_auto explore my_location mobile_arrow_right qr_code_2 grid_4x4 menu_book table_restaurant wifi smoke_free payments eco room_service travel_explore verified
 `.trim().split(/\s+/);
