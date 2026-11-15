@@ -20,6 +20,7 @@ import {
   trafficProvider,
 } from '@nm/core';
 import {
+  arrivalSections,
   back,
   currentView,
   defineFeature,
@@ -946,6 +947,20 @@ function RecentRoutes() {
   );
 }
 
+/** Lines other features add about the destination at arrival time (e.g. the weather there). */
+function Arrival({ at, time, name }: { at: LngLat; time: number; name?: string }) {
+  if (!Number.isFinite(time) || !arrivalSections.value.length) return null;
+  // Round to 5 minutes so the lines don't refetch on every render.
+  const t = Math.round(time / 300) * 300;
+  return (
+    <div class="arrival-sections">
+      {arrivalSections.value.map((s) => (
+        <s.Component key={s.id} at={at} time={t} name={name} />
+      ))}
+    </div>
+  );
+}
+
 function DirectionsView(_: ViewProps) {
   const showSteps = useSignal(false);
   const showOptions = useSignal(false);
@@ -1107,6 +1122,13 @@ function DirectionsView(_: ViewProps) {
       )}
 
       {r && profile.value && <Elevation p={profile.value} />}
+      {dest && (r || it) && (
+        <Arrival
+          at={dest}
+          time={it ? Math.round(Date.parse(it.end) / 1000) : Math.round(Date.now() / 1000 + (trafficTimes.value.get(r!) ?? r!.durationS))}
+          name={destination?.name}
+        />
+      )}
 
       {(r || it) && (
         <div class="route-actions">

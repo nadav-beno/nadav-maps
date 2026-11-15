@@ -156,6 +156,8 @@ test('directions: fastest route badge, send to phone, and what is around the des
   await expect(page.locator('.route-option')).toHaveCount(2);
   await expect(page.locator('.route-option').first().locator('.route-badge')).toHaveText('המסלול הכי מהיר');
   await expect(page.locator('.route-badge')).toHaveCount(1);
+  // The weather at the destination when you get there.
+  await expect(page.getByRole('button', { name: /^מזג האוויר ב.* בהגעה$/ })).toContainText(/\d+° · .*בשעת ההגעה \(\d{2}:\d{2}\)/);
   await page.getByRole('button', { name: 'שליחת המסלול לטלפון' }).click();
   await expect(page.getByRole('dialog', { name: 'שליחה לטלפון' }).getByRole('img', { name: 'קוד QR של הקישור' })).toBeVisible();
   await page.getByRole('dialog').getByRole('button', { name: 'סגירה' }).click();
@@ -606,6 +608,7 @@ test.describe('flight mode', () => {
     await page.getByRole('button', { name: /Ben Gurion/ }).click();
     await expect(page.locator('.flight-dest-line')).toContainText(/נשארו \d[\d,]* ק״מ/);
     await expect(page.locator('.flight-dest-line')).toContainText(/נחיתה משוערת \d{2}:\d{2}/);
+    await expect(page.locator('.flight-dest .wx-arrival')).toContainText('מזג האוויר ב');
     // The plane, its track and the great circle toward the destination are on the map.
     await expect
       .poll(() =>
@@ -718,6 +721,7 @@ test('live flights: planes around the map close up, a plane card, and the whole 
   await expect(page.locator('.live-route')).toContainText('TLV');
   await expect(page.locator('.live-route')).toContainText('JFK');
   await expect(page.locator('.live-route')).toContainText('נשארו');
+  await expect(page.locator('.live-route .wx-arrival')).toContainText('בשעת ההגעה');
   // The whole way it flew since takeoff, coloured by altitude: from adsb.lol's trace files, by hex only.
   await expect(page.locator('.live-flown')).toContainText('המריא');
   await expect(page.locator('.live-flown')).toContainText('טס');

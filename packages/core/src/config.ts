@@ -107,6 +107,21 @@ export interface ProviderConfig {
    * non-commercial use without a key, CC BY 4.0; a self-hosted instance takes the same URL.
    */
   airQualityUrl: string;
+  /**
+   * Open-Meteo forecast API for weather (screen, place card, map layers; '' = weather hidden).
+   * Free for non-commercial use without a key, CC BY 4.0; a self-hosted instance takes the same URL.
+   */
+  weatherUrl: string;
+  /**
+   * Open-Meteo marine API (waves, swell, sea temperature) for the sea tile and beach cards
+   * ('' = hidden). Same terms as the forecast API.
+   */
+  marineUrl: string;
+  /**
+   * Daily satellite image tiles for the weather layers ('' = hidden): a {z}/{y}/{x} template
+   * with {date} (YYYY-MM-DD, UTC). NASA GIBS VIIRS true colour by default, free and open, no key.
+   */
+  weatherSatUrl: string;
   /** Identifies us to public servers, as their usage policies ask. */
   userAgent: string;
 }
@@ -140,6 +155,9 @@ export const DEFAULT_PROVIDERS: ProviderConfig = {
   geodataUrl: '',
   photosUrl: 'https://commons.wikimedia.org/w/api.php',
   airQualityUrl: 'https://air-quality-api.open-meteo.com/v1/air-quality',
+  weatherUrl: 'https://api.open-meteo.com/v1/forecast',
+  marineUrl: 'https://marine-api.open-meteo.com/v1/marine',
+  weatherSatUrl: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/{date}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg',
   userAgent: 'NadavMaps/0.2 (+https://github.com/nadav-beno/nadav-maps)',
 };
 
@@ -173,6 +191,9 @@ export function providersFromEnv(env: Record<string, string | undefined>, prefix
     geodataUrl: withSlash(env[prefix + 'GEODATA_URL'] ?? (env.BASE_URL !== undefined ? `${env.BASE_URL}data/` : DEFAULT_PROVIDERS.geodataUrl)),
     photosUrl: env[prefix + 'PHOTOS_URL'] ?? DEFAULT_PROVIDERS.photosUrl,
     airQualityUrl: env[prefix + 'AIR_QUALITY_URL'] ?? DEFAULT_PROVIDERS.airQualityUrl,
+    weatherUrl: env[prefix + 'WEATHER_URL'] ?? DEFAULT_PROVIDERS.weatherUrl,
+    marineUrl: env[prefix + 'MARINE_URL'] ?? DEFAULT_PROVIDERS.marineUrl,
+    weatherSatUrl: env[prefix + 'WEATHER_SAT_URL'] ?? DEFAULT_PROVIDERS.weatherSatUrl,
     userAgent: DEFAULT_PROVIDERS.userAgent,
   };
 }
