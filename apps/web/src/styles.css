@@ -193,8 +193,15 @@ label.btn { cursor: pointer; }
 .map-controls {
   position: fixed; z-index: 15; inset-inline-end: calc(12px + var(--safe-x)); top: calc(var(--safe-top) + 112px);
   display: flex; flex-direction: column; gap: 12px; align-items: center;
+  /* On short phones the column would run into the route/location buttons above the sheet: stop
+     above them (two 56 px buttons, their gaps and a margin) and wrap into a second column.
+     wrap-reverse keeps the first column at the screen edge in both text directions. */
+  flex-wrap: wrap-reverse; align-content: flex-start;
+  pointer-events: none; /* two columns make the box wider than its buttons: let the map have the gaps */
+  max-height: max(196px, calc(100dvh - var(--safe-top) - 112px - var(--sheet-h) - var(--tabs-h) - 16px - 126px - 8px));
 }
-@media (min-width: 768px) { .map-controls { top: 12px; } }
+.map-controls > * { pointer-events: auto; }
+@media (min-width: 768px) { .map-controls { top: 12px; max-height: calc(100dvh - 12px - 32px - 126px - 24px); } }
 .ctrl {
   display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; padding: 0;
   border: 0; background: var(--surface); color: var(--text-2); box-shadow: var(--shadow-2);
