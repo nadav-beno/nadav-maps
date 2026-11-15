@@ -26,6 +26,8 @@ export interface RelayOptions {
   store?: CellStore;
   /** Runs work after the answer is sent (the Edge runtime's waitUntil). */
   defer?: (p: Promise<unknown>) => void;
+  /** Our adsb.lol API key (server secret), sent on adsb.lol requests; its trace files need it. */
+  adsbKey?: string;
 }
 
 const UA = 'NadavMaps/0.3 (+https://github.com/nadav-beno/nadav-maps)';
@@ -112,7 +114,12 @@ export async function handleFlightsRelay(req: Request, upstream: typeof fetch = 
   try {
     const res = await upstream(url, {
       method: route.post ? 'POST' : 'GET',
-      headers: { accept: 'application/json', 'user-agent': UA, ...(route.post ? { 'content-type': 'application/json' } : {}) },
+      headers: {
+        accept: 'application/json',
+        'user-agent': UA,
+        ...(route.post ? { 'content-type': 'application/json' } : {}),
+        ...(opts.adsbKey && /^https:\/\/(api\.)?adsb\.lol\//.test(url) ? { 'x-api-key': opts.adsbKey } : {}),
+      },
       body: route.post ? JSON.stringify(input.body ?? {}) : undefined,
       signal: AbortSignal.timeout(20_000),
     });
