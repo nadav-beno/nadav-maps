@@ -64,7 +64,7 @@ test('game mode: tutorial, a wave, losing, pausing and leaving', async ({ page }
   test.setTimeout(SLOW);
   await page.goto('./#9/32.0/34.8');
   await page.getByRole('button', { name: 'מצב משחק: שומרי השמיים' }).click();
-  await expect(page).toHaveURL(/panel=game/);
+  await expect(page).not.toHaveURL(/panel=game/);
   await expect(page.getByRole('heading', { name: 'שומרי השמיים' })).toBeVisible();
   await expect(page.getByText('משחק דמיוני.').first()).toBeVisible();
   // The shell steps aside: no search bar or tabs while playing.
@@ -161,7 +161,7 @@ test('game mode: tutorial, a wave, losing, pausing and leaving', async ({ page }
   await expect(page.getByRole('button', { name: 'מצב משחק: שומרי השמיים' })).toBeVisible();
 });
 
-test('game mode: a clean wave ends with an upgrade choice; opens from a link', async ({ page }) => {
+test('game mode: never opens on its own, even from an old link; a clean wave ends with an upgrade choice', async ({ page }) => {
   test.setTimeout(SLOW);
   await page.addInitScript(() => {
     localStorage.setItem('nm:game:tutorial', 'true');
@@ -169,6 +169,11 @@ test('game mode: a clean wave ends with an upgrade choice; opens from a link', a
     localStorage.setItem('nm:game:settings', JSON.stringify({ difficulty: 'rookie' }));
   });
   await page.goto('./?panel=game');
+  // The app opens on the map; only the game button starts the game.
+  await expect(page.getByRole('button', { name: 'שכבות' })).toBeVisible();
+  await page.waitForTimeout(1000);
+  await expect(page.getByRole('heading', { name: 'שומרי השמיים' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'מצב משחק: שומרי השמיים' }).click();
   await page.getByRole('button', { name: 'התחל משמרת' }).click();
   await expect(page.locator('.g-banner')).toContainText('גל 1');
   // Shoot everything in wave 1, with shock waves (the space bar) for whatever gets close.

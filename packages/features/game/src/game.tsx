@@ -91,7 +91,8 @@ export const isGameOn = computed(() => currentView.value.kind === GAME_VIEW);
 
 export function openGame() {
   if (isGameOn.peek()) return;
-  open({ kind: GAME_VIEW, props: { url: { panel: 'game' } } });
+  // Never in the URL: the app always opens on the map, and the game starts only from its button.
+  open({ kind: GAME_VIEW, props: {} });
 }
 
 // ---------- the controller ----------
@@ -627,7 +628,7 @@ function skipTutorial() {
 
 async function share(o: Over) {
   sfx.click();
-  const url = `${location.origin}${location.pathname}?panel=game`;
+  const url = `${location.origin}${location.pathname}`;
   const text = `הצלתי טיסות ב"שומרי השמיים": ${o.score.toLocaleString('he-IL')} נקודות, הגעתי לגל ${o.wave}. נסה לעקוף אותי!`;
   const blob = await scoreImage(o);
   const file = blob ? new File([blob], 'shomrei-hashamaim.png', { type: 'image/png' }) : null;
