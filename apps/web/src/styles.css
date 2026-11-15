@@ -195,6 +195,8 @@ label.btn { cursor: pointer; }
   display: flex; flex-direction: column; gap: 12px; align-items: center;
 }
 @media (min-width: 768px) { .map-controls { top: 12px; } }
+/* Not enough room above the "my location" button: a second column toward the map. */
+.map-controls.wrapped { display: grid; grid-auto-flow: column; grid-template-rows: repeat(var(--ctrl-rows), auto); justify-items: center; gap: 12px; }
 .ctrl {
   display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; padding: 0;
   border: 0; background: var(--surface); color: var(--text-2); box-shadow: var(--shadow-2);
@@ -1121,3 +1123,6 @@ span.dep-locate { width: 40px; }
 .ship-facts dl > div { display: flex; flex-direction: column; padding: 6px 0; border-bottom: 1px solid var(--border); min-width: 0; }
 .ship-facts dt { font-size: 12px; color: var(--text-2); }
 .ship-facts dd { margin: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; }
+/* The first column stays at the screen edge, the extra one goes toward the map. */
+[dir='rtl'] .map-controls.wrapped { direction: ltr; left: calc(12px + var(--safe-x)); right: auto; }
+[dir='ltr'] .map-controls.wrapped { direction: rtl; right: calc(12px + var(--safe-x)); left: auto; }

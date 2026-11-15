@@ -389,6 +389,25 @@ test('restaurants chip answers from our own places tiles when Overpass is down',
   await expect(page.getByRole('alert')).toBeHidden();
 });
 
+test('map buttons are never hidden behind "my location" when the sheet is half open', async ({ page }, info) => {
+  test.skip(info.project.name === 'desktop', 'phones only: the side panel leaves room');
+  await page.goto('./#15/32.08/34.78');
+  await page.getByRole('button', { name: 'בתי קפה' }).click();
+  await expect(page.locator('.list').getByText('קפה לנדוור')).toBeVisible();
+  const game = page.getByRole('button', { name: 'מצב משחק: שומרי השמיים' });
+  // The button itself is what a tap in its middle lands on.
+  await expect
+    .poll(() =>
+      game.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+      }),
+    )
+    .toBe(true);
+  await game.click();
+  await expect(page.getByRole('button', { name: 'התחל משמרת' })).toBeVisible();
+});
+
 test('"open now" filter keeps open places and says how many had no hours', async ({ page }) => {
   await page.goto('./#15/32.08/34.78');
   await page.getByRole('button', { name: 'בתי קפה' }).click();
