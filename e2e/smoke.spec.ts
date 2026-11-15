@@ -375,6 +375,20 @@ test('category chip finds nearby cafes', async ({ page }) => {
   await expect(page.getByText('קפה לנדוור')).toBeVisible();
 });
 
+test('restaurants chip answers from our own places tiles when Overpass is down', async ({ page }) => {
+  await stubGeodata(page, { places: true });
+  // The public Overpass server overloaded: every category query fails.
+  await page.route('https://overpass-api.de/api/interpreter', (r) => r.fulfill({ status: 504, body: 'Gateway Timeout' }));
+  await page.goto('./#15/32.08/34.78');
+  await page.getByRole('button', { name: 'מסעדות' }).first().click();
+  const list = page.locator('.list');
+  await expect(list.getByText('מסעדת הגפן')).toBeVisible();
+  await expect(list.getByText('ביסטרו הכרמל')).toBeVisible();
+  await expect(list.getByText('אוכל של אמא')).toBeVisible();
+  await expect(list.getByText('סגור לצמיתות')).toBeHidden();
+  await expect(page.getByRole('alert')).toBeHidden();
+});
+
 test('"open now" filter keeps open places and says how many had no hours', async ({ page }) => {
   await page.goto('./#15/32.08/34.78');
   await page.getByRole('button', { name: 'בתי קפה' }).click();

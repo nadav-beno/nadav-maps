@@ -407,7 +407,7 @@ async function runCategory(id: string, opts: { filter?: string; anchor?: Place; 
   open({ kind: 'results', props: { ...base, loading: true } });
   try {
     const o: [number, number] = around ? [around.lng, around.lat] : origin();
-    const places = (await tools().call(searchNearby, { category: id as never, bbox: around ? bboxAround(around) : areaBBox(), limit: 60 }))
+    const places = (await tools().call(searchNearby, { category: id as never, bbox: around ? bboxAround(around) : areaBBox(), near: o, limit: 60 }))
       .sort((a, b2) => distance(o, [a.lng, a.lat]) - distance(o, [b2.lng, b2.lat]))
       .slice(0, 40);
     lastResults = places;
