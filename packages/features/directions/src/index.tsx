@@ -1122,12 +1122,29 @@ function DirectionsView(_: ViewProps) {
                 ניווט מהמיקום שלי
               </button>
             ))}
+          {it &&
+            (from.value?.kind === 'me' ? (
+              <button class="btn primary big" onClick={() => open({ kind: 'transit-nav', props: { itinerary: it, destination } })}>
+                <Icon name="navigation" size={20} />
+                יציאה לדרך
+              </button>
+            ) : (
+              <button class="btn primary big" onClick={() => set('from', { kind: 'me' })}>
+                <Icon name="navigation" size={20} />
+                ניווט מהמיקום שלי
+              </button>
+            ))}
+          {it && (
+            <button class="btn big icon-only" aria-label="תצוגה מקדימה" title="תצוגה מקדימה" onClick={() => open({ kind: 'transit-nav', props: { itinerary: it, destination, simulate: true } })}>
+              <Icon name="play_arrow" size={22} />
+            </button>
+          )}
           {r && (
             <button class="btn big icon-only" aria-label="תצוגה מקדימה" title="תצוגה מקדימה" onClick={() => open({ kind: 'navigate', props: { route: r, destination, simulate: true } })}>
               <Icon name="play_arrow" size={22} />
             </button>
           )}
-          <button class={`btn big ${it ? 'primary' : ''}`} aria-expanded={showSteps.value} onClick={() => (showSteps.value = !showSteps.value)}>
+          <button class="btn big" aria-expanded={showSteps.value} onClick={() => (showSteps.value = !showSteps.value)}>
             <Icon name="route" size={20} />
             {showSteps.value ? 'הסתרת השלבים' : 'שלבים'}
           </button>

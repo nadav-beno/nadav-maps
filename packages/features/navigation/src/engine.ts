@@ -70,9 +70,19 @@ export const PROMPTS: Record<Route['mode'], number[]> = {
   walk: [120, 25],
 };
 
-/** Which prompt (index into PROMPTS) should fire now, if any, given what was already said for this step. */
-export function promptDue(mode: Route['mode'], toNextM: number, said: Set<number>): number | null {
-  const list = PROMPTS[mode];
+/** In town (under 60 km/h) a car hears the turn later, like Google: 500 m, 150 m, at the turn. */
+export const CITY_PROMPTS = [500, 150, 40];
+const CITY_MS = 60 / 3.6;
+
+/** The prompt distances for this mode at this speed (m/s, when known). */
+export function promptsFor(mode: Route['mode'], speed?: number | null): number[] {
+  const road = mode === 'car' || mode === 'motorcycle';
+  return road && speed !== null && speed !== undefined && speed < CITY_MS ? CITY_PROMPTS : PROMPTS[mode];
+}
+
+/** Which prompt (index into the prompt list) should fire now, if any, given what was already said for this step. */
+export function promptDue(mode: Route['mode'], toNextM: number, said: Set<number>, speed?: number | null): number | null {
+  const list = promptsFor(mode, speed);
   for (let i = list.length - 1; i >= 0; i--) {
     if (toNextM <= list[i] && !said.has(i)) {
       // Skip the far prompts once we're already close.

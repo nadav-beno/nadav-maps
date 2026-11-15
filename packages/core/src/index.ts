@@ -25,6 +25,8 @@ export * from './fuzzy.ts';
 export * from './name-dictionary.ts';
 export * from './geoindex.ts';
 export * from './nav.ts';
+export * from './transit-nav.ts';
 export * from './result-filters.ts';
 export * from './vehicles.ts';
+export * from './places-index.ts';
 export * from './ais.ts';
