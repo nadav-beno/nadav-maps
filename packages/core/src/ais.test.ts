@@ -44,3 +44,15 @@ describe('ais helpers', () => {
     expect(isStopped({ sog: 12, nav: 0 })).toBe(false);
   });
 });
+
+describe('ship alerts', () => {
+  it('flags rescue beacons and ships in trouble', async () => {
+    const { shipAlert } = await import('./ais.ts');
+    expect(shipAlert({ mmsi: 970123456 })).toContain('SART');
+    expect(shipAlert({ mmsi: 972123456 })).toContain('MOB');
+    expect(shipAlert({ mmsi: 974123456 })).toContain('EPIRB');
+    expect(shipAlert({ mmsi: 428000001, nav: 6 })).toBe('עלתה על שרטון');
+    expect(shipAlert({ mmsi: 428000001, nav: 2 })).toBe('לא בשליטה');
+    expect(shipAlert({ mmsi: 428000001, nav: 0 })).toBeNull();
+  });
+});

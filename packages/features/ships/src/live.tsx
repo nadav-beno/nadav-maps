@@ -2,16 +2,19 @@ import { computed, effect, signal } from '@preact/signals';
 import { useEffect, useState } from 'preact/hooks';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import {
-  countryNameHe, destinationName, flagEmoji, flagOf, hazardOf, isStopped, navStatusName, SHIP_CATEGORIES, shipCategory, shipTypeName,
+  countryNameHe, destinationName, flagEmoji, flagOf, hazardOf, isStopped, navStatusName, SHIP_CATEGORIES, SHIP_SIZES, shipAlert, shipCategory, shipTypeName,
   formatArrival, type LngLat, type ShipCategory,
 } from '@nm/core';
 import { back, ensureLayer, EMPTY, Icon, isDark, load, open, providers, save, setGeoJSON, sheet, viewStack, type FeatureContext, type ViewProps } from '@nm/core/app';
 import { BALTIC, isFresh, liveShipsTool, shipTrackTool, tools, vesselInfoTool, type LiveShips, type Ship, type VesselInfo } from '@nm/tools';
-import { addShipIcons, shipIcon, type Shape } from './icons.ts';
+import { addShipIcons, shipIcon, shipPicture, stopIcon } from './icons.ts';
+import { filters, isFiltered, NO_SHIP_FILTERS, passes, setFilters, tally } from './filters.ts';
 
 /**
- * Live ships: every ship broadcasting AIS in the map area, moving in real time, coloured by what
- * it is (cargo, tanker, passenger...), an arrow-like hull when under way and a dot when stopped.
+ * Live ships: every ship broadcasting AIS in the map area, up to the whole world, moving in real
+ * time, each drawn as a silhouette of its kind (container ship, tanker, ferry, fishing boat, tug,
+ * yacht, warship...) in the kind's colour, turned to its heading; anchored and moored ships are
+ * round badges when zoomed out.
  * Positions come from our relay (aisstream.io, worldwide, one shared stream) and Digitraffic (Baltic).
  * Ships report every few seconds to minutes; between updates they glide on at their speed.
  * Only the visible map box is sent.
@@ -32,9 +35,8 @@ export const followSelected = signal(true);
 const now = signal(Date.now());
 const track = signal<{ mmsi: number; points: LngLat[] } | null>(null);
 const info = signal<Record<number, VesselInfo | null>>({});
-/** Hidden categories, and "only under way". */
-export const hidden = signal<ShipCategory[]>(load<ShipCategory[]>('nm:ships:hide', []));
-export const movingOnly = signal(false);
+/** The full record of a ship the map only knows briefly (a wide view), by MMSI. */
+const details = signal<Record<number, Ship | null>>({});
 
 interface SavedShip {
   mmsi: number;
@@ -53,8 +55,9 @@ function toggleSaved(s: Ship) {
 
 export const isShipsOn = computed(() => viewStack.value.some((v) => v.kind === SHIPS_VIEW || v.kind === SHIP_VIEW));
 
-/** Refresh: ships move slowly and report every 2 s to 3 min. */
+/** Refresh: ships move slowly and report every 2 s to 3 min; a world of them less often. */
 const EVERY_MS = 15_000;
+const WIDE_EVERY_MS = 30_000;
 /** Ships glide on for at most this long without news. */
 const MAX_GLIDE_S = 600;
 
@@ -83,13 +86,21 @@ export function glide(s: Ship, at: number): LngLat {
   return [nlng, nlat];
 }
 
+/** A brief ship (wide view) with the rest of its record, once we have it; the newest position wins. */
+function withDetails(s: Ship, d: Ship | null | undefined): Ship {
+  if (!s.brief || !d) return s;
+  const pos = d.at > s.at ? { lngLat: d.lngLat, sog: d.sog, cog: d.cog, heading: d.heading, nav: d.nav, at: d.at } : {};
+  return { ...d, ...s, ...pos, imo: d.imo, callsign: d.callsign, beam: d.beam, draught: d.draught, destination: d.destination, eta: d.eta, brief: false };
+}
+
 export const selected = computed<Ship | null>(() => {
   const m = selectedMmsi.value;
-  const s = m ? feed.value?.ships.find((x) => x.mmsi === m) : undefined;
+  const raw = m ? feed.value?.ships.find((x) => x.mmsi === m) : undefined;
+  const s = raw && withDetails(raw, details.value[raw.mmsi]);
   return s ? { ...s, lngLat: glide(s, now.value) } : null;
 });
 
-const passes = (s: Ship) => !hidden.value.includes(shipCategory(s.type)) && (!movingOnly.value || !isStopped(s));
+const shows = (s: Ship) => passes(s, filters.peek());
 
 // ---------- fetching ----------
 
@@ -129,7 +140,23 @@ async function refresh() {
     if (s !== seq || !running) return;
     feedState.value = 'error';
   }
-  timer = setTimeout(() => void refresh(), EVERY_MS);
+  timer = setTimeout(() => void refresh(), isWide() ? WIDE_EVERY_MS : EVERY_MS);
+}
+
+const isWide = () => feed.peek()?.ships.some((x) => x.brief) ?? false;
+
+/** A wide view sends ships briefly: ask for the picked one with a small box around it. */
+async function loadDetails(s: Ship) {
+  if (!s.brief || s.mmsi in details.peek()) return;
+  details.value = { ...details.peek(), [s.mmsi]: null };
+  const [lng, lat] = s.lngLat;
+  try {
+    const res = await tools().call(liveShipsTool, { bbox: [lng - 0.05, lat - 0.05, lng + 0.05, lat + 0.05] }, { cache: false });
+    const full = res.ships.find((x) => x.mmsi === s.mmsi && !x.brief);
+    if (full) details.value = { ...details.peek(), [s.mmsi]: full };
+  } catch {
+    /* the card shows what the map knows */
+  }
 }
 
 async function loadTrack(mmsi: number) {
@@ -192,10 +219,18 @@ const onVisible = () => {
 };
 
 let ticks = 0;
+/**
+ * Seconds between redraws of all ships. Ships are slow: every few seconds close up; with thousands
+ * on a zoomed-out map (a ship moves less than a pixel a minute there) only now and then.
+ */
+export function redrawSeconds(ships: number, zoom: number): number {
+  if (ships < 1500 || zoom >= 8) return 4;
+  if (zoom >= 5) return 10;
+  return 30;
+}
 function tick() {
   now.value = Date.now();
-  // Ships are slow: redraw them all every few seconds, the picked one every second.
-  if (++ticks % 4 === 0) render();
+  if (++ticks % redrawSeconds(feed.peek()?.ships.length ?? 0, map.getZoom()) === 0) render();
   else renderSelected();
   const s = selected.peek();
   // Keep a followed ship in view, but only nudge the camera once it has drifted well off centre:
@@ -212,14 +247,25 @@ const SRC = 'live-ships';
 const SEL = 'live-ships-selected';
 const LAYER = 'live-ships-icons';
 
-export function shapeOf(s: Ship): Shape {
-  if (isStopped(s)) return 'dot';
-  const t = s.type ?? 0;
-  if ((t >= 40 && t <= 49) || (s.sog ?? 0) > 25) return 'fast';
-  return (s.length ?? 0) >= 150 ? 'big' : 'hull';
+/**
+ * The ship's images: `i` close up, `d` zoomed out (below zoom 11). Under way both are the
+ * silhouette of its kind; stopped, a round badge when zoomed out, and close up the silhouette
+ * turned to its heading (when it sends one).
+ */
+export function iconsOf(s: Ship): { i: string; d: string } {
+  const c = shipCategory(s.type);
+  if (!isStopped(s)) return { i: shipIcon(c), d: shipIcon(c) };
+  return { i: s.heading === null ? stopIcon(c) : shipIcon(c), d: stopIcon(c) };
 }
-const iconOf = (s: Ship) => shipIcon(shipCategory(s.type), shapeOf(s));
-const rotationOf = (s: Ship) => (isStopped(s) ? 0 : (s.heading ?? s.cog ?? 0));
+const rotationOf = (s: Ship) => (isStopped(s) ? (s.heading ?? 0) : (s.heading ?? s.cog ?? 0));
+/** Bigger ships are drawn a little bigger. */
+export function scaleOf(length: number | null): number {
+  if (!length) return 1;
+  if (length < 30) return 0.8;
+  if (length < 100) return 0.95;
+  if (length < 200) return 1.1;
+  return 1.25;
+}
 
 function shipsData(): Parameters<typeof setGeoJSON>[2] {
   const f = feed.peek();
@@ -228,10 +274,12 @@ function shipsData(): Parameters<typeof setGeoJSON>[2] {
   const sel = selectedMmsi.peek();
   const features = [];
   for (const s of f.ships) {
-    if (s.mmsi === sel || !passes(s)) continue;
+    if (s.mmsi === sel || !shows(s)) continue;
+    const ic = iconsOf(s);
     features.push({
       type: 'Feature' as const,
-      properties: { m: s.mmsi, n: s.name ?? '', i: iconOf(s), r: rotationOf(s), k: isStopped(s) ? 0 : 1 },
+      // Short keys: tens of thousands of these go to the map worker on a world view.
+      properties: { m: s.mmsi, n: s.name ?? '', i: ic.i, d: ic.d, r: Math.round(rotationOf(s)), z: scaleOf(s.length), k: isStopped(s) ? 0 : 1 },
       geometry: { type: 'Point' as const, coordinates: glide(s, t) },
     });
   }
@@ -252,7 +300,8 @@ function selectedData(): Parameters<typeof setGeoJSON>[2] {
     const far = glide({ ...s, at: 0, lngLat: ahead }, 1200 * 1000);
     features.push({ type: 'Feature', properties: { kind: 'ahead' }, geometry: { type: 'LineString', coordinates: [s.lngLat, ahead, far] } });
   }
-  features.push({ type: 'Feature', properties: { kind: 'ship', m: s.mmsi, n: s.name ?? '', i: iconOf(s), r: rotationOf(s) }, geometry: { type: 'Point', coordinates: s.lngLat } });
+  // The picked ship is always its silhouette (pointing north when it sends no heading).
+  features.push({ type: 'Feature', properties: { kind: 'ship', m: s.mmsi, n: s.name ?? '', i: shipIcon(shipCategory(s.type)), r: rotationOf(s), z: scaleOf(s.length) }, geometry: { type: 'Point', coordinates: s.lngLat } });
   return { type: 'FeatureCollection', features } as Parameters<typeof setGeoJSON>[2];
 }
 
@@ -276,8 +325,8 @@ function addLayers(m: MapLibreMap) {
     type: 'symbol',
     source: SRC,
     layout: {
-      'icon-image': ['get', 'i'] as never,
-      'icon-size': ['interpolate', ['linear'], ['zoom'], 2, 0.45, 6, 0.65, 10, 0.9, 14, 1.15] as never,
+      'icon-image': ['step', ['zoom'], ['get', 'd'], 11, ['get', 'i']] as never,
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 1, ['*', 0.34, ['get', 'z']], 4, ['*', 0.48, ['get', 'z']], 7, ['*', 0.68, ['get', 'z']], 11, ['*', 0.9, ['get', 'z']], 15, ['*', 1.3, ['get', 'z']]] as never,
       'icon-rotate': ['get', 'r'],
       'icon-rotation-alignment': 'map',
       'icon-allow-overlap': true,
@@ -324,7 +373,7 @@ function addLayers(m: MapLibreMap) {
     filter: kind('ship'),
     layout: {
       'icon-image': ['get', 'i'] as never,
-      'icon-size': ['interpolate', ['linear'], ['zoom'], 2, 0.9, 12, 1.4] as never,
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 2, ['*', 0.85, ['get', 'z']], 12, ['*', 1.4, ['get', 'z']]] as never,
       'icon-rotate': ['get', 'r'],
       'icon-rotation-alignment': 'map',
       'icon-allow-overlap': true,
@@ -355,8 +404,7 @@ export function setupShips(ctx: FeatureContext) {
     void feed.value;
     void selectedMmsi.value;
     void track.value;
-    void hidden.value;
-    void movingOnly.value;
+    void filters.value;
     render();
   });
   ctx.onMapClick((_e, features) => {
@@ -383,20 +431,28 @@ function ago(ms: number): string {
 
 const inBaltic = (b: [number, number, number, number]) => b[0] <= BALTIC[2] && b[2] >= BALTIC[0] && b[1] <= BALTIC[3] && b[3] >= BALTIC[1];
 
+/** Center the map on a ship and open its card. */
+function pickShip(s: Ship) {
+  map.easeTo({ center: s.lngLat, zoom: Math.max(map.getZoom(), 10), duration: 800 });
+  openShip(s.mmsi);
+}
+
 function FeedStatus() {
   const f = feed.value;
   const st = feedState.value;
   if (!f) return <p class="live-status" role="status">{st === 'error' ? 'לא הצלחנו לטעון ספינות כרגע. ננסה שוב בעוד רגע.' : 'טוענים את הספינות שבמפה…'}</p>;
-  const shown = f.ships.filter(passes);
+  const flt = filters.value;
+  const shown = isFiltered(flt) ? f.ships.filter((s) => passes(s, flt)) : f.ships;
   const moving = shown.filter((s) => !isStopped(s)).length;
   const src = f.sources.map((x) => (x === 'aisstream' ? 'aisstream.io' : 'Digitraffic')).join(' · ');
-  const filtered = hidden.value.length > 0 || movingOnly.value;
+  const sos = f.ships.filter((s) => shipAlert(s));
+  const wide = f.ships.some((s) => s.brief);
   return (
     <>
       <p class="live-status" role="status">
         <strong>{shown.length.toLocaleString('he-IL')}</strong> ספינות במפה
         <span class="muted">
-          {' '}· {moving.toLocaleString('he-IL')} בתנועה{filtered && ' · מסונן'} · עודכן לפני {ago(now.value - f.receivedAt)}
+          {' '}· {moving.toLocaleString('he-IL')} בתנועה{isFiltered(flt) && ' · מסונן'} · עודכן לפני {ago(now.value - f.receivedAt)}
           {src && ` · ${src}`}
         </span>
         {st === 'error' && <span class="flight-error"> · העדכון האחרון נכשל</span>}
@@ -408,7 +464,16 @@ function FeedStatus() {
             : 'כרגע מוצגות ספינות רק בים הבלטי. ספינות בישראל ובשאר העולם יופיעו כשיחובר מקור הנתונים העולמי.'}
         </p>
       )}
-      {f.live && f.ships.length === 0 && <p class="small live-note">אוספים את הספינות באזור הזה. ספינות בעוגן משדרות כל כמה דקות, אז המפה תתמלא בהדרגה.</p>}
+      {f.live && f.ships.length < (wide ? 200 : 1) && (
+        <p class="small live-note">אוספים את הספינות מכל העולם. ספינות בתנועה משדרות כל כמה שניות ובעוגן כל כמה דקות, אז המפה תתמלא בדקה-שתיים הקרובות.</p>
+      )}
+      {sos.length > 0 && (
+        <button class="live-emergency live-sos" onClick={() => pickShip(sos[0])}>
+          <Icon name="warning" size={18} />
+          {sos.length === 1 ? shipAlert(sos[0]) : `${sos.length.toLocaleString('he-IL')} ספינות במצוקה או בבעיה`}
+          <span dir="ltr"> · {sos[0].name || sos[0].mmsi}</span>
+        </button>
+      )}
     </>
   );
 }
@@ -444,38 +509,79 @@ function FindShip() {
   );
 }
 
-/** What each colour means, and a tap hides or shows that kind. */
+/** A small upright silhouette of the kind, for the chips. */
+function KindIcon({ cat }: { cat: ShipCategory }) {
+  const src = shipPicture(cat, isDark.value, 'thumb');
+  return src ? <img class="ship-kind-icon" src={src} alt="" aria-hidden="true" /> : <span class="ship-dot" style={{ background: SHIP_CATEGORIES.find((c) => c.id === cat)!.color }} />;
+}
+
+/** The kinds of ships (each with its silhouette and how many are on the map; a tap hides or shows it) and the filters. */
 function Legend() {
-  const h = hidden.value;
-  const toggle = (id: ShipCategory) => {
-    hidden.value = h.includes(id) ? h.filter((x) => x !== id) : [...h, id];
-    save('nm:ships:hide', hidden.value);
-  };
+  const flt = filters.value;
+  const f = feed.value;
+  const [more, setMore] = useState(false);
+  const t = tally(f?.ships ?? []);
+  const toggle = (id: ShipCategory) => setFilters({ hide: flt.hide.includes(id) ? flt.hide.filter((x) => x !== id) : [...flt.hide, id] });
+  const flags = t.flags.slice(0, 40);
+  if (flt.flag && !flags.some(([iso]) => iso === flt.flag)) flags.unshift([flt.flag, 0]);
   return (
     <section class="ship-legend" aria-label="סוגי ספינות">
-      <div class="chips">
+      <div class="chips ship-kinds">
         {SHIP_CATEGORIES.map((c) => (
-          <button key={c.id} class="chip" aria-pressed={!h.includes(c.id)} onClick={() => toggle(c.id)}>
-            <span class="ship-dot" style={{ background: c.color }} />
+          <button key={c.id} class="chip" aria-pressed={!flt.hide.includes(c.id)} onClick={() => toggle(c.id)}>
+            <KindIcon cat={c.id} />
             {c.label}
+            {f && <span class="ship-count">{(t.byCat[c.id] ?? 0).toLocaleString('he-IL')}</span>}
           </button>
         ))}
       </div>
       <div class="chips">
-        <button class="chip" aria-pressed={movingOnly.value} onClick={() => (movingOnly.value = !movingOnly.value)}>
+        <button class="chip" aria-pressed={flt.moving} onClick={() => setFilters({ moving: !flt.moving })}>
           <Icon name="sailing" />
           רק בתנועה
         </button>
-        {(h.length > 0 || movingOnly.value) && (
-          <button class="chip" onClick={() => ((hidden.value = []), (movingOnly.value = false), save('nm:ships:hide', []))}>
+        <button class="chip" aria-pressed={flt.alerts} onClick={() => setFilters({ alerts: !flt.alerts })}>
+          <Icon name="warning" />
+          רק במצוקה
+        </button>
+        <button class="chip" aria-expanded={more} aria-pressed={!!flt.flag || flt.minLen > 0} onClick={() => setMore(!more)}>
+          <Icon name="tune" />
+          דגל וגודל
+        </button>
+        {isFiltered(flt) && (
+          <button class="chip" onClick={() => setFilters(NO_SHIP_FILTERS)}>
             <Icon name="close" />
             הצגת הכול
           </button>
         )}
       </div>
-      <p class="small muted ship-shapes">
-        <span class="ship-shape-arrow" aria-hidden="true" /> בתנועה, לכיוון ההפלגה · <span class="ship-shape-dot" aria-hidden="true" /> עומדת (עוגן או רציף)
-      </p>
+      {more && (
+        <div class="live-filter-panel" role="group" aria-label="סינון לפי דגל וגודל">
+          <label class="live-filter-row">
+            <span>דגל</span>
+            <select value={flt.flag} onChange={(e) => setFilters({ flag: (e.target as HTMLSelectElement).value })}>
+              <option value="">כל הדגלים</option>
+              {flags.map(([iso, n]) => (
+                <option key={iso} value={iso}>
+                  {flagEmoji(iso)} {countryNameHe(iso)}
+                  {n ? ` (${n.toLocaleString('he-IL')})` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label class="live-filter-row">
+            <span>אורך</span>
+            <select value={String(flt.minLen)} onChange={(e) => setFilters({ minLen: Number((e.target as HTMLSelectElement).value) })}>
+              {SHIP_SIZES.map((z) => (
+                <option key={z.id} value={String(z.minM)}>
+                  {z.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+      <p class="small muted ship-shapes">כל סוג בצורה ובצבע משלו, מופנה לכיוון ההפלגה · <span class="ship-shape-dot" aria-hidden="true" /> במבט רחוק: עומדת בעוגן או ברציף</p>
     </section>
   );
 }
@@ -519,11 +625,17 @@ export function LiveShipsView(_: ViewProps) {
         </button>
       </div>
       <FeedStatus />
+      <div class="chips flight-chips">
+        <button class="chip" onClick={() => map.easeTo({ center: [20, 25], zoom: 1.3, bearing: 0, pitch: 0, duration: 900 })}>
+          <Icon name="public" />
+          כל העולם
+        </button>
+      </div>
       <FindShip />
       <Legend />
       <SavedList />
       <p class="muted small flight-privacy">
-        הקישו על ספינה לפרטים, למסלול ולמעקב. הספינות משדרות את המיקום בעצמן (AIS) ונקלטות בתחנות חוף, ולכן הכיסוי טוב ליד החופים ודל בלב ים. נשלח רק אזור המפה שעל המסך, לא המיקום שלכם.
+        הקישו על ספינה לפרטים, למסלול ולמעקב. מוצגות כל הספינות שנקלטו בעולם, עד כל העולם בבת אחת. הספינות משדרות את המיקום בעצמן (AIS) ונקלטות בתחנות חוף, ולכן הכיסוי טוב ליד החופים ודל בלב ים. נשלח רק אזור המפה שעל המסך, לא המיקום שלכם.
         נתונים: aisstream.io, ו-Fintraffic / digitraffic.fi (CC BY 4.0).
       </p>
     </div>
@@ -549,9 +661,22 @@ function Stat({ icon, label, value, unit, sub }: { icon: string; label: string; 
 const COMPASS = ['צפון', 'צפון-מזרח', 'מזרח', 'דרום-מזרח', 'דרום', 'דרום-מערב', 'מערב', 'צפון-מערב'];
 const compass = (deg: number) => COMPASS[Math.round(deg / 45) % 8];
 
-function VesselFacts({ imo }: { imo: number | null }) {
+/** Until (or unless) there is a photo of the ship itself: a big picture of its kind. */
+function KindPicture({ cat }: { cat: ShipCategory }) {
+  const src = shipPicture(cat, isDark.value, 'side');
+  if (!src) return null;
+  const color = SHIP_CATEGORIES.find((c) => c.id === cat)!.color;
+  return (
+    <figure class="ship-picture" style={{ '--ship': color } as Record<string, string>}>
+      <img src={src} alt="" aria-hidden="true" />
+      <figcaption class="small muted">{SHIP_CATEGORIES.find((c) => c.id === cat)!.label} · אין עדיין תמונה של הספינה הזאת</figcaption>
+    </figure>
+  );
+}
+
+function VesselFacts({ imo, cat }: { imo: number | null; cat: ShipCategory }) {
   const v = imo ? info.value[imo] : null;
-  if (!v) return null;
+  if (!v) return <KindPicture cat={cat} />;
   const rows: [string, string | number][] = (
     [
       ['מה זה', v.kind],
@@ -565,6 +690,7 @@ function VesselFacts({ imo }: { imo: number | null }) {
   ).filter((r): r is [string, string | number] => r[1] !== null && r[1] !== undefined && r[1] !== '');
   return (
     <>
+      {!v.photo && <KindPicture cat={cat} />}
       {v.photo && (
         <figure class="live-photo">
           <a href={v.photo.pageUrl} target="_blank" rel="noopener">
@@ -614,6 +740,9 @@ export function ShipView({ view }: ViewProps<{ mmsi: number }>) {
   useEffect(() => {
     if (s?.imo) void loadInfo(s.imo);
   }, [s?.imo]);
+  useEffect(() => {
+    if (s?.brief) void loadDetails(s);
+  }, [s?.mmsi, s?.brief]);
   const [copied, setCopied] = useState(false);
   if (!s) {
     return (
@@ -636,6 +765,7 @@ export function ShipView({ view }: ViewProps<{ mmsi: number }>) {
   const nav = navStatusName(s.nav);
   const stopped = isStopped(s);
   const hazard = hazardOf(s.type);
+  const alert = shipAlert(s);
   const share = async () => {
     const url = location.href;
     try {
@@ -687,6 +817,12 @@ export function ShipView({ view }: ViewProps<{ mmsi: number }>) {
           </div>
         </div>
       )}
+      {alert && (
+        <p class="live-emergency live-sos" role="status">
+          <Icon name="warning" size={18} />
+          {alert}
+        </p>
+      )}
       {hazard && (
         <p class="live-emergency" role="status">
           <Icon name="warning" size={18} />
@@ -699,7 +835,7 @@ export function ShipView({ view }: ViewProps<{ mmsi: number }>) {
         <Stat icon="water" label="שוקע" value={s.draught ? s.draught.toFixed(1) : '—'} unit={s.draught ? 'מ׳' : undefined} />
         <Stat icon="straighten" label="אורך × רוחב" value={s.length ? `${s.length}×${s.beam ?? '?'}` : '—'} unit={s.length ? 'מ׳' : undefined} />
       </div>
-      <VesselFacts imo={s.imo} />
+      <VesselFacts imo={s.imo} cat={cat} />
       <section class="ship-facts" aria-label="מזהים">
         <h3 class="small muted">מזהים</h3>
         <dl>

@@ -37,6 +37,8 @@ export interface Ship {
   /** ISO time, as typed in by the crew. */
   eta: string | null;
   source: 'aisstream' | 'digitraffic';
+  /** Only what the map needs (a wide view): ask again with a small box for the rest. */
+  brief?: boolean;
 }
 
 export interface LiveShips {
@@ -67,10 +69,13 @@ const etaIso = (eta: string | null, now: number) => {
 export function rowToShip(r: ShipRow, now = Date.now()): Ship | null {
   const [mmsi, lng, lat, sog, cog, hdg, nav, at, name, type, length, beam, draught, dest, eta, imo, callsign] = r;
   if (typeof mmsi !== 'number' || typeof lng !== 'number' || typeof lat !== 'number' || typeof at !== 'number') return null;
-  return {
-    mmsi, lngLat: [lng, lat], sog, cog, heading: hdg, nav, at: at * 1000, name: name || null, callsign: callsign || null, imo: imo || null,
-    type: type || null, length, beam, draught, destination: dest || null, eta: etaIso(eta, now), source: 'aisstream',
+  const n = <T>(v: T | undefined) => (v === undefined ? null : v);
+  const ship: Ship = {
+    mmsi, lngLat: [lng, lat], sog: n(sog), cog: n(cog), heading: n(hdg), nav: n(nav), at: at * 1000, name: name || null, callsign: callsign || null, imo: imo || null,
+    type: type || null, length: n(length), beam: n(beam), draught: n(draught), destination: dest || null, eta: etaIso(n(eta), now), source: 'aisstream',
   };
+  if (r.length < 17) ship.brief = true;
+  return ship;
 }
 
 // ---------- Digitraffic ----------
@@ -317,8 +322,20 @@ async function commonsByImo(ctx: ToolContext, imo: number, file: string | null):
     q.set('gcmtype', 'file');
     q.set('gcmlimit', '3');
   }
-  const data = await getJson<{ query?: { pages?: Record<string, Parameters<typeof pagesToPhotos>[0][number]> } }>(ctx, `${ctx.config.photosUrl}?${q}`, {}, 'commons');
-  return pagesToPhotos(Object.values(data.query?.pages ?? {}))[0] ?? null;
+  type Pages = { query?: { pages?: Record<string, Parameters<typeof pagesToPhotos>[0][number]> } };
+  const data = await getJson<Pages>(ctx, `${ctx.config.photosUrl}?${q}`, {}, 'commons');
+  const found = pagesToPhotos(Object.values(data.query?.pages ?? {}))[0];
+  if (found || file) return found ?? null;
+  // Not filed by IMO: most ship photos still give the number in their description.
+  q.delete('gcmtitle');
+  q.delete('gcmtype');
+  q.delete('gcmlimit');
+  q.set('generator', 'search');
+  q.set('gsrsearch', `"IMO ${imo}" filetype:bitmap`);
+  q.set('gsrnamespace', '6');
+  q.set('gsrlimit', '3');
+  const more = await getJson<Pages>(ctx, `${ctx.config.photosUrl}?${q}`, {}, 'commons');
+  return pagesToPhotos(Object.values(more.query?.pages ?? {}))[0] ?? null;
 }
 
 /** Build year, builder, owner, tonnage and a photo for a ship by IMO number, when Wikidata/Commons know it. */

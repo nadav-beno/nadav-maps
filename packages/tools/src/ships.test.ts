@@ -108,9 +108,13 @@ describe('ships relay', () => {
     expect(await r.json()).toMatchObject({ ships: [row], live: true });
     expect(calls[0]).toEqual({ tiles: [417, 453], stream: true });
     expect(deferred.length).toBe(1);
-    // A world view doesn't claim its 648 tiles.
-    await post({ box: [-180, -80, 180, 80] });
-    expect(calls[1].tiles).toEqual([]);
+    // The stream listens to the whole world, whatever box asked.
+    sockets[0].onopen?.({});
+    expect(JSON.parse(sockets[0].sent[0]).BoundingBoxes).toEqual([[[-90, -180], [90, 180]]]);
+    // A world view marks only its middle tile and gets brief rows (positions to ~10 m).
+    const wide = await post({ box: [-180, -80, 180, 80] }).then((x) => x.json());
+    expect(calls[1].tiles).toEqual([tilesOf([0, 0, 0, 0])[0]]);
+    expect(wide).toMatchObject({ brief: true, ships: [[428000001, 34.9, 32.8, 14, 270, 270, 0, 1794650000, 'ZIM HAIFA', 71, 250]] });
     expect((await post({ track: 428000001 }).then((x) => x.json()))).toEqual({ track: [[34.9, 32.8, 1]] });
     expect((await post({ box: [1, 2] })).status).toBe(400);
     expect((await post({ box: [1, 2, 3, 4] }, 'https://evil.example')).status).toBe(403);
@@ -129,6 +133,11 @@ describe('live_ships provider', () => {
   afterEach(resetShipCaches);
   const now = Date.UTC(2026, 10, 14, 11, 5);
   const ctx = (f: typeof fetch, cfg = {}): ToolContext => ({ config: { ...DEFAULT_PROVIDERS, shipsUrl: 'https://relay/ships', ...cfg }, fetch: f, lang: 'he' });
+
+  it('turns brief relay rows into brief ships', () => {
+    const s = rowToShip([428000001, 34.9, 32.8, 14, 270, null, 0, now / 1000 - 60, 'ZIM HAIFA', 71, 250] as unknown as ShipRow, now)!;
+    expect(s).toMatchObject({ mmsi: 428000001, length: 250, beam: null, imo: null, eta: null, destination: null, brief: true });
+  });
 
   it('turns relay rows into ships', () => {
     const s = rowToShip([428000001, 34.9, 32.8, 14, 270, null, 0, now / 1000 - 60, 'ZIM HAIFA', 71, 250, 32, 11.2, 'ILHFA', '11-15T06:30', 9123456, '4XAB'], now)!;
