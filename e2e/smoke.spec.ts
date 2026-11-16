@@ -742,6 +742,16 @@ test('live flights: planes around the map close up, a plane card, and the whole 
     return { x: r.left + p.x, y: r.top + p.y };
   });
   await expect.poll(planeAt, { timeout: 15_000 }).not.toBeNull();
+  // A map button can sit over the plane (they wrap into a second column above the sheet): tap
+  // where the plane is not covered, moving the map under it when it is.
+  const covered = (p: { x: number; y: number }) => page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.tagName !== 'CANVAS', [p.x, p.y]);
+  if (await covered((await planeAt())!)) {
+    await page.evaluate(() => {
+      const map = (window as unknown as { map: { getCanvas(): HTMLCanvasElement; panBy(o: number[], opts: object): void } }).map;
+      map.panBy([-120, -120], { animate: false });
+    });
+  }
+  await expect.poll(async () => { const p = await planeAt(); return !!p && !(await covered(p)); }, { timeout: 15_000 }).toBe(true);
   const at = (await planeAt())!;
   await page.mouse.click(at.x, at.y);
   await expect(page.locator('.live-callsign')).toHaveText('ELY001');
