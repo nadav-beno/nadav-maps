@@ -31,3 +31,4 @@ export * from './vehicles.ts';
 export * from './weather.ts';
 export * from './places-index.ts';
 export * from './ais.ts';
+export * from './people.ts';
