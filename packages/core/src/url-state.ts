@@ -31,6 +31,8 @@ export interface UrlState {
   at?: LngLat;
   /** A ship on the live ships map, by its MMSI ("?panel=ships&ship=428000000"). */
   ship?: number;
+  /** An invite to see a friend's location ("?invite=K7M2QXAB34CD"), opened by the people feature. */
+  invite?: string;
   /** Shown inside another site's iframe ("?embed=1"): just the map and the card. */
   embed?: boolean;
 }
@@ -78,6 +80,8 @@ export function parseUrl(href: string): UrlState {
   if (list) out.list = list;
   const panel = p.get('panel');
   if (panel) out.panel = panel;
+  const invite = p.get('invite');
+  if (invite && /^[A-Z0-9]{8,16}$/.test(invite)) out.invite = invite;
   const day = p.get('day');
   if (day && /^\d{4}-\d{2}-\d{2}$/.test(day)) out.day = day;
   const at = p.get('at')?.split(',').map(Number);
