@@ -2,7 +2,7 @@ import { computed, effect, signal } from '@preact/signals';
 import { useEffect, useState } from 'preact/hooks';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { distance, formatArrival, formatClock, formatDuration, greatCircle, type LngLat } from '@nm/core';
-import { back, ensureLayer, EMPTY, Icon, isDark, open, providers, setGeoJSON, sheet, units, viewStack, type FeatureContext, type ViewProps } from '@nm/core/app';
+import { arrivalSections, back, ensureLayer, EMPTY, Icon, isDark, open, providers, setGeoJSON, sheet, units, viewStack, type FeatureContext, type ViewProps } from '@nm/core/app';
 import { clampBbox, coverCircles, flightPosition, flightRouteTool, flightTrackTool, liveFlights, tools, type AircraftPosition, type Bbox, type FlightRoute, type LiveAircraft, type TrackPoint } from '@nm/tools';
 import { altitudeReadout, headingReadout, speedReadout } from './format.ts';
 import { addLiveIcons, altitudeBand, BANDS, iconId } from './live-icons.ts';
@@ -752,6 +752,13 @@ function RouteLine({ a }: { a: AircraftPosition }) {
           </>
         )}
       </div>
+      {eta !== null && arrivalSections.value.length > 0 && (
+        <div class="arrival-sections live-route-arrival">
+          {arrivalSections.value.map((s) => (
+            <s.Component key={s.id} at={to.lngLat} time={Math.round((Date.now() / 1000 + eta) / 900) * 900} name={place(to)} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

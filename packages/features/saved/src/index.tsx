@@ -110,7 +110,7 @@ function SaveAction({ place }: { place: Place }) {
   const onClick = () => {
     if (saved) return open({ kind: 'save-to', props: { place } });
     const l = quickSave(place);
-    toast(`נשמר ב${l.name} ${l.icon}`, { label: 'שינוי', run: () => open({ kind: 'save-to', props: { place } }) }, 5000);
+    toast(`נשמר ב${l.name} ${l.icon}`, { label: 'שינוי', run: () => open({ kind: 'save-to', props: { place } }) }, 10_000);
   };
   return (
     <button class={`action ${saved ? 'primary' : ''}`} aria-pressed={saved} onClick={onClick}>

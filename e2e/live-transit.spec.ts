@@ -32,8 +32,10 @@ test('live transit: GPS buses and a moving tram appear with the transit layer, a
   await expect.poll(() => vehicles(page), { timeout: 15_000 }).toEqual(['18', '25', 'R']);
   expect(stride.some((u) => u.includes('/siri_vehicle_locations/list'))).toBe(true);
 
-  // Tap bus 18 where the map draws it.
+  // Tap bus 18 where the map draws it, centred so the map buttons on the left (layers, planes, ships, weather) can't cover it.
   await page.getByRole('region', { name: 'לוח מידע' }).getByRole('button', { name: 'חזרה' }).click();
+  await page.evaluate(() => (window as unknown as { map: { jumpTo(o: { center: [number, number] }): void } }).map.jumpTo({ center: [34.779, 32.0775] }));
+  await expect.poll(() => vehicles(page)).toContain('18');
   const pt = await page.evaluate(() => {
     const map = (window as unknown as { map: MapLike }).map;
     const p = map.project([34.779, 32.0775]);
