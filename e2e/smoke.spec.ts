@@ -765,7 +765,7 @@ test('live flights: the whole world from the relay, a shape per kind, filters, a
   await page.goto('./?panel=flights&flightsrelay=https://relay.test/flights#1.3/25/20');
   await expect(page.locator('.live-status')).toContainText('8 מטוסים באוויר במפה', { timeout: 15_000 });
   await expect(page.locator('.live-status')).toContainText('1 על הקרקע');
-  await expect(page.locator('.live-status')).toContainText('adsb.lol · adsb.fi');
+  await expect(page.locator('.live-status')).toContainText('adsb.fi · airplanes.live');
   // Only the map area went out, as a box, in the request body.
   const box = bodies.find((b) => b.world)!.world as number[];
   expect(box).toHaveLength(4);

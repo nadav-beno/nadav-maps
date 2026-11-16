@@ -6,6 +6,7 @@
  * every viewer: a request for a map area returns what the cache has for the cells in it and
  * refreshes a few of the stalest cells, so the upstream load grows with the area being watched,
  * not with the number of viewers. Empty cells (oceans, deserts) are rechecked once an hour.
+ * A sweep once a minute (sweepCells) keeps the whole world fresh even when no one is watching.
  *
  * No imports: this file runs in the Supabase Edge Function, in apps/server and in unit tests.
  */
@@ -139,7 +140,7 @@ export interface CachedCell {
 
 /** Where cells are kept. `take` also claims up to `max` stale cells for the caller to refresh. */
 export interface CellStore {
-  /** Claims never-fetched cells first, then busy ones, then empty ones, oldest first, within BUDGET per 10 s. */
+  /** Claims never-fetched cells first, then the most overdue ones, within BUDGET per 10 s. */
   take(ids: number[], max: number, now: number): Promise<{ cells: CachedCell[]; claim: number[]; unknown: number }>;
   put(cells: { id: number; rows: Row[] }[], now: number): Promise<void>;
 }
@@ -151,7 +152,7 @@ export function memoryStore(): CellStore {
   return {
     async take(ids, max, now) {
       while (recent.length && now - recent[0] > 10_000) recent.shift();
-      const stale: { id: number; at: number; rank: number }[] = [];
+      const stale: { id: number; over: number; rank: number }[] = [];
       const out: CachedCell[] = [];
       let unknown = 0;
       for (const id of ids) {
@@ -160,10 +161,12 @@ export function memoryStore(): CellStore {
         if (c?.at != null && c.rows.length) out.push({ id, at: c.at, rows: c.rows });
         const due = !c || c.at === null || now - c.at > (c.rows.length ? BUSY_S : EMPTY_S) * 1000;
         const free = !c?.claimed || now - c.claimed > CLAIM_S * 1000;
-        if (due && free) stale.push({ id, at: c?.at ?? -1, rank: !c || c.at === null ? 0 : c.rows.length ? 1 : 2 });
+        // Never fetched first, then the most overdue (age over its refresh interval), so empty
+        // cells are still rechecked while busy ones are always due.
+        if (due && free) stale.push({ id, rank: !c || c.at === null ? 0 : 1, over: c?.at == null ? 0 : (now - c.at) / ((c.rows.length ? BUSY_S : EMPTY_S) * 1000) });
       }
       const room = Math.max(0, Math.min(max, BUDGET - recent.length));
-      const claim = stale.sort((x, y) => x.rank - y.rank || x.at - y.at).slice(0, room).map((c) => c.id);
+      const claim = stale.sort((x, y) => x.rank - y.rank || y.over - x.over).slice(0, room).map((c) => c.id);
       for (const id of claim) {
         cells.set(id, { at: cells.get(id)?.at ?? null, rows: cells.get(id)?.rows ?? [], claimed: now });
         recent.push(now);
@@ -206,50 +209,52 @@ export function postgrestStore(baseUrl: string, key: string, fetcher: typeof fet
   };
 }
 
-/** The two feeds a cell can be read from (same readsb format, 250 NM around a point). */
+/**
+ * The feeds a cell is read from (same readsb format, 250 NM around a point). adsb.lol is not one
+ * of them: without a key it allows 500 requests a day per IP, and our key is kept for close-up
+ * maps and flight tracks. adsb.fi and airplanes.live each ask for at most one request a second.
+ */
+export const FEEDS: { name: string; gapMs: number; url: (lat: number, lon: number) => string }[] = [
+  { name: 'adsb.fi', gapMs: 1100, url: (lat, lon) => `https://opendata.adsb.fi/api/v3/lat/${lat}/lon/${lon}/dist/${CELL_RADIUS_NM}` },
+  { name: 'airplanes.live', gapMs: 1100, url: (lat, lon) => `https://api.airplanes.live/v2/point/${lat}/${lon}/${CELL_RADIUS_NM}` },
+];
+
 export function cellUrls(id: number): string[] {
   const { lat, lon } = cellCenter(id);
-  return [
-    `https://api.adsb.lol/v2/point/${lat}/${lon}/${CELL_RADIUS_NM}`,
-    `https://opendata.adsb.fi/api/v2/lat/${lat}/lon/${lon}/dist/${CELL_RADIUS_NM}`,
-  ];
+  return FEEDS.map((f) => f.url(lat, lon));
 }
 
 /**
- * The feeds rate-limit by IP (adsb.lol answers 429 after a short burst; adsb.fi asks for one
- * request a second), and every relay instance shares a few IPs. So refreshes are spread out:
- * at most BUDGET cells per 10 s across all viewers (counted in the store), each request takes at
- * most MAX_REFRESH of them, and each feed is its own lane of requests one after another.
+ * The feeds rate-limit by IP and every relay instance shares a few IPs. So refreshes are spread
+ * out: at most BUDGET cells per 10 s across all viewers and the sweep (counted in the store),
+ * each viewer request takes at most MAX_REFRESH of them, and each feed is its own lane of
+ * requests one after another (one a second each, so BUDGET = 10 s x the feeds).
  */
 export const MAX_REFRESH = 8;
-export const BUDGET = 8;
-const GAP_MS = { lol: 1500, fi: 1100 };
+export const BUDGET = 18;
 
 const wait = (ms: number) => (ms > 0 ? new Promise((r) => setTimeout(r, ms)) : Promise.resolve());
 
-/** Fetches the claimed cells (alternating feeds, one lane each) and stores what came back. */
+/** Fetches the claimed cells (spread over the feeds, one lane each) and stores what came back. */
 export async function refreshCells(
   store: CellStore,
   ids: number[],
   upstream: typeof fetch,
   ua: string,
   now: () => number,
-  gaps: { lol: number; fi: number } = GAP_MS,
+  gaps: number[] = FEEDS.map((f) => f.gapMs),
 ): Promise<number> {
-  const lanes: [0 | 1, number[]][] = [
-    [0, ids.filter((_, i) => i % 2 === 0)],
-    [1, ids.filter((_, i) => i % 2 === 1)],
-  ];
   let stored = 0;
   await Promise.all(
-    lanes.map(async ([feed, list]) => {
+    FEEDS.map(async (feed, lane) => {
+      const list = ids.filter((_, i) => i % FEEDS.length === lane);
       for (let i = 0; i < list.length; i++) {
-        if (i) await wait(feed ? gaps.fi : gaps.lol);
+        if (i) await wait(gaps[lane] ?? feed.gapMs);
         const id = list[i];
         try {
-          const res = await upstream(cellUrls(id)[feed], { headers: { accept: 'application/json', 'user-agent': ua }, signal: AbortSignal.timeout(10_000) });
-          // Rate limited: stop this lane; its cells stay claimed for a little while, then retry.
-          if (res.status === 429) return;
+          const res = await upstream(cellUrls(id)[lane], { headers: { accept: 'application/json', 'user-agent': ua }, signal: AbortSignal.timeout(10_000) });
+          // Rate limited or refused: stop this lane; its cells stay claimed for a little while, then retry.
+          if (res.status === 429 || res.status === 403) return;
           if (!res.ok) continue;
           const rows = compactAircraft(await res.json());
           await store.put([{ id, rows }], now());
@@ -260,6 +265,34 @@ export async function refreshCells(
       }
     }),
   );
+  return stored;
+}
+
+/** Every cell id in the world. */
+export const ALL_CELLS: number[] = BANDS.flatMap((b, i) => Array.from({ length: b.cols }, (_, c) => i * 1000 + c));
+
+/**
+ * Keeps the whole world warm without anyone watching: for `ms`, claims the most overdue cells
+ * anywhere (within the shared budget) and refreshes them. Run once a minute (pg_cron calls the
+ * relay with `{ sweep: true }`), so the zoomed-out map shows every aircraft from its first second.
+ */
+export async function sweepCells(
+  store: CellStore,
+  upstream: typeof fetch,
+  opts: { ms?: number; now?: () => number; ua?: string; gaps?: number[]; idleMs?: number } = {},
+): Promise<number> {
+  const now = opts.now ?? Date.now;
+  const end = now() + (opts.ms ?? 50_000);
+  let stored = 0;
+  while (now() < end) {
+    const started = now();
+    const { claim } = await store.take(ALL_CELLS, BUDGET, started);
+    if (claim.length) stored += await refreshCells(store, claim, upstream, opts.ua ?? 'NadavMaps', now, opts.gaps);
+    // The budget is per 10 s: wait for the rest of the window before claiming again.
+    const left = Math.min(end - now(), Math.max(opts.idleMs ?? 0, 10_000 - (now() - started)));
+    if (left > 0 && now() + left < end) await wait(left);
+    else break;
+  }
   return stored;
 }
 
@@ -281,7 +314,7 @@ export async function worldAircraft(
   box: Box,
   store: CellStore,
   upstream: typeof fetch,
-  opts: { now?: () => number; defer?: (p: Promise<unknown>) => void; ua?: string; max?: number; gaps?: { lol: number; fi: number } } = {},
+  opts: { now?: () => number; defer?: (p: Promise<unknown>) => void; ua?: string; max?: number; gaps?: number[] } = {},
 ): Promise<WorldAnswer> {
   const now = opts.now ?? Date.now;
   const [w, s, e, n] = box;

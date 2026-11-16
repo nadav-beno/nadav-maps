@@ -11,8 +11,8 @@ import { EMERGENCY_SQUAWKS, filters, GROUPS, isFiltered, isSaved, KIND_NAME, NO_
 /**
  * Live flights: every aircraft in the air on the map, moving in real time, like the flight
  * trackers. Close up the positions come from adsb.lol every few seconds; zoomed out (up to the
- * whole world) from our relay's shared world cells (adsb.lol and adsb.fi, refreshed for every
- * viewer at once), or from OpenSky where there is no relay. Between updates planes glide on along their
+ * whole world) from our relay's shared world cells (adsb.fi and airplanes.live, kept fresh for
+ * every viewer at once by a sweep once a minute), or from OpenSky where there is no relay. Between updates planes glide on along their
  * track at their speed, so the map never looks frozen. Only the visible map area is sent.
  */
 
@@ -584,7 +584,7 @@ function FeedStatus() {
   const shown = isFiltered(flt) ? f.aircraft.filter((a) => passes(a, flt)) : f.aircraft;
   const air = shown.filter((a) => !a.onGround).length;
   const sos = f.aircraft.filter((a) => a.squawk && EMERGENCY_SQUAWKS.has(a.squawk));
-  const src = f.source === 'opensky' ? 'OpenSky' : f.source === 'world' ? 'adsb.lol · adsb.fi' : 'adsb.lol';
+  const src = f.source === 'opensky' ? 'OpenSky' : f.source === 'world' ? 'adsb.fi · airplanes.live' : 'adsb.lol';
   return (
     <>
       <p class="live-status" role="status">
@@ -1012,8 +1012,8 @@ export function LiveFlightsView(_: ViewProps) {
       <SavedFlights />
       <AltitudeLegend />
       <p class="muted small flight-privacy">
-        הקישו על מטוס לפרטים ולמעקב. במבט קרוב המיקומים מתעדכנים כל כמה שניות; במבט רחוק, עד כל העולם, אזור אחרי אזור, ובין העדכונים המטוסים ממשיכים לנוע. נשלח רק אזור המפה שעל המסך, לא המיקום שלכם.
-        נתונים: adsb.lol (ODbL), adsb.fi ו-OpenSky Network.
+        הקישו על מטוס לפרטים ולמעקב. במבט קרוב המיקומים מתעדכנים כל כמה שניות; במבט רחוק כל המטוסים בעולם, מתעדכנים כל כמה דקות, ובין העדכונים המטוסים ממשיכים לנוע. נשלח רק אזור המפה שעל המסך, לא המיקום שלכם.
+        נתונים: adsb.lol (ODbL), <a href="https://adsb.fi" target="_blank" rel="noopener">adsb.fi</a>, <a href="https://airplanes.live" target="_blank" rel="noopener">airplanes.live</a> ו-OpenSky Network.
       </p>
     </div>
   );
