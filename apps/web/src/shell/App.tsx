@@ -265,6 +265,62 @@ function Embedded() {
   );
 }
 
+/**
+ * The floating buttons under the search bar (layers, flights, ships, game, compass). When the
+ * sheet is half open on a phone the column used to run into the "my location" button and hide
+ * the last ones behind it; then they wrap into a second column instead.
+ */
+function MapControls({ children }: { children: preact.ComponentChildren }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const fit = () => {
+      el.style.removeProperty('--ctrl-rows');
+      el.classList.remove('wrapped');
+      const fabsEl = document.querySelector<HTMLElement>('.fabs');
+      const items = [...el.children] as HTMLElement[];
+      if (!fabsEl || items.length < 2 || getComputedStyle(fabsEl).opacity === '0') return;
+      const top = el.getBoundingClientRect().top;
+      const fabTops = [...fabsEl.children].map((c) => c.getBoundingClientRect().top).filter((t) => t > 0);
+      if (!fabTops.length) return;
+      const limit = Math.min(...fabTops) - 12;
+      if (el.getBoundingClientRect().bottom <= limit) return;
+      const step = items[0].offsetHeight + 12;
+      const rows = Math.max(1, Math.floor((limit - top + 12) / step));
+      if (rows >= items.length) return;
+      el.style.setProperty('--ctrl-rows', String(rows));
+      el.classList.add('wrapped');
+    };
+    let timer = 0;
+    const later = () => {
+      fit();
+      clearTimeout(timer);
+      // The "my location" button slides with the sheet (0.25 s): measure again where it stops.
+      timer = window.setTimeout(fit, 300);
+    };
+    const ro = new ResizeObserver(later);
+    ro.observe(el);
+    ro.observe(document.documentElement);
+    const fabsEl = document.querySelector('.fabs');
+    if (fabsEl) ro.observe(fabsEl);
+    const mo = new MutationObserver(later);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+    if (fabsEl) mo.observe(fabsEl, { childList: true, attributes: true, attributeFilter: ['class'] });
+    later();
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+      clearTimeout(timer);
+    };
+  }, []);
+  return (
+    <div class="map-controls" ref={ref}>
+      {children}
+    </div>
+  );
+}
+
 export function App() {
   useSignalEffect(() => {
     document.documentElement.dataset.theme = isDark.value ? 'dark' : 'light';
@@ -289,11 +345,11 @@ export function App() {
             ))}
           </div>
           {(wide.value || sheet.value !== 'full') && (
-            <div class="map-controls">
+            <MapControls>
               {controls.map(({ Component }, i) => (
                 <Component key={i} />
               ))}
-            </div>
+            </MapControls>
           )}
           <div class={`fabs ${wide.value ? 'wide' : `sheet-${sheet.value}`}`}>
             {fabs.value.map(({ id, Component }) => (

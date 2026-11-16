@@ -377,6 +377,39 @@ test('category chip finds nearby cafes', async ({ page }) => {
   await expect(page.getByText('קפה לנדוור')).toBeVisible();
 });
 
+test('restaurants chip answers from our own places tiles when Overpass is down', async ({ page }) => {
+  await stubGeodata(page, { places: true });
+  // The public Overpass server overloaded: every category query fails.
+  await page.route('https://overpass-api.de/api/interpreter', (r) => r.fulfill({ status: 504, body: 'Gateway Timeout' }));
+  await page.goto('./#15/32.08/34.78');
+  await page.getByRole('button', { name: 'מסעדות' }).first().click();
+  const list = page.locator('.list');
+  await expect(list.getByText('מסעדת הגפן')).toBeVisible();
+  await expect(list.getByText('ביסטרו הכרמל')).toBeVisible();
+  await expect(list.getByText('אוכל של אמא')).toBeVisible();
+  await expect(list.getByText('סגור לצמיתות')).toBeHidden();
+  await expect(page.getByRole('alert')).toBeHidden();
+});
+
+test('map buttons are never hidden behind "my location" when the sheet is half open', async ({ page }, info) => {
+  test.skip(info.project.name === 'desktop', 'phones only: the side panel leaves room');
+  await page.goto('./#15/32.08/34.78');
+  await page.getByRole('button', { name: 'בתי קפה' }).click();
+  await expect(page.locator('.list').getByText('קפה לנדוור')).toBeVisible();
+  const game = page.getByRole('button', { name: 'מצב משחק: שומרי השמיים' });
+  // The button itself is what a tap in its middle lands on.
+  await expect
+    .poll(() =>
+      game.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+      }),
+    )
+    .toBe(true);
+  await game.click();
+  await expect(page.getByRole('button', { name: 'התחל משמרת' })).toBeVisible();
+});
+
 test('"open now" filter keeps open places and says how many had no hours', async ({ page }) => {
   await page.goto('./#15/32.08/34.78');
   await page.getByRole('button', { name: 'בתי קפה' }).click();
@@ -709,6 +742,16 @@ test('live flights: planes around the map close up, a plane card, and the whole 
     return { x: r.left + p.x, y: r.top + p.y };
   });
   await expect.poll(planeAt, { timeout: 15_000 }).not.toBeNull();
+  // A map button can sit over the plane (they wrap into a second column above the sheet): tap
+  // where the plane is not covered, moving the map under it when it is.
+  const covered = (p: { x: number; y: number }) => page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.tagName !== 'CANVAS', [p.x, p.y]);
+  if (await covered((await planeAt())!)) {
+    await page.evaluate(() => {
+      const map = (window as unknown as { map: { getCanvas(): HTMLCanvasElement; panBy(o: number[], opts: object): void } }).map;
+      map.panBy([-120, -120], { animate: false });
+    });
+  }
+  await expect.poll(async () => { const p = await planeAt(); return !!p && !(await covered(p)); }, { timeout: 15_000 }).toBe(true);
   const at = (await planeAt())!;
   await page.mouse.click(at.x, at.y);
   await expect(page.locator('.live-callsign')).toHaveText('ELY001');

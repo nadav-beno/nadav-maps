@@ -8,21 +8,23 @@ export interface Category {
   icon: string;
   /** Overpass tag filters, OR-ed together. */
   filters: string[];
+  /** The same in Overture's `basic_category` (our own places tiles). */
+  overture: string[];
 }
 
 export const CATEGORIES: Category[] = [
-  { id: 'restaurant', label: 'מסעדות', icon: 'restaurant', filters: ['["amenity"="restaurant"]', '["amenity"="fast_food"]'] },
-  { id: 'cafe', label: 'בתי קפה', icon: 'local_cafe', filters: ['["amenity"="cafe"]'] },
-  { id: 'supermarket', label: 'סופרמרקט', icon: 'grocery', filters: ['["shop"="supermarket"]', '["shop"="convenience"]'] },
-  { id: 'fuel', label: 'תחנות דלק', icon: 'local_gas_station', filters: ['["amenity"="fuel"]'] },
-  { id: 'charging', label: 'טעינה לרכב', icon: 'ev_station', filters: ['["amenity"="charging_station"]'] },
-  { id: 'pharmacy', label: 'בתי מרקחת', icon: 'local_pharmacy', filters: ['["amenity"="pharmacy"]'] },
-  { id: 'atm', label: 'כספומט', icon: 'local_atm', filters: ['["amenity"="atm"]', '["amenity"="bank"]["atm"="yes"]'] },
-  { id: 'parking', label: 'חניונים', icon: 'local_parking', filters: ['["amenity"="parking"]'] },
-  { id: 'hotel', label: 'מלונות', icon: 'hotel', filters: ['["tourism"="hotel"]', '["tourism"="guest_house"]', '["tourism"="hostel"]'] },
-  { id: 'attraction', label: 'אטרקציות', icon: 'attractions', filters: ['["tourism"="attraction"]', '["tourism"="museum"]', '["tourism"="viewpoint"]'] },
-  { id: 'park', label: 'פארקים', icon: 'park', filters: ['["leisure"="park"]'] },
-  { id: 'hospital', label: 'בתי חולים', icon: 'local_hospital', filters: ['["amenity"="hospital"]', '["amenity"="clinic"]'] },
+  { id: 'restaurant', label: 'מסעדות', icon: 'restaurant', filters: ['["amenity"="restaurant"]', '["amenity"="fast_food"]'], overture: ['restaurant', 'casual_eatery', 'fast_food_restaurant', 'food_truck_stand', 'food_and_drink'] },
+  { id: 'cafe', label: 'בתי קפה', icon: 'local_cafe', filters: ['["amenity"="cafe"]'], overture: ['coffee_shop', 'cafe'] },
+  { id: 'supermarket', label: 'סופרמרקט', icon: 'grocery', filters: ['["shop"="supermarket"]', '["shop"="convenience"]'], overture: ['supermarket', 'grocery_store', 'convenience_store', 'food_and_beverage_store'] },
+  { id: 'fuel', label: 'תחנות דלק', icon: 'local_gas_station', filters: ['["amenity"="fuel"]'], overture: ['gas_station'] },
+  { id: 'charging', label: 'טעינה לרכב', icon: 'ev_station', filters: ['["amenity"="charging_station"]'], overture: ['ev_charging_station'] },
+  { id: 'pharmacy', label: 'בתי מרקחת', icon: 'local_pharmacy', filters: ['["amenity"="pharmacy"]'], overture: ['pharmacy_and_drug_store'] },
+  { id: 'atm', label: 'כספומט', icon: 'local_atm', filters: ['["amenity"="atm"]', '["amenity"="bank"]["atm"="yes"]'], overture: ['atm', 'bank_or_credit_union'] },
+  { id: 'parking', label: 'חניונים', icon: 'local_parking', filters: ['["amenity"="parking"]'], overture: ['parking'] },
+  { id: 'hotel', label: 'מלונות', icon: 'hotel', filters: ['["tourism"="hotel"]', '["tourism"="guest_house"]', '["tourism"="hostel"]'], overture: ['hotel', 'lodging', 'resort', 'bed_and_breakfast', 'hostel', 'motel'] },
+  { id: 'attraction', label: 'אטרקציות', icon: 'attractions', filters: ['["tourism"="attraction"]', '["tourism"="museum"]', '["tourism"="viewpoint"]'], overture: ['museum', 'landmark', 'historic_site', 'monument', 'art_gallery', 'aquarium', 'amusement_park', 'zoo', 'arts_and_entertainment'] },
+  { id: 'park', label: 'פארקים', icon: 'park', filters: ['["leisure"="park"]'], overture: ['park'] },
+  { id: 'hospital', label: 'בתי חולים', icon: 'local_hospital', filters: ['["amenity"="hospital"]', '["amenity"="clinic"]'], overture: ['hospital', 'specialized_medical_facility', 'primary_care_or_general_clinic', 'outpatient_care_facility'] },
 ];
 
 export function categoryById(id: string): Category | undefined {
