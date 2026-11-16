@@ -410,6 +410,25 @@ test('map buttons are never hidden behind "my location" when the sheet is half o
   await expect(page.getByRole('button', { name: 'התחל משמרת' })).toBeVisible();
 });
 
+test('Back while a category is still loading stays back; Forward keeps the address true', async ({ page }) => {
+  // A slow answer: it arrives after the user has already gone back.
+  await page.route('https://overpass-api.de/api/interpreter', async (r) => {
+    await new Promise((res) => setTimeout(res, 1500));
+    await r.fallback();
+  });
+  await page.goto('./#15/32.08/34.78');
+  await page.getByRole('button', { name: 'בתי קפה' }).click();
+  await expect(page).toHaveURL(/cat=cafe/);
+  await page.goBack();
+  await page.waitForTimeout(2500);
+  await expect(page).not.toHaveURL(/cat=/);
+  await expect(page.getByRole('heading', { name: 'בתי קפה' })).toBeHidden();
+  // Forward cannot bring a closed screen back; the address must not claim it did.
+  await page.goForward().catch(() => {});
+  await page.waitForTimeout(800);
+  await expect(page).not.toHaveURL(/cat=/);
+});
+
 test('"open now" filter keeps open places and says how many had no hours', async ({ page }) => {
   await page.goto('./#15/32.08/34.78');
   await page.getByRole('button', { name: 'בתי קפה' }).click();

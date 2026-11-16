@@ -375,9 +375,18 @@ function prefetchNames() {
   else setTimeout(run, 2000);
 }
 
+/**
+ * Bumped by Back / Forward. A search still waiting for its answer when the user goes back must
+ * not open its results afterwards (that used to undo the Back: tap "מסעדות", Back, and the
+ * results came back a moment later).
+ */
+let navGeneration = 0;
+if (typeof addEventListener === 'function') addEventListener('popstate', () => navGeneration++, { capture: true }); // before the shell re-opens the view
+
 async function runSearch(q: string, opts: { openView?: boolean; area?: boolean; filter?: string; exact?: boolean; chain?: boolean } = {}): Promise<Place[]> {
   remember(q);
   prefetchNames();
+  const gen = navGeneration;
   // "קפה בפלורנטין": find the place, then the category around it.
   const cq = !opts.area && !opts.exact && opts.openView !== false ? categoryQuery(q) : null;
   if (cq) {
@@ -394,7 +403,7 @@ async function runSearch(q: string, opts: { openView?: boolean; area?: boolean; 
   const results = localFirst(mergeSuggestions(remote, local, q, bias().near), bias().near);
   const corrected = remote.find((r) => r.correctedQuery)?.correctedQuery;
   lastResults = results;
-  if (opts.openView !== false) {
+  if (opts.openView !== false && gen === navGeneration) {
     // One clear answer (a street, city or landmark well ahead of the rest) opens right away.
     const sure = !opts.area && !opts.chain && results[0] === remote[0] ? confidentResult(remote, q) : null;
     if ((results.length === 1 && !opts.area && !opts.chain) || sure) {
@@ -428,16 +437,19 @@ async function runCategory(id: string, opts: { filter?: string; anchor?: Place; 
   };
   areaPill.value = false;
   open({ kind: 'results', props: { ...base, loading: true } });
+  const gen = navGeneration;
   try {
     const o: [number, number] = around ? [around.lng, around.lat] : origin();
     const places = (await tools().call(searchNearby, { category: id as never, bbox: around ? bboxAround(around) : areaBBox(), near: o, limit: 60 }))
       .sort((a, b2) => distance(o, [a.lng, a.lat]) - distance(o, [b2.lng, b2.lat]))
       .slice(0, 40);
+    if (gen !== navGeneration) return;
     lastResults = places;
     open({ kind: 'results', props: { ...base, places } }, { replace: true });
     showResults(places);
     if (around) afterPanelChange(() => (places.length ? fitPlaces(places.slice(0, 12)) : focusPlace(around)));
   } catch (e) {
+    if (gen !== navGeneration) return;
     open({ kind: 'results', props: { ...base, error: (e as Error).message } }, { replace: true });
   }
   anchor = null;

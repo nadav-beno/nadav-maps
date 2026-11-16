@@ -56,6 +56,13 @@ export function startUrlSync(map: MapLibreMap): void {
       history.replaceState({ depth: d }, '', currentUrl());
       return;
     }
+    if (d > viewStack.value.length) {
+      // Forward: the screens that were closed are gone (they only live in memory), so the page
+      // would show one thing and the address another. Step back to where the app really is.
+      internal = true;
+      history.go(viewStack.value.length - d);
+      return;
+    }
     depth = d;
     if (d < viewStack.value.length) {
       internal = true;
