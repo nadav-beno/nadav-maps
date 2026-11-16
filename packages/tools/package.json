@@ -3,9 +3,14 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "dependencies": {
+    "@mapbox/vector-tile": "3.0.0",
     "@nm/core": "workspace:*",
+    "pbf": "5.1.2",
+    "pmtiles": "4.5.0",
     "zod": "^4.6.5"
   }
 }

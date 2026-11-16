@@ -13,6 +13,7 @@ import { commonsPhotosNear } from '../providers/commons.ts';
 import { overpassAlongLine, overpassCategory, overpassDetails, overpassIdentify, overpassInside } from '../providers/overpass.ts';
 import { photonReverse, photonSearch } from '../providers/photon.ts';
 import { placesIndexSearch } from '../providers/places-index.ts';
+import { placesTilesCategory } from '../providers/places-tiles.ts';
 import { localgeoDetails, localgeoIdentify, localgeoNamesUrl, localgeoReverse, localgeoSearch, mergePlaces } from '../providers/localgeo.ts';
 import { hereIncidents, hereTrafficTime } from '../providers/here.ts';
 import { NO_KEY_MESSAGE, tomtomIncidents, tomtomTrafficTime } from '../providers/tomtom.ts';
@@ -249,12 +250,27 @@ export const searchNearby = defineTool({
     category: z.enum(CATEGORIES.map((c) => c.id) as [string, ...string[]]),
     bbox: z.tuple([lng, lat, lng, lat]).describe('[west, south, east, north]'),
     limit: z.number().int().min(1).max(100).default(40),
+    near: point.optional().describe('[lng, lat] to search outward from (default: the middle of bbox)'),
   }),
   async run(input, ctx) {
     const [w, s, e, n] = input.bbox;
     // Overpass gets slow on huge boxes; refuse rather than time out.
     if ((e - w) * (n - s) > 0.5) throw new Error('האזור גדול מדי. התקרבו במפה ונסו שוב.');
-    return overpassCategory(ctx, categoryById(input.category)!.filters, input.bbox as BBox, input.limit);
+    const cat = categoryById(input.category)!;
+    const center: LngLat = input.near ? (input.near as LngLat) : [(w + e) / 2, (s + n) / 2];
+    // Our own places tiles first (fast, same origin); the public Overpass server is often
+    // overloaded and used to leave the results loading. Overpass fills in where ours has few.
+    const own = await placesTilesCategory(ctx, cat.overture, input.bbox as BBox, center, input.limit).catch(() => undefined);
+    if (own && own.length >= Math.min(8, input.limit)) return own;
+    try {
+      const osm = await overpassCategory(ctx, cat.filters, input.bbox as BBox, input.limit);
+      if (!own?.length) return osm;
+      const near = (a: Place, b: Place) => a.name === b.name && distance([a.lng, a.lat], [b.lng, b.lat]) < 150;
+      return [...own, ...osm.filter((o) => !own.some((p) => near(o, p)))].slice(0, input.limit);
+    } catch (err) {
+      if (own?.length) return own;
+      throw err;
+    }
   },
 });
 
