@@ -210,13 +210,13 @@ export function postgrestStore(baseUrl: string, key: string, fetcher: typeof fet
 }
 
 /**
- * The feeds a cell is read from (same readsb format, 250 NM around a point). adsb.lol is not one
- * of them: without a key it allows 500 requests a day per IP, and our key is kept for close-up
- * maps and flight tracks. adsb.fi and airplanes.live each ask for at most one request a second.
+ * The feeds a cell is read from (readsb format, 250 NM around a point). adsb.fi asks for at most
+ * one request a second. adsb.lol is not one of them: without a key it allows 500 requests a day
+ * per IP, and our key is kept for close-up maps and flight tracks. airplanes.live answers 403 to
+ * Supabase's servers until they approve the project by email. More feeds here = more lanes.
  */
 export const FEEDS: { name: string; gapMs: number; url: (lat: number, lon: number) => string }[] = [
   { name: 'adsb.fi', gapMs: 1100, url: (lat, lon) => `https://opendata.adsb.fi/api/v3/lat/${lat}/lon/${lon}/dist/${CELL_RADIUS_NM}` },
-  { name: 'airplanes.live', gapMs: 1100, url: (lat, lon) => `https://api.airplanes.live/v2/point/${lat}/${lon}/${CELL_RADIUS_NM}` },
 ];
 
 export function cellUrls(id: number): string[] {
@@ -228,10 +228,10 @@ export function cellUrls(id: number): string[] {
  * The feeds rate-limit by IP and every relay instance shares a few IPs. So refreshes are spread
  * out: at most BUDGET cells per 10 s across all viewers and the sweep (counted in the store),
  * each viewer request takes at most MAX_REFRESH of them, and each feed is its own lane of
- * requests one after another (one a second each, so BUDGET = 10 s x the feeds).
+ * requests one after another (about one a second each, so BUDGET = 9 x the feeds).
  */
 export const MAX_REFRESH = 8;
-export const BUDGET = 18;
+export const BUDGET = 9 * FEEDS.length;
 
 const wait = (ms: number) => (ms > 0 ? new Promise((r) => setTimeout(r, ms)) : Promise.resolve());
 

@@ -3,7 +3,7 @@ import { ALL_CELLS, BUDGET, CELL_COUNT, EMPTY_S, cellCenter, cellsIn, compactAir
 import { clearRelayCache, handleFlightsRelay } from './flights-proxy.ts';
 
 const R = 6371;
-const G = [0, 0];
+const G = [0];
 const km = (a: { lat: number; lon: number }, b: { lat: number; lon: number }) => {
   const r = Math.PI / 180;
   const h = Math.sin(((b.lat - a.lat) * r) / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(((b.lon - a.lon) * r) / 2) ** 2;
@@ -68,18 +68,15 @@ describe('world cells', () => {
     expect(next.pending).toBe(0);
   });
 
-  it('splits cells between the two feeds and stops a feed that rate-limits', async () => {
-    const upstream = vi.fn(async (url: string) =>
-      url.includes('airplanes.live') ? new Response('', { status: 429 }) : new Response(JSON.stringify({ aircraft: [plane(`fi${upstream.mock.calls.length}`, 32, 34.8)] })),
-    );
+  it('reads cells from adsb.fi only, and stops when it rate-limits', async () => {
+    let n = 0;
+    const upstream = vi.fn(async () => (++n === 3 ? new Response('', { status: 429 }) : new Response(JSON.stringify({ ac: [plane(`fi${n}`, 32, 34.8)] }))));
     const store = memoryStore();
     const ids = [24010, 24011, 24012, 24013, 24014, 24015];
-    await refreshCells(store, ids, upstream as unknown as typeof fetch, 'test', () => 0, G);
-    const urls = upstream.mock.calls.map((c) => c[0] as string);
-    expect(urls.filter((u) => u.includes('airplanes.live'))).toHaveLength(1);
-    expect(urls.filter((u) => u.includes('adsb.fi'))).toHaveLength(3);
-    // adsb.lol is kept for close-up maps (its keyless quota is 500 a day).
-    expect(urls.some((u) => u.includes('adsb.lol'))).toBe(false);
+    expect(await refreshCells(store, ids, upstream as unknown as typeof fetch, 'test', () => 0, G)).toBe(2);
+    const urls = upstream.mock.calls.map((c) => (c as unknown[])[0] as string);
+    expect(urls).toHaveLength(3);
+    expect(urls.every((u) => u.startsWith('https://opendata.adsb.fi/api/v3/'))).toBe(true);
   });
 
   it('sweeps the whole world within the budget, and rechecks empty cells once they are overdue', async () => {
