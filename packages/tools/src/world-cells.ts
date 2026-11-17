@@ -289,9 +289,9 @@ export async function sweepCells(
     const { claim } = await store.take(ALL_CELLS, BUDGET, started);
     if (claim.length) stored += await refreshCells(store, claim, upstream, opts.ua ?? 'NadavMaps', now, opts.gaps);
     // The budget is per 10 s: wait for the rest of the window before claiming again.
-    const left = Math.min(end - now(), Math.max(opts.idleMs ?? 0, 10_000 - (now() - started)));
-    if (left > 0 && now() + left < end) await wait(left);
-    else break;
+    const left = Math.max(opts.idleMs ?? 0, 10_000 - (now() - started));
+    if (now() + left >= end) break;
+    if (left > 0) await wait(left);
   }
   return stored;
 }
