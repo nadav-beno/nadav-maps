@@ -1,0 +1,15 @@
+{
+  "appId": "io.github.nadavbeno.maps",
+  "appName": "Nadav Maps",
+  "webDir": "www",
+  "appendUserAgent": "NadavMapsApp",
+  "backgroundColor": "#ffffff",
+  "server": {
+    "url": "https://nadav-beno.github.io/nadav-maps/",
+    "errorPath": "offline.html"
+  },
+  "ios": {
+    "contentInset": "never",
+    "webContentsDebuggingEnabled": true
+  }
+}

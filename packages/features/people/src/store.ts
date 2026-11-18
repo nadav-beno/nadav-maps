@@ -1,6 +1,6 @@
 import { batch, computed, signal } from '@preact/signals';
 import { alertFires, alertText, distance, insideFence, shareSeconds, shareUntil, type AlertKind, type LngLat, type ShareFor } from '@nm/core';
-import { load, providers, region, requestLocation, save, simulatingLocation, toast, userLocation } from '@nm/core/app';
+import { backgroundLocation, isNativeApp, load, providers, region, requestLocation, save, simulatingLocation, toast, userLocation } from '@nm/core/app';
 import { reverseGeocode, tools } from '@nm/tools';
 import { PeopleApi, PeopleError } from './api.ts';
 
@@ -412,6 +412,9 @@ export async function maybePublish(force = false) {
 
 export function startPublishing() {
   void readBattery();
+  // The iPhone app keeps GPS running in the background while someone sees me, so friends get
+  // live updates with the app closed. Nobody watching: back to foreground only.
+  sharingNow.subscribe((on) => (backgroundLocation.value = on && isNativeApp()));
   userLocation.subscribe(() => void maybePublish());
   // Starting to share: send at once, and make sure GPS runs.
   sharingNow.subscribe((on) => {

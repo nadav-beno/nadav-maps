@@ -1,7 +1,7 @@
 import { signal } from '@preact/signals';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { circle, formatDistance, plausibleFix, type Fix } from '@nm/core';
-import { cssVar, defineFeature, ensureLayer, EMPTY, hideLocationDot, Icon, immersive, load, locationRequests, open, save, setGeoJSON, toast, units, userLocation } from '@nm/core/app';
+import { backgroundLocation, cssVar, defineFeature, ensureLayer, EMPTY, hideLocationDot, Icon, immersive, isNativeApp, load, locationRequests, open, openAppSettings, save, setGeoJSON, toast, units, userLocation } from '@nm/core/app';
 import { PermissionsView } from './permissions.tsx';
 
 /**
@@ -115,7 +115,9 @@ function onError(err: GeolocationPositionError) {
 
 function explainError() {
   const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
-  if (errorKind.value === 'denied') {
+  if (errorKind.value === 'denied' && isNativeApp()) {
+    toast('אין לאפליקציה הרשאת מיקום. בהגדרות: Nadav Maps ← מיקום ← "בזמן השימוש" או "תמיד".', { label: 'להגדרות', run: openAppSettings }, 8000);
+  } else if (errorKind.value === 'denied') {
     toast(
       isIOS
         ? 'אין הרשאת מיקום. בהגדרות האייפון: פרטיות ואבטחה ← שירותי מיקום ← אתרי Safari ← בזמן השימוש.'
@@ -432,9 +434,10 @@ export default defineFeature({
     ctx.registerView('permissions', PermissionsView, { title: 'הרשאות' });
     ctx.registerMenuItem({ id: 'permissions', label: 'הרשאות מיקום ותנועה', icon: 'my_location', order: 58, run: () => open({ kind: 'permissions' }) });
 
-    // Save battery: stop GPS when the app is in the background, unless navigating.
+    // Save battery: stop GPS when the app is in the background, unless navigating, or a feature
+    // needs it there (the iPhone app keeps it running while sharing with friends).
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden && !immersive.value) stopWatch();
+      if (document.hidden && !immersive.value && !backgroundLocation.value) stopWatch();
       else if (!document.hidden && locState.value !== 'off' && locState.value !== 'error' && watchId === null) {
         const prev = locState.value;
         firstFix = false;
