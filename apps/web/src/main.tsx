@@ -1,7 +1,7 @@
 import { render } from 'preact';
 import { effect } from '@preact/signals';
 import { parseUrl, providersFromEnv, withDevOverrides } from '@nm/core';
-import { applyUrlFlags, embedded, featureCatalog, isEnabled, providers, sheet, viewStack } from '@nm/core/app';
+import { applyUrlFlags, embedded, featureCatalog, installNativeGeolocation, isEnabled, providers, sheet, viewStack } from '@nm/core/app';
 import { createToolClient, setToolClient } from '@nm/tools';
 import { FEATURES } from './features.ts';
 import { App, isWide } from './shell/App.tsx';
@@ -13,6 +13,8 @@ import '@fontsource-variable/rubik';
 import './styles.css';
 
 initErrorReporting();
+// Inside the iPhone app, location comes from the native location manager (background updates).
+installNativeGeolocation();
 
 // On localhost, ?tomtom=<key> / ?here=<key> switch traffic on without a rebuild (e2e tests, trying a key).
 const config = withDevOverrides(providersFromEnv(import.meta.env as Record<string, string | undefined>, 'VITE_'), location.href);
