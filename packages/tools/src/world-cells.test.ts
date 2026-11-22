@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BUDGET, CELL_COUNT, cellCenter, cellsIn, compactAircraft, memoryStore, postgrestStore, refreshCells, worldAircraft } from './world-cells.ts';
+import { ALL_CELLS, BUDGET, CELL_COUNT, EMPTY_S, cellCenter, cellsIn, compactAircraft, memoryStore, postgrestStore, refreshCells, sweepCells, worldAircraft } from './world-cells.ts';
 import { clearRelayCache, handleFlightsRelay } from './flights-proxy.ts';
 
 const R = 6371;
-const G = { lol: 0, fi: 0 };
+const G = [0];
 const km = (a: { lat: number; lon: number }, b: { lat: number; lon: number }) => {
   const r = Math.PI / 180;
   const h = Math.sin(((b.lat - a.lat) * r) / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(((b.lon - a.lon) * r) / 2) ** 2;
@@ -68,16 +68,36 @@ describe('world cells', () => {
     expect(next.pending).toBe(0);
   });
 
-  it('splits cells between the two feeds and stops a feed that rate-limits', async () => {
-    const upstream = vi.fn(async (url: string) =>
-      url.includes('adsb.lol') ? new Response('', { status: 429 }) : new Response(JSON.stringify({ aircraft: [plane(`fi${upstream.mock.calls.length}`, 32, 34.8)] })),
-    );
+  it('reads cells from adsb.fi only, and stops when it rate-limits', async () => {
+    let n = 0;
+    const upstream = vi.fn(async () => (++n === 3 ? new Response('', { status: 429 }) : new Response(JSON.stringify({ ac: [plane(`fi${n}`, 32, 34.8)] }))));
     const store = memoryStore();
     const ids = [24010, 24011, 24012, 24013, 24014, 24015];
-    await refreshCells(store, ids, upstream as unknown as typeof fetch, 'test', () => 0, G);
-    const urls = upstream.mock.calls.map((c) => c[0] as string);
-    expect(urls.filter((u) => u.includes('adsb.lol'))).toHaveLength(1);
-    expect(urls.filter((u) => u.includes('adsb.fi'))).toHaveLength(3);
+    expect(await refreshCells(store, ids, upstream as unknown as typeof fetch, 'test', () => 0, G)).toBe(2);
+    const urls = upstream.mock.calls.map((c) => (c as unknown[])[0] as string);
+    expect(urls).toHaveLength(3);
+    expect(urls.every((u) => u.startsWith('https://opendata.adsb.fi/api/v3/'))).toBe(true);
+  });
+
+  it('sweeps the whole world within the budget, and rechecks empty cells once they are overdue', async () => {
+    const store = memoryStore();
+    let t = 0;
+    const now = () => t;
+    const upstream = vi.fn(async () => {
+      t += 500;
+      return new Response('{"ac":[]}');
+    });
+    // One window of 10 s: one budget of cells.
+    await sweepCells(store, upstream as unknown as typeof fetch, { now, ms: 9_000, gaps: G });
+    expect(upstream).toHaveBeenCalledTimes(BUDGET);
+    // A busy cell next to a long-empty one: once both are overdue, the more overdue goes first.
+    const busy = ALL_CELLS[0], empty = ALL_CELLS[1];
+    const s2 = memoryStore();
+    const later = EMPTY_S * 1000 * 2;
+    await s2.put([{ id: busy, rows: [compactAircraft({ ac: [plane('b', 1, 1)] })[0]] }], later - 31_000);
+    await s2.put([{ id: empty, rows: [] }], 0);
+    const { claim } = await s2.take([busy, empty], 1, later);
+    expect(claim).toEqual([empty]);
   });
 
   it('claims at most the shared budget of cells per 10 s', async () => {
@@ -110,5 +130,18 @@ describe('world cells', () => {
     const ok = await handleFlightsRelay(req({ world: [0, 0, 1, 1] }), upstream as unknown as typeof fetch, 0, { store: memoryStore() });
     expect(ok.status).toBe(200);
     expect(JSON.parse(await ok.text())).toMatchObject({ ac: [], cells: 1, pending: 0 });
+  });
+
+  it('the relay runs a sweep for the cron job, never for a browser', async () => {
+    const body = JSON.stringify({ sweep: true });
+    const upstream = vi.fn(async () => new Response('{"ac":[]}'));
+    const browser = new Request('https://relay.test/', { method: 'POST', headers: { origin: 'https://nadav-beno.github.io' }, body });
+    expect((await handleFlightsRelay(browser, upstream as unknown as typeof fetch, 0, { store: memoryStore() })).status).toBe(403);
+    const later: Promise<unknown>[] = [];
+    const cron = new Request('https://relay.test/', { method: 'POST', body });
+    const res = await handleFlightsRelay(cron, upstream as unknown as typeof fetch, 0, { store: memoryStore(), defer: (p) => later.push(p), sweepMs: 1, sweepGaps: G });
+    expect(res.status).toBe(202);
+    await Promise.all(later);
+    expect(upstream).toHaveBeenCalled();
   });
 });
