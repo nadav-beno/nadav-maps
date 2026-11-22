@@ -5,13 +5,14 @@
  * in `apps/server`, and in unit tests.
  *
  * Request: `POST` with JSON `{ url, body? }`, or `{ world: [w, s, e, n] }` for every aircraft in
- * a box from the shared world cells (zoomed-out map). The upstream URL travels in the body, not the path,
+ * a box from the shared world cells (zoomed-out map), or `{ sweep: true }` (pg_cron, once a
+ * minute) to keep every cell fresh. The upstream URL travels in the body, not the path,
  * so the map area never lands in request logs. Only a few read-only endpoints are allowed.
  * Responses are cached for a few seconds per URL, so many viewers share one upstream call (and
  * OpenSky's daily credits).
  */
 
-import { worldAircraft, type Box, type CellStore } from './world-cells.ts';
+import { sweepCells, worldAircraft, type Box, type CellStore } from './world-cells.ts';
 
 export interface RelayRequest {
   url?: string;
@@ -19,6 +20,8 @@ export interface RelayRequest {
   body?: unknown;
   /** Instead of a url: every aircraft in this box from the shared world cells (world-cells.ts). */
   world?: Box;
+  /** Refresh the most overdue world cells for about a minute (sent by pg_cron, never by a browser). */
+  sweep?: boolean;
 }
 
 export interface RelayOptions {
@@ -28,7 +31,13 @@ export interface RelayOptions {
   defer?: (p: Promise<unknown>) => void;
   /** Our adsb.lol API key (server secret), sent on adsb.lol requests; its trace files need it. */
   adsbKey?: string;
+  /** How long one sweep runs, and the gaps between requests per feed (tests). */
+  sweepMs?: number;
+  sweepGaps?: number[];
 }
+
+/** One sweep at a time per instance (the shared budget in the store limits them across instances). */
+let sweeping = false;
 
 const UA = 'NadavMaps/0.3 (+https://github.com/nadav-beno/nadav-maps)';
 
@@ -102,6 +111,17 @@ export async function handleFlightsRelay(req: Request, upstream: typeof fetch = 
     } catch {
       return reply(502, '{"error":"cache unreachable"}');
     }
+  }
+  if (input && input.sweep === true) {
+    // Browsers always send an Origin on POST; the sweep comes from the database's cron job.
+    if (origin) return reply(403, '{"error":"sweep is not for browsers"}');
+    if (!opts.store) return reply(501, '{"error":"world view not available"}');
+    if (sweeping) return reply(202, '{"sweep":"running"}');
+    sweeping = true;
+    const run = sweepCells(opts.store, upstream, { ua: UA, ms: opts.sweepMs, gaps: opts.sweepGaps }).catch(() => 0).finally(() => (sweeping = false));
+    if (opts.defer) opts.defer(run);
+    else await run;
+    return reply(202, '{"sweep":"started"}');
   }
   const route = relayRoute(input?.url as string);
   if (!route) return reply(400, '{"error":"url not allowed"}');
