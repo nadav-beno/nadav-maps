@@ -59,6 +59,7 @@ test('people: friends live on the map and in the list, with requests, sharing an
   await expect(page.getByText('עמית רואה את המיקום שלך')).toBeVisible();
   const req = page.getByRole('group', { name: 'בקשה מיוני' });
   await expect(req).toContainText('מבקש/ת לראות את המיקום שלך');
+  await expect(req).toContainText('השיתוף הדדי');
   // The closest first: Noa (680 m), then Amit.
   await expect(page.locator('.pp-row').nth(0)).toContainText('נועה לוי');
   await expect(page.locator('.pp-row').nth(1)).toContainText('עמית');
@@ -72,7 +73,10 @@ test('people: friends live on the map and in the list, with requests, sharing an
   await req.getByRole('button', { name: 'שיתוף' }).click();
   await expect.poll(() => w.calls.find((c) => c.fn === 'people_share')?.args.p_viewer).toBe('u-yoni');
   await expect(page.getByRole('group', { name: 'בקשה מיוני' })).toHaveCount(0);
-  await expect(page.locator('.pp-row', { hasText: 'יוני' })).toContainText('רואה את המיקום שלך · עוד 60 דק׳');
+  // Mutual: Yoni asked, so Yoni now shares back for the same hour.
+  expect(w.shares.get('u-yoni>u-me')).toBe(w.shares.get('u-me>u-yoni'));
+  // Yoni shares back now, so the row waits for Yoni's first position.
+  await expect(page.locator('.pp-row', { hasText: 'יוני' })).toContainText('מחכים למיקום הראשון');
   // My position reached the server once I share.
   await expect.poll(() => w.calls.some((c) => c.fn === 'people_publish')).toBe(true);
 
@@ -117,6 +121,21 @@ test('people: an invite link adds the friend and offers to share back', async ({
   await expect(page.locator('.pp-pin', { hasText: 'דנה' })).toBeVisible();
   // Not sharing back yet: Dana's request waits on my card.
   await expect(page.getByText('דנה ביקש/ה לראות את המיקום שלך')).toBeVisible();
+});
+
+test('people: opening the app brings the friends who share with me into view', async ({ page }) => {
+  test.setTimeout(SLOW);
+  await stubPeople(page, friendsWorld());
+  await signedIn(page);
+  // The last view was zoomed in somewhere else, and the friends were hidden last time.
+  await page.goto(`./?people=${PEOPLE_URL}#17/32.2/34.9`);
+  const inView = (name: string) =>
+    page.locator('.pp-pin', { hasText: name }).evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight;
+    });
+  await expect.poll(() => inView('עמית'), { timeout: 15_000 }).toBe(true);
+  await expect.poll(() => inView('נועה')).toBe(true);
 });
 
 test('people: hiding my location and a service that is not switched on yet', async ({ page }) => {

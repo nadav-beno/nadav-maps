@@ -99,10 +99,18 @@ function rpc(w: PeopleWorld, fn: string, a: Record<string, any>): unknown {
       if (n) w.locations.set(ME, { lng: a.p_lng, lat: a.p_lat, accuracy: a.p_accuracy, heading: a.p_heading, speed: a.p_speed, battery: a.p_battery, charging: a.p_charging, at: new Date().toISOString() });
       return n;
     }
-    case 'people_share':
+    case 'people_share': {
+      // Like the SQL: answering their request makes it mutual, for the same time.
+      const asked = w.requests.delete(`${a.p_viewer}>${ME}`);
       w.shares.set(`${ME}>${a.p_viewer}`, a.p_until);
-      w.requests.delete(`${a.p_viewer}>${ME}`);
+      if (asked) {
+        const theirs = w.shares.get(`${a.p_viewer}>${ME}`);
+        const keep = theirs === null || a.p_until === null ? null : theirs && theirs > a.p_until ? theirs : a.p_until;
+        w.shares.set(`${a.p_viewer}>${ME}`, keep);
+        w.requests.delete(`${ME}>${a.p_viewer}`);
+      }
       return null;
+    }
     case 'people_stop_sharing':
       w.shares.delete(`${ME}>${a.p_viewer}`);
       return null;

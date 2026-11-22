@@ -1,6 +1,6 @@
 import { batch, computed, signal } from '@preact/signals';
 import { alertFires, alertText, distance, insideFence, shareSeconds, shareUntil, type AlertKind, type LngLat, type ShareFor } from '@nm/core';
-import { backgroundLocation, isNativeApp, load, providers, region, requestLocation, save, simulatingLocation, toast, userLocation } from '@nm/core/app';
+import { backgroundLocation, isNativeApp, load, providers, region, requestLocation, simulatingLocation, toast, userLocation } from '@nm/core/app';
 import { reverseGeocode, tools } from '@nm/tools';
 import { PeopleApi, PeopleError } from './api.ts';
 
@@ -80,9 +80,11 @@ export const snapshot = signal<Snapshot | null>(null);
 /** Server clock minus ours, so "updated 2 minutes ago" is right on phones with a wrong clock. */
 const skew = signal(0);
 export const now = signal(Date.now());
-/** Bubbles of friends on the main map (a setting; on by default). */
-export const onMap = signal<boolean>(load('people:onMap', true));
-onMap.subscribe((v) => save('people:onMap', v));
+/**
+ * Bubbles of friends on the main map. Always on when the app opens (the owner wants to see
+ * them every time); the switch hides them only until the next launch.
+ */
+export const onMap = signal<boolean>(true);
 /** Set while a people screen is open: refreshes faster. */
 export const watching = signal(0);
 /** An invite link the app was opened with, waiting for the user. */
@@ -278,7 +280,7 @@ export function shareWith(p: Person, choice: ShareFor) {
 }
 
 export const stopSharing = (p: Person) => act((a) => a.rpc('people_stop_sharing', { p_viewer: p.id }), `הפסקת לשתף עם ${p.name}`);
-export const ask = (p: Person) => act((a) => a.rpc('people_ask', { p_other: p.id }), `שלחנו ל${p.name} בקשה`);
+export const ask = (p: Person) => act((a) => a.rpc('people_ask', { p_other: p.id }), `שלחנו ל${p.name} בקשה. כשיאשרו, תראו אחד את השני`);
 export const decline = (p: Person) => act((a) => a.rpc('people_decline', { p_from: p.id }));
 export const removePerson = (p: Person) => act((a) => a.rpc('people_remove', { p_other: p.id }), `${p.name} הוסר/ה מהרשימה`);
 export const setPaused = (paused: boolean) =>
