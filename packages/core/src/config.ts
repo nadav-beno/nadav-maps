@@ -122,6 +122,14 @@ export interface ProviderConfig {
    * with {date} (YYYY-MM-DD, UTC). NASA GIBS VIIRS true colour by default, free and open, no key.
    */
   weatherSatUrl: string;
+  /**
+   * "אנשים" (location sharing with friends): our Supabase project's URL ('' = the feature shows
+   * that it isn't set up). Sign-in is anonymous; every read and write goes through the people_*
+   * SQL functions (supabase/migrations/20261116000000_people.sql).
+   */
+  peopleUrl: string;
+  /** That project's publishable (anon) key. Public by design: the SQL functions decide what anyone may see. */
+  peopleKey: string;
   /** Identifies us to public servers, as their usage policies ask. */
   userAgent: string;
 }
@@ -158,6 +166,8 @@ export const DEFAULT_PROVIDERS: ProviderConfig = {
   weatherUrl: 'https://api.open-meteo.com/v1/forecast',
   marineUrl: 'https://marine-api.open-meteo.com/v1/marine',
   weatherSatUrl: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/{date}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg',
+  peopleUrl: '',
+  peopleKey: '',
   userAgent: 'NadavMaps/0.2 (+https://github.com/nadav-beno/nadav-maps)',
 };
 
@@ -194,6 +204,8 @@ export function providersFromEnv(env: Record<string, string | undefined>, prefix
     weatherUrl: env[prefix + 'WEATHER_URL'] ?? DEFAULT_PROVIDERS.weatherUrl,
     marineUrl: env[prefix + 'MARINE_URL'] ?? DEFAULT_PROVIDERS.marineUrl,
     weatherSatUrl: env[prefix + 'WEATHER_SAT_URL'] ?? DEFAULT_PROVIDERS.weatherSatUrl,
+    peopleUrl: (env[prefix + 'PEOPLE_URL'] ?? DEFAULT_PROVIDERS.peopleUrl).trim().replace(/\/+$/, ''),
+    peopleKey: (env[prefix + 'PEOPLE_KEY'] ?? DEFAULT_PROVIDERS.peopleKey).trim(),
     userAgent: DEFAULT_PROVIDERS.userAgent,
   };
 }
@@ -224,7 +236,10 @@ export function withDevOverrides(cfg: ProviderConfig, href: string): ProviderCon
   const relayOk = !!relay && /^https?:\/\/[^\s]+$/.test(relay);
   const ships = url.searchParams.get('shipsrelay');
   const shipsOk = !!ships && /^https?:\/\/[^\s]+$/.test(ships);
-  if (!tomtom && !here && !atlas && !relayOk && !shipsOk) return cfg;
+  // A people service (e2e tests stub one); the key defaults to "test".
+  const people = url.searchParams.get('people');
+  const peopleOk = !!people && /^https?:\/\/[^\s]+$/.test(people);
+  if (!tomtom && !here && !atlas && !relayOk && !shipsOk && !peopleOk) return cfg;
   return {
     ...cfg,
     ...(tomtom ? { tomtomKey: tomtom } : {}),
@@ -232,5 +247,6 @@ export function withDevOverrides(cfg: ProviderConfig, href: string): ProviderCon
     ...(atlas ? { atlasKey: atlas } : {}),
     ...(relayOk ? { flightsRelayUrl: relay } : {}),
     ...(shipsOk ? { shipsUrl: ships } : {}),
+    ...(peopleOk ? { peopleUrl: people.replace(/\/+$/, ''), peopleKey: cfg.peopleKey || 'test' } : {}),
   };
 }

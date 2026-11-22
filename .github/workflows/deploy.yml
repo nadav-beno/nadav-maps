@@ -130,6 +130,11 @@ jobs:
           # A picked aircraft's whole flight (adsb.lol trace files), read through the relay, which
           # sends our adsb.lol key (Edge Function secret ADSBLOL_API_KEY); without it adsb.lol refuses.
           VITE_TRACES_URL: https://adsb.lol/data/traces/
+          # "אנשים" (location sharing with friends): our Supabase project with anonymous sign-in and the
+          # people_* SQL functions (supabase/migrations/20261116000000_people.sql). The publishable key is
+          # public by design: the SQL functions decide what anyone may read.
+          VITE_PEOPLE_URL: https://wysmzvzpmtptckngegvo.supabase.co
+          VITE_PEOPLE_KEY: sb_publishable_txwuxSDdPQ0klEGxBcSHGA_m-yr6xYv
       - name: Add geodata to the site
         run: |
           if ls geodata-out/*/manifest.json >/dev/null 2>&1; then

@@ -311,3 +311,13 @@ To try a key locally without a build: `pnpm dev` and open `http://localhost:5173
 
 To try a key locally without a build: `pnpm dev` and open `http://localhost:5173/?here=<key>`
 (ignored on any host except localhost).
+
+## People ("אנשים"): our own location sharing
+
+Not a third-party source: our Supabase project (`nadav-maps`) holds it, under our own rules.
+
+- **Sign-in:** Supabase anonymous users (Authentication > Sign In / Providers > "Allow anonymous sign-ins" must be on). No phone, email or password. Clearing the browser's storage loses the account; linking an email or Apple/Google sign-in is a later step.
+- **What is stored:** a display name, an emoji and a colour; who shares with whom and until when; pending requests and invite links (7 days); arrive/leave alerts; and each person's **last** position only, kept only while they share with someone (stopping, hiding or deleting the account removes it). No history.
+- **Who can read it:** clients have no table rights at all (RLS on, no policies, `revoke all`). Every call is a `security definer` function in `supabase/migrations/20261116000000_people.sql` that acts as `auth.uid()` and returns a position only to a viewer with an active share.
+- **Limits:** the free Supabase tier (500 MB database, 50,000 monthly active users for Auth). Each open app calls `people_snapshot` every 10 s (30 s in the background, 60 s hidden) and `people_publish` at most every 8 s, usually once a minute.
+- **iPhone:** a web app can't read the location in the background, so friends see "updated X ago" while the app is closed. Background sharing needs a native app (Capacitor + an Apple Developer account).
