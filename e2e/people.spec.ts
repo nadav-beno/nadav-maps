@@ -119,6 +119,21 @@ test('people: an invite link adds the friend and offers to share back', async ({
   await expect(page.getByText('דנה ביקש/ה לראות את המיקום שלך')).toBeVisible();
 });
 
+test('people: opening the app brings the friends who share with me into view', async ({ page }) => {
+  test.setTimeout(SLOW);
+  await stubPeople(page, friendsWorld());
+  await signedIn(page);
+  // The last view was zoomed in somewhere else, and the friends were hidden last time.
+  await page.goto(`./?people=${PEOPLE_URL}#17/32.2/34.9`);
+  const inView = (name: string) =>
+    page.locator('.pp-pin', { hasText: name }).evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight;
+    });
+  await expect.poll(() => inView('עמית'), { timeout: 15_000 }).toBe(true);
+  await expect.poll(() => inView('נועה')).toBe(true);
+});
+
 test('people: hiding my location and a service that is not switched on yet', async ({ page }) => {
   test.setTimeout(SLOW);
   const w = friendsWorld();

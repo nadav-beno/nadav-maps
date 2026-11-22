@@ -375,7 +375,7 @@ export function PeopleView(_: ViewProps) {
       <button class="btn primary big full pp-add" onClick={() => open({ kind: ADD_VIEW, props: { url: { panel: 'people' } } })}>
         <Icon name="person_add" /> הוספת אדם
       </button>
-      <Switch title="הצגת האנשים במפה" sub="גם כשהמסך הזה סגור" checked={onMap.value} onChange={(v) => (onMap.value = v)} />
+      <Switch title="הצגת האנשים במפה" sub="גם כשהמסך הזה סגור. חוזר בכל פתיחה של האפליקציה" checked={onMap.value} onChange={(v) => (onMap.value = v)} />
     </div>
   );
 }
@@ -821,7 +821,7 @@ export function MeView(_: ViewProps) {
         checked={m.paused}
         onChange={(v) => void setPaused(v)}
       />
-      <Switch title="הצגת האנשים במפה" sub="הבועות של החברים על המפה הראשית" checked={onMap.value} onChange={(v) => (onMap.value = v)} />
+      <Switch title="הצגת האנשים במפה" sub="הבועות של החברים על המפה הראשית. חוזר בכל פתיחה של האפליקציה" checked={onMap.value} onChange={(v) => (onMap.value = v)} />
       <div class="pp-card pp-howto">
         <div class="pp-card-title"><Icon name="info" /> איך זה עובד</div>
         <ul class="small">

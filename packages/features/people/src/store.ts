@@ -1,6 +1,6 @@
 import { batch, computed, signal } from '@preact/signals';
 import { alertFires, alertText, distance, insideFence, shareSeconds, shareUntil, type AlertKind, type LngLat, type ShareFor } from '@nm/core';
-import { load, providers, region, requestLocation, save, simulatingLocation, toast, userLocation } from '@nm/core/app';
+import { load, providers, region, requestLocation, simulatingLocation, toast, userLocation } from '@nm/core/app';
 import { reverseGeocode, tools } from '@nm/tools';
 import { PeopleApi, PeopleError } from './api.ts';
 
@@ -80,9 +80,11 @@ export const snapshot = signal<Snapshot | null>(null);
 /** Server clock minus ours, so "updated 2 minutes ago" is right on phones with a wrong clock. */
 const skew = signal(0);
 export const now = signal(Date.now());
-/** Bubbles of friends on the main map (a setting; on by default). */
-export const onMap = signal<boolean>(load('people:onMap', true));
-onMap.subscribe((v) => save('people:onMap', v));
+/**
+ * Bubbles of friends on the main map. Always on when the app opens (the owner wants to see
+ * them every time); the switch hides them only until the next launch.
+ */
+export const onMap = signal<boolean>(true);
 /** Set while a people screen is open: refreshes faster. */
 export const watching = signal(0);
 /** An invite link the app was opened with, waiting for the user. */

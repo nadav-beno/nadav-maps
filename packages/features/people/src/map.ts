@@ -1,9 +1,9 @@
 import { effect, signal } from '@preact/signals';
 import * as maplibregl from 'maplibre-gl';
 import type { Map as MapLibreMap } from 'maplibre-gl';
-import { circle, freshness, initialsOf, personColor } from '@nm/core';
-import { EMPTY, ensureLayer, immersive, setGeoJSON, type FeatureContext } from '@nm/core/app';
-import { onMap, serverNow, visible, watching, type Person } from './store.ts';
+import { circle, distance, freshness, initialsOf, personColor } from '@nm/core';
+import { EMPTY, ensureLayer, immersive, setGeoJSON, userLocation, type FeatureContext } from '@nm/core/app';
+import { onMap, serverNow, snapshot, visible, watching, type Person } from './store.ts';
 
 /**
  * Friends on the map: a round bubble with their emoji (or first letter) in their colour, a
@@ -106,11 +106,45 @@ export function setupMap(ctx: FeatureContext, open: (id: string) => void) {
     renderAccuracy(onMap.peek() || watching.peek() > 0 ? visible.peek() : []);
   });
   effect(render);
+  showFriendsAtLaunch(ctx);
+}
+
+/** Friends further than this from me stay out of the opening view (it would zoom out to a country). */
+const LAUNCH_RADIUS_M = 300_000;
+
+/**
+ * When the app opens, brings the friends who share their location with me into view, together
+ * with me: once the first list arrives and my position is known (or after a few seconds without
+ * it). Not when the app opened on something specific (a place, a route, a search, a screen), and
+ * not once the user has moved the map.
+ */
+function showFriendsAtLaunch(ctx: FeatureContext) {
+  const u = ctx.initialUrl;
+  if (u.place || u.route || u.q || u.cat || u.panel || u.list || u.invite || u.ship || u.at || u.embed) return;
+  let waited = false;
+  setTimeout(() => (waited = true), 4000);
+  const tick = setInterval(() => {
+    const s = snapshot.value;
+    const me = userLocation.peek();
+    if (!s || (!me && !waited)) return;
+    stop();
+    const here: [number, number] | null = me ? [me.lng, me.lat] : null;
+    const near = visible.peek().filter((p) => !here || distance(here, [p.location!.lng, p.location!.lat]) <= LAUNCH_RADIUS_M);
+    if (near.length && onMap.peek()) fitAll(here, near);
+  }, 300);
+  // Give up after a while (no account, offline), and as soon as the user moves the map.
+  const giveUp = setTimeout(() => stop(), 20_000);
+  const stop = () => {
+    clearInterval(tick);
+    clearTimeout(giveUp);
+    ctx.map.off('dragstart', stop);
+  };
+  ctx.map.on('dragstart', stop);
 }
 
 /** Fits the map to everyone I can see (and me). */
-export function fitAll(extra?: [number, number] | null) {
-  const pts = visible.peek().map((p) => [p.location!.lng, p.location!.lat] as [number, number]);
+export function fitAll(extra?: [number, number] | null, who: Person[] = visible.peek()) {
+  const pts = who.map((p) => [p.location!.lng, p.location!.lat] as [number, number]);
   if (extra) pts.push(extra);
   if (!pts.length) return;
   if (pts.length === 1) {
