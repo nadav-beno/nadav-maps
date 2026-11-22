@@ -1,0 +1,19 @@
+{
+  "name": "@nm/mobile",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "The iPhone app: a native shell (Capacitor) around the deployed site, with background location.",
+  "scripts": {
+    "sync": "cap sync ios",
+    "open": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor-community/background-geolocation": "1.3.1",
+    "@capacitor/core": "8.6.2",
+    "@capacitor/ios": "8.6.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.6.2"
+  }
+}

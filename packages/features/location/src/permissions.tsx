@@ -1,4 +1,4 @@
-import { back, Icon, type ViewProps } from '@nm/core/app';
+import { back, Icon, isNativeApp, openAppSettings, type ViewProps } from '@nm/core/app';
 import { locPermission, motionPermission, requestLocation, requestMotion, type PermState } from './index.tsx';
 
 const STATE: Record<PermState, string> = { granted: 'מאושר', denied: 'חסום', ask: 'עוד לא אושר' };
@@ -43,7 +43,20 @@ export function PermissionsView(_: ViewProps) {
       <p>
         אחרי שמאשרים פעם אחת, האפליקציה זוכרת את זה: המיקום נדלק לבד בכל פתיחה, וחיישני התנועה מתחברים בנגיעה הראשונה במסך.
       </p>
-      {ios ? (
+      {isNativeApp() ? (
+        <>
+          <h3 class="section-title">הרשאת המיקום של האפליקציה</h3>
+          <p class="muted small">
+            באפליקציית האייפון ההרשאה נשמרת לתמיד. כדי לשנות אותה: הגדרות ← <b>Nadav Maps</b> ← מיקום. כדי שחברים ב"אנשים" יראו אותך גם
+            כשהאפליקציה סגורה, בחרו <b>תמיד</b> והדליקו <b>מיקום מדויק</b>.
+          </p>
+          <p>
+            <button class="btn" onClick={openAppSettings}>
+              פתיחת ההגדרות
+            </button>
+          </p>
+        </>
+      ) : ios ? (
         <>
           <h3 class="section-title">כדי שהאייפון לא ישאל שוב</h3>
           <p class="muted small">אתר או אפליקציית רשת לא יכולים לאשר הרשאות בעצמם. רק אתם יכולים, פעם אחת, בהגדרות:</p>

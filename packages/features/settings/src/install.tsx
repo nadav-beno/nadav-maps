@@ -2,7 +2,7 @@ import { signal, useSignalEffect } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { detectInstall, IN_APP_NAME, shouldOfferInstall, type InstallInfo } from '@nm/core';
-import { currentView, Icon, load, save, toast } from '@nm/core/app';
+import { currentView, Icon, isNativeApp, load, save, toast } from '@nm/core/app';
 
 /**
  * "Install as an app" without an app store. iPhone/iPad have no install prompt, so we show
@@ -31,7 +31,8 @@ export function installInfo(): InstallInfo {
     userAgent: nav.userAgent,
     platform: nav.platform,
     maxTouchPoints: nav.maxTouchPoints,
-    standalone: nav.standalone,
+    // The iPhone app counts as installed.
+    standalone: nav.standalone || isNativeApp(),
     displayModeStandalone: matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches,
     canPrompt: canPrompt.value,
   });

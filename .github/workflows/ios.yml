@@ -1,0 +1,45 @@
+name: iOS app
+
+# Builds the iPhone app (apps/mobile) for the simulator, without signing, so a change that breaks
+# the native project shows up here and not on Nadav's Mac.
+on:
+  pull_request:
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/core/package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/ios.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Sync the native project
+        run: pnpm --filter @nm/mobile sync
+      - name: The sync leaves the committed project unchanged
+        run: git diff --exit-code -- apps/mobile
+      - name: Build for the simulator
+        run: |
+          set -o pipefail
+          xcodebuild -version
+          xcodebuild -project apps/mobile/ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build | tail -n 60
