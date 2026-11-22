@@ -1,11 +1,13 @@
 -- The once-a-minute sweep (world-cells.ts, sweepCells) only needs the cells it claims, but
 -- flight_cells_claim also sent back every fresh aircraft in the world (~1.8 MB) on each call,
 -- 6 times a minute: ~12 GB a day of egress, over the Free Plan's 5.5 GB a month.
--- `with_cells => false` returns the claim alone. Callers without it (the map) are unchanged.
+-- `with_cells => false` returns the claim alone. Without it, a call that asks for the whole
+-- world with the full budget (only the sweep does: the map asks for at most MAX_REFRESH = 8 <
+-- BUDGET = 9) is treated as the sweep too, so this fix works even before the function is redeployed.
 
 drop function if exists public.flight_cells_claim(integer[], integer, integer, integer, integer, integer);
 
-create or replace function public.flight_cells_claim(ids integer[], max_claim integer, busy_s integer, empty_s integer, claim_s integer, budget integer, with_cells boolean default true)
+create or replace function public.flight_cells_claim(ids integer[], max_claim integer, busy_s integer, empty_s integer, claim_s integer, budget integer, with_cells boolean default null)
 returns jsonb
 language plpgsql
 security definer
@@ -17,6 +19,9 @@ declare
   unknown integer := 0;
   room integer;
 begin
+  if with_cells is null then
+    with_cells := not (cardinality(ids) >= 1000 and max_claim >= budget);
+  end if;
   insert into flight_cells (id) select unnest(ids) on conflict (id) do nothing;
   perform pg_advisory_xact_lock(4207);
   select greatest(0, least(max_claim, budget - count(*))) into room from flight_cells
@@ -46,3 +51,5 @@ $$;
 
 revoke execute on function public.flight_cells_claim(integer[], integer, integer, integer, integer, integer, boolean) from public, anon, authenticated;
 grant execute on function public.flight_cells_claim(integer[], integer, integer, integer, integer, integer, boolean) to service_role;
+
+notify pgrst, 'reload schema';
