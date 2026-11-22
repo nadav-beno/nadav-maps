@@ -4,13 +4,16 @@
  * aisstream.io streams AIS (ship positions) worldwide for free, but only over a WebSocket with a
  * key, and its terms forbid connecting from the browser. So the relay holds the key, keeps at
  * most ONE stream open at a time for everyone (an account may open 3), and caches what it hears in
- * Postgres (`supabase/migrations/*_ships.sql`). Viewers ask for a box and get what is cached in it;
- * asking also marks the box's 10° tiles as wanted, and whoever finds no stream running starts one
- * for the most recently wanted tiles, listens for half a minute in the background and stores it.
+ * Postgres (`supabase/migrations/*_ships*.sql`). Viewers ask for a box and get what is cached in it;
+ * whoever finds no stream running starts one for the whole world, listens for half a minute in the
+ * background and stores it, so every ship aisstream hears anywhere ends up on the map. A cron job
+ * in the database pokes the relay every minute, so the world stays fresh when nobody is watching.
+ * A wide view (more than `WANT_TILES` 10° tiles) gets up to `MAX_WORLD_SHIPS` ships in brief rows
+ * (position, motion, name, type, length); the card asks again with a small box for the rest.
  *
  * No imports, so the same file runs in Deno (Edge Function), in Node (apps/server) and in tests.
  *
- * Request: `POST` JSON `{ box: [w, s, e, n] }` -> `{ ships: ShipRow[], at, live }`, or
+ * Request: `POST` JSON `{ box: [w, s, e, n] }` -> `{ ships: ShipRow[], at, live, brief? }`, or
  * `{ track: mmsi }` -> `{ track: [lng, lat, unixSeconds][] }` (the last hours, kept 12 h).
  * The box travels in the body, so the map area never lands in request logs.
  */
@@ -86,12 +89,18 @@ export interface ShipsRelayOptions {
 export const AISSTREAM_URL = 'wss://stream.aisstream.io/v0/stream';
 /** One collection: how long, and at most how many messages (the free Edge runtime allows ~2 s CPU). */
 export const LISTEN_MS = 30_000;
-export const MAX_MESSAGES = 7_000;
-/** At most this many 10° tiles per collection. */
+export const MAX_MESSAGES = 15_000;
+/** At most this many 10° tiles per lease check (the stream itself always covers the world). */
 export const MAX_TILES = 8;
 export const MAX_SHIPS = 4_000;
-/** A view asks for its tiles only when it covers at most this many (about a 40° x 30° map). */
+/** Ships sent to a wide view, in brief rows. */
+export const MAX_WORLD_SHIPS = 30_000;
+/** A view wider than this many tiles (about a 40° x 30° map) is "wide": brief rows, more of them. */
 export const WANT_TILES = 16;
+/** What the stream listens to: everything. */
+export const WORLD: Box = [-180, -90, 180, 90];
+/** Fields a brief row keeps: [mmsi, lng, lat, sog, cog, heading, nav, time, name, type, length]. */
+export const BRIEF_FIELDS = 11;
 
 /** Sites allowed to use the relay. */
 export const SHIPS_ORIGINS = [/^https:\/\/nadav-beno\.github\.io$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/];
@@ -357,19 +366,33 @@ export async function handleShipsRelay(req: Request, opts: ShipsRelayOptions = {
   const box = shipBox(input?.box);
   if (!box) return reply(400, { error: 'bad box' });
   let got: Awaited<ReturnType<ShipStore['get']>>;
+  let wide = false;
   try {
-    // A zoomed-out view (many tiles) doesn't ask for its tiles, or it would crowd out the close-up
-    // views; it still shows what is cached and keeps the stream going. Without a key nobody streams.
+    // Asking marks a tile or more as wanted, which is what lets the lease start a stream (a wide
+    // view marks only its middle one). Without a key nobody streams.
     const tiles = tilesOf(box);
-    got = await store.get(box, MAX_SHIPS, tiles.length <= WANT_TILES ? tiles : [], !!opts.key && !!opts.socket);
+    wide = tiles.length > WANT_TILES;
+    const mid = tilesOf([(box[0] + box[2]) / 2, (box[1] + box[3]) / 2, (box[0] + box[2]) / 2, (box[1] + box[3]) / 2]);
+    got = await store.get(box, wide ? MAX_WORLD_SHIPS : MAX_SHIPS, wide ? mid : tiles, !!opts.key && !!opts.socket);
   } catch {
     return reply(502, { error: 'store unreachable' });
   }
   const live = !!opts.key;
   if (got.boxes && opts.key && opts.socket) {
-    const job = collect(got.boxes, opts.key, store, opts.socket, opts.listenMs);
+    const job = collect([WORLD], opts.key, store, opts.socket, opts.listenMs);
     if (opts.defer) opts.defer(job);
     else void job;
   }
-  return reply(200, { ships: got.ships, at: Math.round(Date.now() / 1000), live });
+  const ships = wide ? got.ships.map(briefRow) : got.ships;
+  return reply(200, { ships, at: Math.round(Date.now() / 1000), live, ...(wide ? { brief: true } : {}) });
+}
+
+const round = (v: number | null, k: number) => (typeof v === 'number' ? Math.round(v * k) / k : v);
+
+/** A row cut to what the map needs, positions to ~10 m: a world of ships in a quarter of the bytes. */
+export function briefRow(r: ShipRow): ShipRow {
+  const b = r.slice(0, BRIEF_FIELDS) as unknown as ShipRow;
+  b[1] = round(b[1], 1e4) as number;
+  b[2] = round(b[2], 1e4) as number;
+  return b;
 }
