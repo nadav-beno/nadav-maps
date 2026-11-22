@@ -3,7 +3,7 @@ import {
   agoText, alertSummary, batteryIcon, distance, formatDistance, freshness, initialsOf, movingText, normalizeCode, PERSON_COLORS,
   PERSON_EMOJIS, personColor, pointPlaceId, prettyCode, SHARE_CHOICES, shareLeft, type AlertKind, type ShareFor,
 } from '@nm/core';
-import { back, directionsTo, Icon, open, region, toast, units, userLocation, viewStack, type ViewProps } from '@nm/core/app';
+import { back, directionsTo, Icon, isNativeApp, open, region, toast, units, userLocation, viewStack, type ViewProps } from '@nm/core/app';
 import {
   acceptInvite, addByCode, addressOf, ask, begin, createInvite, decline, deleteAccount, deleteAlert, me, onMap, peekInvite, pendingInvite,
   people, personById, problem, published, removePerson, requests, saveProfile, serverNow, setAlert, setPaused, shareWith, startLocation,
@@ -825,9 +825,13 @@ export function MeView(_: ViewProps) {
       <div class="pp-card pp-howto">
         <div class="pp-card-title"><Icon name="info" /> איך זה עובד</div>
         <ul class="small">
-          <li>המיקום שלך נשלח רק כשמישהו רואה אותו, ורק כשהאפליקציה פתוחה.</li>
+          {isNativeApp() ? (
+            <li>המיקום שלך נשלח רק כשמישהו רואה אותו, גם כשהאפליקציה סגורה (החץ הכחול למעלה במסך מראה שהוא פעיל).</li>
+          ) : (
+            <li>המיקום שלך נשלח רק כשמישהו רואה אותו, ורק כשהאפליקציה פתוחה.</li>
+          )}
           <li>נשמר רק המיקום האחרון שלך. אין היסטוריה של איפה היית.</li>
-          <li>באייפון, אפליקציית ווב לא יכולה לשתף ברקע, אז החברים יראו "עודכן לפני…".</li>
+          {!isNativeApp() && <li>באייפון, אפליקציית ווב לא יכולה לשתף ברקע, אז החברים יראו "עודכן לפני…".</li>}
           <li>התראות הגעה ויציאה מופיעות כשהאפליקציה פתוחה אצלך.</li>
         </ul>
       </div>

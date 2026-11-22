@@ -12,3 +12,4 @@ export * from './world.ts';
 export { ICONS } from './icon-paths.ts';
 export * from './send-to-phone.tsx';
 export * from './nearby.ts';
+export * from './native.ts';

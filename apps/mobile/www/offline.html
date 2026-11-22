@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Nadav Maps</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #ffffff; --fg: #1f1f1f; --muted: #5f6368; --accent: #0b57d0; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #1f1f1f; --fg: #e8eaed; --muted: #9aa0a6; --accent: #a8c7fa; } }
+    html, body { height: 100%; margin: 0; }
+    body { background: var(--bg); color: var(--fg); font: 17px/1.5 -apple-system, system-ui, sans-serif; display: grid; place-items: center; padding: 24px; box-sizing: border-box; text-align: center; }
+    h1 { font-size: 22px; margin: 0 0 8px; }
+    p { color: var(--muted); margin: 0 0 24px; }
+    button { font: inherit; font-weight: 600; color: var(--bg); background: var(--accent); border: 0; border-radius: 999px; padding: 12px 28px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>אין חיבור לאינטרנט</h1>
+    <p>המפה נטענת מהרשת. נסו שוב כשיש קליטה.</p>
+    <button type="button" onclick="location.replace('https://nadav-beno.github.io/nadav-maps/')">נסו שוב</button>
+  </main>
+  <script>addEventListener('online', () => location.replace('https://nadav-beno.github.io/nadav-maps/'));</script>
+</body>
+</html>
