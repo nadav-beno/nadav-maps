@@ -140,8 +140,12 @@ export interface CachedCell {
 
 /** Where cells are kept. `take` also claims up to `max` stale cells for the caller to refresh. */
 export interface CellStore {
-  /** Claims never-fetched cells first, then the most overdue ones, within BUDGET per 10 s. */
-  take(ids: number[], max: number, now: number): Promise<{ cells: CachedCell[]; claim: number[]; unknown: number }>;
+  /**
+   * Claims never-fetched cells first, then the most overdue ones, within BUDGET per 10 s.
+   * `claimOnly` (the sweep) skips sending the cached aircraft back: they are ~2 MB for the
+   * whole world, and sending them 6 times a minute used up the Free Plan's egress.
+   */
+  take(ids: number[], max: number, now: number, claimOnly?: boolean): Promise<{ cells: CachedCell[]; claim: number[]; unknown: number }>;
   put(cells: { id: number; rows: Row[] }[], now: number): Promise<void>;
 }
 
@@ -191,8 +195,9 @@ export function postgrestStore(baseUrl: string, key: string, fetcher: typeof fet
     return res.json() as Promise<unknown>;
   };
   return {
-    async take(ids, max) {
-      const r = (await rpc('flight_cells_claim', { ids, max_claim: max, busy_s: BUSY_S, empty_s: EMPTY_S, claim_s: CLAIM_S, budget: BUDGET })) as {
+    async take(ids, max, _now, claimOnly) {
+      const args = { ids, max_claim: max, busy_s: BUSY_S, empty_s: EMPTY_S, claim_s: CLAIM_S, budget: BUDGET };
+      const r = (await rpc('flight_cells_claim', claimOnly ? { ...args, with_cells: false } : args)) as {
         cells?: [number, number, Row[]][];
         claim?: number[];
         unknown?: number;
@@ -286,7 +291,7 @@ export async function sweepCells(
   let stored = 0;
   while (now() < end) {
     const started = now();
-    const { claim } = await store.take(ALL_CELLS, BUDGET, started);
+    const { claim } = await store.take(ALL_CELLS, BUDGET, started, true);
     if (claim.length) stored += await refreshCells(store, claim, upstream, opts.ua ?? 'NadavMaps', now, opts.gaps);
     // The budget is per 10 s: wait for the rest of the window before claiming again.
     const left = Math.max(opts.idleMs ?? 0, 10_000 - (now() - started));
