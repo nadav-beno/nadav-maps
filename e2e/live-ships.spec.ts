@@ -50,12 +50,14 @@ test('live ships: the boat button shows ships by kind, with a legend and filters
   await expect(page).toHaveURL(/panel=ships/);
   // Only the map area went out, as a box in the body.
   expect((bodies.find((b) => b.box)!.box as number[]).length).toBe(4);
-  // Every ship is drawn in its kind's colour: a hull under way, a dot when stopped.
+  // Every ship is drawn as the silhouette of its kind; stopped ones are round badges when zoomed out.
   const icons = () =>
     page.evaluate(() =>
-      [...new Map((window as unknown as { map: { querySourceFeatures(s: string): { properties: { m: number; i: string } }[] } }).map.querySourceFeatures('live-ships').map((f) => [f.properties.m, f.properties.i])).values()].sort(),
+      [...new Map((window as unknown as { map: { querySourceFeatures(s: string): { properties: { m: number; i: string; d: string } }[] } }).map.querySourceFeatures('live-ships').map((f) => [f.properties.m, `${f.properties.i}/${f.properties.d}`])).values()].sort(),
     );
-  await expect.poll(icons, { timeout: 15_000 }).toEqual(['ship-big-cargo', 'ship-dot-passenger', 'ship-dot-tanker', 'ship-hull-fishing', 'ship-hull-pleasure']);
+  await expect.poll(icons, { timeout: 15_000 }).toEqual(['ship-cargo/ship-cargo', 'ship-fishing/ship-fishing', 'ship-passenger/ship-passenger-stop', 'ship-pleasure/ship-pleasure', 'ship-tanker/ship-tanker-stop']);
+  // The kind chips count the ships of each kind.
+  await expect(page.getByRole('button', { name: /מכליות/ }).locator('.ship-count')).toHaveText('1');
   // The legend hides a kind with one tap.
   await page.getByRole('button', { name: 'מכליות' }).click();
   await expect(page.locator('.live-status')).toContainText('4 ספינות במפה');
@@ -104,4 +106,29 @@ test('live ships: a ship found by name opens its card with destination, flag, tr
 test('live ships without the worldwide source say so outside the Baltic', async ({ page }) => {
   await page.goto('./?panel=ships#10/32.85/34.95');
   await expect(page.locator('.live-note')).toContainText('רק בים הבלטי', { timeout: 15_000 });
+});
+
+test('live ships zoomed out to the world: brief rows on the map, the full record on the card', async ({ page }) => {
+  test.setTimeout(SLOW);
+  const bodies: Record<string, unknown>[] = [];
+  await page.route('https://relay.test/ships', (r) => {
+    if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: { ...cors, 'access-control-allow-headers': 'content-type' } });
+    const body = r.request().postDataJSON() as { box?: number[]; track?: number };
+    bodies.push(body);
+    if (body.track) return r.fulfill({ json: { track: [] }, headers: cors });
+    const wide = body.box && body.box[2] - body.box[0] > 40;
+    const rows = relayShips().map((x) => (wide ? x.slice(0, 11) : x));
+    return r.fulfill({ json: { ships: rows, at: nowS(), live: true, ...(wide ? { brief: true } : {}) }, headers: cors });
+  });
+  await page.goto('./?shipsrelay=https://relay.test/ships#2/30/20');
+  await page.getByRole('button', { name: 'ספינות בזמן אמת' }).click();
+  await expect(page.locator('.live-status')).toContainText('5 ספינות במפה', { timeout: 15_000 });
+  await page.getByRole('textbox', { name: 'חיפוש ספינה' }).fill('zim');
+  await page.getByRole('button', { name: /ZIM SAMMY/ }).click();
+  await expect(page.locator('.live-callsign')).toHaveText('ZIM SAMMY');
+  // The brief row had no IMO: the card asked for a small box around the ship and got it.
+  await expect(page.getByRole('region', { name: 'מזהים' })).toContainText('9876543', { timeout: 15_000 });
+  expect(bodies.some((b) => Array.isArray(b.box) && (b.box as number[])[2] - (b.box as number[])[0] < 1)).toBe(true);
+  // No photo of it: a picture of its kind.
+  await expect(page.locator('.ship-picture')).toContainText('משא');
 });

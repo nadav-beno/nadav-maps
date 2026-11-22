@@ -239,3 +239,28 @@ export function destinationName(dest: string | null | undefined): { raw: string;
 export function knots(kn: number | null | undefined): string {
   return kn === null || kn === undefined ? '—' : `${kn.toFixed(kn < 10 ? 1 : 0)} קשר`;
 }
+
+// ---------- distress ----------
+
+/**
+ * Why a ship (or a beacon) needs attention, in Hebrew, or null: a search-and-rescue transmitter
+ * (MMSI 970xxxxxx or status 14), a man-overboard device (972), an EPIRB (974), a ship aground or
+ * not under command.
+ */
+export function shipAlert(s: { mmsi: number; nav?: number | null }): string | null {
+  const head = Math.floor(s.mmsi / 1_000_000);
+  if (head === 970 || s.nav === 14) return 'משדר חילוץ (SART) פעיל';
+  if (head === 972) return 'משדר אדם במים (MOB)';
+  if (head === 974) return 'משואת מצוקה (EPIRB)';
+  if (s.nav === 6) return 'עלתה על שרטון';
+  if (s.nav === 2) return 'לא בשליטה';
+  return null;
+}
+
+/** Size groups by length, for the filters and the card. */
+export const SHIP_SIZES: { id: 'all' | 'mid' | 'big' | 'huge'; label: string; minM: number }[] = [
+  { id: 'all', label: 'כל הגדלים', minM: 0 },
+  { id: 'mid', label: 'מעל 50 מ׳', minM: 50 },
+  { id: 'big', label: 'מעל 150 מ׳', minM: 150 },
+  { id: 'huge', label: 'מעל 250 מ׳ (ענקיות)', minM: 250 },
+];
