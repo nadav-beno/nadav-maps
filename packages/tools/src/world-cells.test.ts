@@ -120,6 +120,22 @@ describe('world cells', () => {
     expect((f.mock.calls[0][1]?.headers as Record<string, string>).authorization).toBe('Bearer key');
   });
 
+  it('the sweep asks the database for its claim only, never the whole world back', async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const f = vi.fn(async (_url: string, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response('{"cells":[],"claim":[],"unknown":0}');
+    });
+    const store = postgrestStore('https://db.test/', 'key', f as unknown as typeof fetch);
+    let t = 0;
+    await sweepCells(store, vi.fn() as unknown as typeof fetch, { now: () => (t += 1_000), ms: 5_000, gaps: G });
+    expect(bodies.length).toBeGreaterThan(0);
+    expect(bodies.every((b) => b.with_cells === false)).toBe(true);
+    // The map's own requests still get the aircraft.
+    await store.take([7001], 1, 0);
+    expect(bodies.at(-1)).not.toHaveProperty('with_cells');
+  });
+
   it('the relay answers world requests from the store, and refuses bad boxes', async () => {
     clearRelayCache();
     const req = (body: unknown) => new Request('https://relay.test/', { method: 'POST', headers: { origin: 'https://nadav-beno.github.io' }, body: JSON.stringify(body) });
