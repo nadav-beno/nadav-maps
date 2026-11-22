@@ -264,6 +264,7 @@ export async function stubNetwork(page: Page): Promise<void> {
   await page.route('https://adsb.lol/data/**', (r) => r.fulfill({ status: 404, body: '', headers: { 'access-control-allow-origin': '*' } }));
   await page.route('https://adsb.im/**', (r) => r.fulfill({ json: [], headers: { 'access-control-allow-origin': '*' } }));
   await page.route('https://api.planespotters.net/**', (r) => r.fulfill({ json: { photos: [] }, headers: { 'access-control-allow-origin': '*' } }));
+  await page.route('https://api.airplanes.live/**', (r) => r.fulfill({ json: { ac: [] }, headers: { 'access-control-allow-origin': '*' } }));
   await page.route('https://opendata.adsb.fi/**', (r) => r.fulfill({ json: { aircraft: [] }, headers: { 'access-control-allow-origin': '*' } }));
   // Live ships: an empty Baltic (Digitraffic) and nothing known on Wikidata unless a test routes its own answer.
   await page.route('https://meri.digitraffic.fi/**', (r) =>
