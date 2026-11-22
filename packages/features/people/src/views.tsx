@@ -258,6 +258,7 @@ function RequestCard({ p }: { p: Person }) {
           <div class="small muted">מבקש/ת לראות את המיקום שלך</div>
         </div>
       </div>
+      <p class="small muted pp-mutual"><Icon name="sync_alt" size={16} /> השיתוף הדדי: אם תאשרו, גם את {p.name.split(' ')[0]} תראו על המפה, לאותו זמן.</p>
       <DurationPicker value={choice} onChange={setChoice} label="לכמה זמן לשתף" />
       <div class="pp-request-actions">
         <button class="btn primary" onClick={() => void shareWith(p, choice)}>
@@ -562,7 +563,7 @@ export function PersonView({ view }: ViewProps<{ id: string }>) {
       {!p.theyShare && (
         <div class="pp-card">
           <div class="pp-card-title">רוצה לראות איפה {p.name}?</div>
-          <p class="small muted">נשלח בקשה, ו{p.name.split(' ')[0]} יחליט/תחליט אם ולכמה זמן לשתף.</p>
+          <p class="small muted">נשלח בקשה. אם {p.name.split(' ')[0]} יאשר/תאשר, תראו אחד את השני על המפה, לזמן שיבחר/תבחר.</p>
           <button class="btn tonal" disabled={p.iAsked} onClick={() => void ask(p)}>
             <Icon name="send" /> {p.iAsked ? 'הבקשה נשלחה' : 'בקשה לראות מיקום'}
           </button>

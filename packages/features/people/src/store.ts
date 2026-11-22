@@ -280,7 +280,7 @@ export function shareWith(p: Person, choice: ShareFor) {
 }
 
 export const stopSharing = (p: Person) => act((a) => a.rpc('people_stop_sharing', { p_viewer: p.id }), `הפסקת לשתף עם ${p.name}`);
-export const ask = (p: Person) => act((a) => a.rpc('people_ask', { p_other: p.id }), `שלחנו ל${p.name} בקשה`);
+export const ask = (p: Person) => act((a) => a.rpc('people_ask', { p_other: p.id }), `שלחנו ל${p.name} בקשה. כשיאשרו, תראו אחד את השני`);
 export const decline = (p: Person) => act((a) => a.rpc('people_decline', { p_from: p.id }));
 export const removePerson = (p: Person) => act((a) => a.rpc('people_remove', { p_other: p.id }), `${p.name} הוסר/ה מהרשימה`);
 export const setPaused = (paused: boolean) =>
